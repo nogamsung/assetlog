@@ -11,10 +11,12 @@ from app.db.base import get_db_session
 from app.exceptions import UnauthorizedError
 from app.models.user import User
 from app.repositories.asset_symbol import AssetSymbolRepository
+from app.repositories.transaction import TransactionRepository
 from app.repositories.user import UserRepository
 from app.repositories.user_asset import UserAssetRepository
 from app.services.auth import AuthService
 from app.services.symbol import SymbolService
+from app.services.transaction import TransactionService
 from app.services.user_asset import UserAssetService
 
 # ---------------------------------------------------------------------------
@@ -78,6 +80,25 @@ def get_user_asset_service(repo: UserAssetRepositoryDep) -> UserAssetService:
 
 
 UserAssetServiceDep = Annotated[UserAssetService, Depends(get_user_asset_service)]
+
+
+def get_transaction_repository(session: DbSession) -> TransactionRepository:
+    """Inject a TransactionRepository bound to the current request session."""
+    return TransactionRepository(session)
+
+
+TransactionRepositoryDep = Annotated[TransactionRepository, Depends(get_transaction_repository)]
+
+
+def get_transaction_service(
+    tx_repo: TransactionRepositoryDep,
+    ua_repo: UserAssetRepositoryDep,
+) -> TransactionService:
+    """Inject a TransactionService bound to the current request session."""
+    return TransactionService(transaction_repo=tx_repo, user_asset_repo=ua_repo)
+
+
+TransactionServiceDep = Annotated[TransactionService, Depends(get_transaction_service)]
 
 # ---------------------------------------------------------------------------
 # Current-user guard
