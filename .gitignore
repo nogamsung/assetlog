@@ -10,6 +10,12 @@ __pycache__/
 *.egg-info/
 .venv/
 venv/
+.coverage
+coverage.xml
+htmlcov/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
 
 # Node
 node_modules/
