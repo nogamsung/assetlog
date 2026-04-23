@@ -117,3 +117,19 @@ PRD 오픈 이슈 #4 (JWT storage) 해소. 사용자 요청("JWT 는 backend, fr
 - **frontend**: `middleware.ts` 가 `access_token` 쿠키 없으면 `/login?from=<path>` 로 리다이렉트. 공개 허용 경로는 `/login`·`/signup`·정적 리소스뿐.
 
 **관련 파일:** `backend/app/routers/*.py` (모든 라우터 `Depends(get_current_user)`), `frontend/middleware.ts`, `docs/specs/asset-tracking.md` §3 (보안).
+
+---
+
+## 2026-04-24: Money/수량 `Decimal` 정밀도 원칙
+
+**카테고리:** 규칙
+
+금액(`price`, `total_invested`, `avg_buy_price`) 과 수량(`quantity`) 처리 규칙:
+
+- **결정**: Python `Decimal` 만 사용. `float` 절대 금지.
+- **DB 타입**: `Numeric(20, 6)` (가격) / `Numeric(28, 10)` (수량 — 암호화폐 정밀도 고려).
+- **SQLite 테스트 환경 주의**: SQLite 는 `NUMERIC` 를 REAL 로 저장할 수 있어 SQL AGG (`SUM`, `AVG`) 결과가 `float` 로 Python 에 전달될 수 있음. 이 경우 **`Decimal(str(row.xxx))`** 로 문자열 경유 변환 필수 — `Decimal(float)` 은 이진 부동소수 표현을 그대로 가져와 `0.1` 이 `Decimal('0.1000000000000000055511151231257827021181583404541015625')` 가 됨.
+- **MySQL 프로덕션**: `DECIMAL` 을 Python `Decimal` 로 받아오므로 `str(...)` 경유 불필요. 하지만 SQLite 호환성을 위해 문자열 경유 패턴을 **항상** 사용 — 코드 분기 단순화.
+- **API 응답**: Pydantic 이 `Decimal` 을 자동으로 JSON string 으로 직렬화 (`"1.5000000000"`). 프론트엔드는 문자열로 받아 BigDecimal 라이브러리 없이 표시만 할 때는 `parseFloat` OK, 계산 개입 시 `decimal.js` 도입 검토.
+
+**관련 파일:** `backend/app/models/transaction.py` (`Numeric`), `backend/app/repositories/transaction.py` (`get_summary` 에서 `Decimal(str(...))`), `backend/app/schemas/transaction.py` (`Decimal` 타입 + Pydantic 자동 직렬화).

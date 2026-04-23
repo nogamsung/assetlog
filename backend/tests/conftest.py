@@ -21,7 +21,9 @@ from app.core.config import Settings, get_settings
 from app.core.security import create_access_token, hash_password
 from app.db.base import Base, get_db_session
 from app.main import app
+from app.models.asset_symbol import AssetSymbol
 from app.models.user import User
+from app.models.user_asset import UserAsset
 
 TEST_DATABASE_URL = "sqlite+aiosqlite:///:memory:"
 
@@ -170,6 +172,72 @@ async def authenticated_client(
 
     app.dependency_overrides.clear()
     db_base.AsyncSessionLocal = original_session_local  # type: ignore[assignment]  # restoring original
+
+
+@pytest_asyncio.fixture  # type: ignore[misc]  # pytest-asyncio fixture typing
+async def asset_symbol_factory(
+    db_session: AsyncSession,
+) -> AsyncGenerator[Any, None]:
+    """Factory fixture that creates AssetSymbol rows in the test DB.
+
+    Usage::
+
+        async def test_something(asset_symbol_factory):
+            sym = await asset_symbol_factory(symbol="BTC", asset_type=AssetType.CRYPTO)
+    """
+
+    async def _make(
+        symbol: str = "BTC",
+        exchange: str = "upbit",
+        name: str = "Bitcoin",
+        currency: str = "KRW",
+        asset_type: Any = None,
+    ) -> AssetSymbol:
+        from app.domain.asset_type import AssetType
+        from app.repositories.asset_symbol import AssetSymbolRepository
+
+        resolved_type = asset_type if asset_type is not None else AssetType.CRYPTO
+        repo = AssetSymbolRepository(db_session)
+        return await repo.create(
+            asset_type=resolved_type,
+            symbol=symbol,
+            exchange=exchange,
+            name=name,
+            currency=currency,
+        )
+
+    yield _make
+
+
+@pytest_asyncio.fixture  # type: ignore[misc]  # pytest-asyncio fixture typing
+async def user_asset_factory(
+    db_session: AsyncSession,
+) -> AsyncGenerator[Any, None]:
+    """Factory fixture that creates UserAsset rows in the test DB.
+
+    Usage::
+
+        async def test_something(user_asset_factory, user_factory, asset_symbol_factory):
+            user = await user_factory()
+            sym = await asset_symbol_factory()
+            ua = await user_asset_factory(user=user, asset_symbol=sym)
+    """
+
+    async def _make(
+        user: User,
+        asset_symbol: AssetSymbol,
+        memo: str | None = None,
+    ) -> UserAsset:
+        from app.repositories.user_asset import UserAssetRepository
+
+        repo = UserAssetRepository(db_session)
+        return await repo.create(
+            user_id=user.id,
+            asset_symbol_id=asset_symbol.id,
+            memo=memo,
+        )
+
+    yield _make
 
 
 def pytest_configure(config: Any) -> None:

@@ -18,6 +18,7 @@ from app.exceptions import (
 )
 from app.routers.auth import router as auth_router
 from app.routers.symbol import router as symbol_router
+from app.routers.transaction import router as transaction_router
 from app.routers.user_asset import router as user_asset_router
 
 logger = logging.getLogger(__name__)
@@ -104,6 +105,7 @@ async def validation_error_handler(request: Request, exc: ValidationError) -> JS
 app.include_router(auth_router)
 app.include_router(symbol_router)
 app.include_router(user_asset_router)
+app.include_router(transaction_router)
 
 
 @app.get(
