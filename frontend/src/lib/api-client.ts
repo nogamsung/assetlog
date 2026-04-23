@@ -17,7 +17,10 @@ apiClient.interceptors.response.use(
   (response) => response,
   (error: AxiosError) => {
     if (error.response?.status === 401) {
-      if (typeof window !== "undefined") {
+      const url = error.config?.url ?? "";
+      // /api/auth/me 는 훅에서 조용히 처리하므로 자동 리다이렉트 제외
+      const isMeEndpoint = url.includes("/api/auth/me");
+      if (!isMeEndpoint && typeof window !== "undefined") {
         window.location.href = "/login";
       }
     }
