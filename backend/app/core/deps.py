@@ -10,8 +10,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.base import get_db_session
 from app.exceptions import UnauthorizedError
 from app.models.user import User
+from app.repositories.asset_symbol import AssetSymbolRepository
 from app.repositories.user import UserRepository
+from app.repositories.user_asset import UserAssetRepository
 from app.services.auth import AuthService
+from app.services.symbol import SymbolService
+from app.services.user_asset import UserAssetService
 
 # ---------------------------------------------------------------------------
 # Session
@@ -31,6 +35,22 @@ def get_user_repository(session: DbSession) -> UserRepository:
 
 UserRepositoryDep = Annotated[UserRepository, Depends(get_user_repository)]
 
+
+def get_asset_symbol_repository(session: DbSession) -> AssetSymbolRepository:
+    """Inject an AssetSymbolRepository bound to the current request session."""
+    return AssetSymbolRepository(session)
+
+
+AssetSymbolRepositoryDep = Annotated[AssetSymbolRepository, Depends(get_asset_symbol_repository)]
+
+
+def get_user_asset_repository(session: DbSession) -> UserAssetRepository:
+    """Inject a UserAssetRepository bound to the current request session."""
+    return UserAssetRepository(session)
+
+
+UserAssetRepositoryDep = Annotated[UserAssetRepository, Depends(get_user_asset_repository)]
+
 # ---------------------------------------------------------------------------
 # Service factories
 # ---------------------------------------------------------------------------
@@ -42,6 +62,22 @@ def get_auth_service(repo: UserRepositoryDep) -> AuthService:
 
 
 AuthServiceDep = Annotated[AuthService, Depends(get_auth_service)]
+
+
+def get_symbol_service(repo: AssetSymbolRepositoryDep) -> SymbolService:
+    """Inject a SymbolService bound to the current request session."""
+    return SymbolService(repo)
+
+
+SymbolServiceDep = Annotated[SymbolService, Depends(get_symbol_service)]
+
+
+def get_user_asset_service(repo: UserAssetRepositoryDep) -> UserAssetService:
+    """Inject a UserAssetService bound to the current request session."""
+    return UserAssetService(repo)
+
+
+UserAssetServiceDep = Annotated[UserAssetService, Depends(get_user_asset_service)]
 
 # ---------------------------------------------------------------------------
 # Current-user guard

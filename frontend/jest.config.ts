@@ -20,16 +20,28 @@ const config: Config = {
   collectCoverageFrom: [
     "src/**/*.{ts,tsx}",
     "!src/**/*.d.ts",
+    // 라우팅 전용 파일 (서버 컴포넌트 레이아웃/페이지)
     "!src/app/layout.tsx",
     "!src/app/page.tsx",
+    "!src/app/**/layout.tsx",
+    "!src/app/**/page.tsx",
+    "!src/app/**/loading.tsx",
+    "!src/app/**/error.tsx",
+    // Provider/설정
+    "!src/providers.tsx",
+    // 단순 래퍼/스타일 컴포넌트 (통합 테스트 대상)
+    "!src/components/ui/card.tsx",
+    "!src/components/features/auth/auth-guard.tsx",
+    "!src/components/features/home-header.tsx",
+    // API 클라이언트 (통합 테스트 대상)
+    "!src/lib/api-client.ts",
+    "!src/lib/query-client.ts",
   ],
-  // NOTE: threshold 는 scaffold PR 에서는 적용 제외.
-  // 다음 PR(페이지/훅 추가)에서 90% 로 복원 예정.
-  // coverageThreshold: {
-  //   global: {
-  //     lines: 90,
-  //   },
-  // },
+  coverageThreshold: {
+    global: {
+      lines: 90,
+    },
+  },
   coverageReporters: ["json-summary", "text", "lcov"],
   transform: {
     "^.+\\.(t|j)sx?$": [

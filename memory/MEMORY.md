@@ -87,3 +87,33 @@ PRD 오픈 이슈 #4 (JWT storage) 해소. 사용자 요청("JWT 는 backend, fr
 - **영향**: 미래에 argon2 등으로 바꾸려면 해싱 헬퍼 2개 함수만 교체하면 됨 (인터페이스 `hash_password(str) -> str`, `verify_password(str, str) -> bool` 유지).
 
 **관련 파일:** `backend/app/core/security.py`, `backend/pyproject.toml` (`passlib` 삭제, `bcrypt>=4.0.0` + `pydantic[email]` 추가).
+
+---
+
+## 2026-04-24: AssetType — `native_enum=False` (String 컬럼 저장)
+
+**카테고리:** 결정
+
+`AssetSymbol.asset_type` (`crypto` / `kr_stock` / `us_stock`) 의 DB 저장 방식:
+
+- **결정**: SQLAlchemy `Enum(AssetType, native_enum=False, length=16)` — MySQL 네이티브 ENUM 대신 **VARCHAR 컬럼**으로 저장. Python 레벨에서는 `enum.StrEnum` (Python 3.11+) 으로 유지.
+- **이유**: MySQL 네이티브 ENUM 은 값 추가 시 `ALTER TABLE ... MODIFY COLUMN` 필요 → 대용량 테이블 락·오프라인 마이그레이션 위험. 문자열 컬럼은 마이그레이션 없이 새 값 추가(앱 배포만으로 충분). 조회 비용 차이는 무시 수준.
+- **패턴**: 모든 미래 enum 필드(예: `TransactionType(buy/sell)`, 후속 `price_source` 등) 에 동일 원칙 적용.
+- **주의**: 문자열이라 DB 레벨 제약은 없음 — 유효성은 Pydantic/Service 계층에서 검증. 잘못된 값이 들어가면 `AssetType(value)` 호출 시 `ValueError` → 도메인 레이어에서 처리.
+
+**관련 파일:** `backend/app/domain/asset_type.py` (StrEnum), `backend/app/models/asset_symbol.py` (`SqlEnum(..., native_enum=False)`).
+
+---
+
+## 2026-04-24: API 인증 범위 — 전 엔드포인트 인증 필수 (MVP)
+
+**카테고리:** 결정
+
+공개 엔드포인트 정책:
+
+- **결정**: MVP 에서는 `/api/auth/signup`·`/api/auth/login` 외 **모든** `/api/**` 엔드포인트에 `Depends(get_current_user)` 강제. 심볼 마스터 검색(`GET /api/symbols`) 도 인증 필수.
+- **이유**: (1) 포트폴리오 트래커라 사용자 컨텍스트 없이 가치 있는 기능 없음 (2) 미인증 공개 노출은 남용/추적 복잡도 증가 (3) CORS `allow_credentials=True` + httpOnly cookie 정책과 일관
+- **예외 허용 기준** (후속 PR 에서 도입 시): 랜딩 페이지용 심볼 자동완성처럼 "로그인 전 UX" 가 명확히 필요한 엔드포인트만 **명시적으로** public. 기본값은 protected.
+- **frontend**: `middleware.ts` 가 `access_token` 쿠키 없으면 `/login?from=<path>` 로 리다이렉트. 공개 허용 경로는 `/login`·`/signup`·정적 리소스뿐.
+
+**관련 파일:** `backend/app/routers/*.py` (모든 라우터 `Depends(get_current_user)`), `frontend/middleware.ts`, `docs/specs/asset-tracking.md` §3 (보안).
