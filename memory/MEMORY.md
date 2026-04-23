@@ -72,3 +72,18 @@ PRD 오픈 이슈 #4 (JWT storage) 해소. 사용자 요청("JWT 는 backend, fr
 **설계 포인트:** stderr 는 모델 컨텍스트에 주입되지 **않는다** — "자동 기록" 을 실제로 동작시키려면 `hookSpecificOutput.additionalContext` JSON 출력이 필수. 사용자는 stderr 를 요청했으나 Stop 은 user-visible nudge, UserPromptSubmit 은 모델 주입으로 역할 분리.
 
 **관련 파일:** `.claude/settings.json` (hooks.UserPromptSubmit, hooks.Stop), `.claude/hooks/memory-context.sh`, `.claude/hooks/memory-reminder.sh`.
+
+---
+
+## 2026-04-23: bcrypt 직접 사용 (passlib 드롭)
+
+**카테고리:** 결정
+
+비밀번호 해싱 라이브러리 결정:
+
+- **결정**: `passlib[bcrypt]` 제거 → `bcrypt>=4.0.0` **직접 사용**.
+- **이유**: bcrypt 5.0 + passlib 조합에서 `AttributeError: module 'bcrypt' has no attribute '__about__'` 호환성 버그. passlib 는 `bcrypt.__about__.__version__` 를 런타임 탐지하는데 bcrypt 5.0 에서 해당 속성 제거됨. passlib 가 정체 상태라 upstream 픽스 지연.
+- **구현**: `app/core/security.py` 에서 `bcrypt.hashpw(plain.encode(), bcrypt.gensalt())` / `bcrypt.checkpw(...)` 직접 호출.
+- **영향**: 미래에 argon2 등으로 바꾸려면 해싱 헬퍼 2개 함수만 교체하면 됨 (인터페이스 `hash_password(str) -> str`, `verify_password(str, str) -> bool` 유지).
+
+**관련 파일:** `backend/app/core/security.py`, `backend/pyproject.toml` (`passlib` 삭제, `bcrypt>=4.0.0` + `pydantic[email]` 추가).

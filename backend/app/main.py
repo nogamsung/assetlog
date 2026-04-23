@@ -9,7 +9,14 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.core.config import settings
-from app.exceptions import AppError
+from app.exceptions import (
+    AppError,
+    ConflictError,
+    NotFoundError,
+    UnauthorizedError,
+    ValidationError,
+)
+from app.routers.auth import router as auth_router
 
 logger = logging.getLogger(__name__)
 
@@ -62,6 +69,37 @@ async def app_error_handler(request: Request, exc: AppError) -> JSONResponse:
         status_code=exc.status_code,
         content={"detail": exc.detail},
     )
+
+
+@app.exception_handler(NotFoundError)
+async def not_found_handler(request: Request, exc: NotFoundError) -> JSONResponse:
+    """Map NotFoundError → 404."""
+    logger.debug("NotFoundError: %s", exc.detail)
+    return JSONResponse(status_code=404, content={"detail": exc.detail})
+
+
+@app.exception_handler(ConflictError)
+async def conflict_handler(request: Request, exc: ConflictError) -> JSONResponse:
+    """Map ConflictError → 409."""
+    logger.debug("ConflictError: %s", exc.detail)
+    return JSONResponse(status_code=409, content={"detail": exc.detail})
+
+
+@app.exception_handler(UnauthorizedError)
+async def unauthorized_handler(request: Request, exc: UnauthorizedError) -> JSONResponse:
+    """Map UnauthorizedError → 401."""
+    logger.debug("UnauthorizedError: %s", exc.detail)
+    return JSONResponse(status_code=401, content={"detail": exc.detail})
+
+
+@app.exception_handler(ValidationError)
+async def validation_error_handler(request: Request, exc: ValidationError) -> JSONResponse:
+    """Map ValidationError → 422."""
+    logger.debug("ValidationError: %s", exc.detail)
+    return JSONResponse(status_code=422, content={"detail": exc.detail})
+
+
+app.include_router(auth_router)
 
 
 @app.get(

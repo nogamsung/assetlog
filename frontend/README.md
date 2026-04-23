@@ -34,3 +34,49 @@ You can check out [the Next.js GitHub repository](https://github.com/vercel/next
 The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
 
 Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+
+## 로컬 개발 환경 설정
+
+### Node 버전
+
+이 프로젝트는 Node.js 20.9.0 이상이 필요합니다. nvm 사용 시:
+
+```bash
+nvm install 20.11.0
+nvm use
+# .nvmrc 에 명시된 20.11.0 이 자동으로 선택됩니다
+```
+
+### 환경 변수
+
+```bash
+cp .env.local.example .env.local
+# .env.local 을 열어 백엔드 API URL 을 확인/수정하세요
+# 기본값: NEXT_PUBLIC_API_URL=http://localhost:8000
+```
+
+### 의존성 설치 및 개발 서버 실행
+
+```bash
+npm install
+npm run dev
+```
+
+브라우저에서 [http://localhost:3000](http://localhost:3000) 을 열면 됩니다.
+
+### 테스트
+
+```bash
+# 단위 테스트 실행
+npm run test
+
+# 커버리지 포함 CI 모드
+npm run test:ci
+```
+
+### 타입 검사 및 린트
+
+```bash
+npx tsc --noEmit
+npx eslint
+```
