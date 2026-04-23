@@ -1,0 +1,28 @@
+.DS_Store
+.idea/
+.vscode/
+*.log
+.worktrees/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# Node
+node_modules/
+.next/
+out/
+dist/
+build/
+
+# Env
+.env
+.env.local
+.env.*.local
+
+# Claude Code
+.claude/settings.local.json
+.claude/.skip-coverage
