@@ -1,0 +1,51 @@
+{
+  "enabledPlugins": {
+    "github@claude-plugins-official": true,
+    "feature-dev@claude-plugins-official": true,
+    "commit-commands@claude-plugins-official": true,
+    "hookify@claude-plugins-official": true,
+    "claude-md-management@claude-plugins-official": true
+  },
+  "permissions": {
+    "allow": [
+      "Bash(uv *)",
+      "Bash(uvx *)",
+      "Bash(python *)",
+      "Bash(python3 *)",
+      "Bash(pytest *)",
+      "Bash(ruff *)",
+      "Bash(mypy *)",
+      "Bash(alembic *)",
+      "Bash(uvicorn *)",
+      "Bash(git *)",
+      "Bash(docker *)",
+      "Bash(docker-compose *)",
+      "Bash(docker compose *)",
+      "Bash(mkdir *)",
+      "Bash(cp *)",
+      "Bash(mv *)",
+      "Bash(touch *)"
+    ],
+    "deny": [
+      "Bash(rm -rf /)",
+      "Bash(rm -rf ~*)",
+      "Bash(git push --force *)",
+      "Bash(git push -f *)"
+    ]
+  },
+  "hooks": {
+    "SessionStart": [
+      { "hooks": [{ "type": "command", "command": "bash .claude/hooks/session-start.sh" }] }
+    ],
+    "PreToolUse": [
+      { "matcher": "Bash", "hooks": [{ "type": "command", "command": "bash .claude/hooks/safety-guard.sh" }] },
+      { "matcher": "Bash", "hooks": [{ "type": "command", "command": "bash .claude/hooks/pre-push.sh" }] }
+    ],
+    "PostToolUse": [
+      { "matcher": "Edit|Write|MultiEdit", "hooks": [{ "type": "command", "command": "bash .claude/hooks/post-edit-lint.sh" }] }
+    ],
+    "Stop": [
+      { "hooks": [{ "type": "command", "command": "if [ -f pyproject.toml ] && command -v uv &>/dev/null; then echo \"[Harness] ruff + mypy\"; uv run ruff check . 2>&1 | tail -15; uv run mypy . --no-error-summary 2>&1 | tail -15; fi" }] }
+    ]
+  }
+}

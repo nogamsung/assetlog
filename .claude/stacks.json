@@ -1,0 +1,7 @@
+{
+  "mode": "monorepo",
+  "stacks": [
+    { "role": "backend",  "type": "python", "path": "backend" },
+    { "role": "frontend", "type": "nextjs", "path": "frontend" }
+  ]
+}

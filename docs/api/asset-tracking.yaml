@@ -1,0 +1,345 @@
+openapi: 3.1.0
+info:
+  title: AssetLog API
+  version: 0.1.0
+  description: |
+    AssetLog MVP REST API — 자산 트래킹 서비스.
+    연관 PRD: `docs/specs/asset-tracking.md`
+    역할 프롬프트: `docs/specs/asset-tracking/{backend,frontend}.md`
+  contact:
+    name: AssetLog
+servers:
+  - url: http://localhost:8000/api/v1
+    description: Local
+tags:
+  - name: auth
+  - name: symbols
+  - name: user-assets
+  - name: transactions
+  - name: portfolio
+
+security:
+  - bearerAuth: []
+
+paths:
+
+  /auth/signup:
+    post:
+      tags: [auth]
+      summary: 이메일·비밀번호 회원가입
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SignupRequest' }
+      responses:
+        '201': { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/TokenResponse' } } } }
+        '409': { description: Email already exists }
+        '422': { description: Validation error }
+
+  /auth/login:
+    post:
+      tags: [auth]
+      summary: 로그인 (JWT 발급)
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LoginRequest' }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/TokenResponse' } } } }
+        '401': { description: Invalid credentials }
+
+  /auth/me:
+    get:
+      tags: [auth]
+      summary: 현재 사용자 정보
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/UserResponse' } } } }
+        '401': { description: Unauthorized }
+
+  /symbols:
+    get:
+      tags: [symbols]
+      summary: 심볼 검색 (외부 어댑터 경유, 캐시 포함)
+      parameters:
+        - in: query
+          name: q
+          required: true
+          schema: { type: string, minLength: 1 }
+        - in: query
+          name: type
+          required: false
+          schema: { $ref: '#/components/schemas/AssetType' }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/SymbolResponse' }
+    post:
+      tags: [symbols]
+      summary: 심볼 수동 등록 (fallback)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SymbolCreateRequest' }
+      responses:
+        '201': { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/SymbolResponse' } } } }
+
+  /user-assets:
+    get:
+      tags: [user-assets]
+      summary: 내 보유 자산 목록
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/UserAssetResponse' }
+    post:
+      tags: [user-assets]
+      summary: 자산 신규 등록 (최초 매수 포함)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UserAssetCreateRequest' }
+      responses:
+        '201': { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/UserAssetResponse' } } } }
+        '409': { description: Already exists (기존 자산에 거래 추가 권장) }
+
+  /user-assets/{id}:
+    delete:
+      tags: [user-assets]
+      summary: 자산 삭제 (soft delete 권장)
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        '204': { description: No Content }
+        '404': { description: Not Found }
+
+  /user-assets/{id}/transactions:
+    get:
+      tags: [transactions]
+      summary: 자산의 거래 이력
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/TransactionResponse' }
+    post:
+      tags: [transactions]
+      summary: 매수 거래 추가 (avg_cost 재계산)
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TransactionCreateRequest' }
+      responses:
+        '201': { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/TransactionResponse' } } } }
+
+  /portfolio/summary:
+    get:
+      tags: [portfolio]
+      summary: 통화별 총평가액·총손익·클래스별 비중
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PortfolioSummaryResponse' }
+
+  /portfolio/holdings:
+    get:
+      tags: [portfolio]
+      summary: 보유 자산 (현재가·손익 포함)
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/UserAssetResponse' }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+
+    AssetType:
+      type: string
+      enum: [kr_stock, us_stock, crypto]
+
+    Currency:
+      type: string
+      enum: [KRW, USD, USDT]
+      description: MVP 지원 통화 (확장 예정)
+
+    SignupRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:    { type: string, format: email }
+        password: { type: string, minLength: 8 }
+
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:    { type: string, format: email }
+        password: { type: string }
+
+    TokenResponse:
+      type: object
+      required: [access_token, token_type, user]
+      properties:
+        access_token: { type: string }
+        token_type:   { type: string, enum: [bearer] }
+        user:         { $ref: '#/components/schemas/UserResponse' }
+
+    UserResponse:
+      type: object
+      required: [id, email, created_at]
+      properties:
+        id:         { type: integer }
+        email:      { type: string, format: email }
+        created_at: { type: string, format: date-time }
+
+    SymbolResponse:
+      type: object
+      required: [id, asset_type, symbol, name, currency]
+      properties:
+        id:         { type: integer }
+        asset_type: { $ref: '#/components/schemas/AssetType' }
+        symbol:     { type: string }
+        name:       { type: string }
+        exchange:   { type: string, nullable: true }
+        currency:   { $ref: '#/components/schemas/Currency' }
+
+    SymbolCreateRequest:
+      type: object
+      required: [asset_type, symbol, name, currency]
+      properties:
+        asset_type: { $ref: '#/components/schemas/AssetType' }
+        symbol:     { type: string }
+        name:       { type: string }
+        exchange:   { type: string, nullable: true }
+        currency:   { $ref: '#/components/schemas/Currency' }
+
+    UserAssetCreateRequest:
+      type: object
+      required: [asset_symbol_id, quantity, unit_price, purchased_at]
+      properties:
+        asset_symbol_id: { type: integer }
+        quantity:        { type: number, exclusiveMinimum: 0 }
+        unit_price:      { type: number, exclusiveMinimum: 0 }
+        purchased_at:    { type: string, format: date-time }
+
+    UserAssetResponse:
+      type: object
+      required: [id, asset_symbol, quantity, avg_cost, first_purchased_at]
+      properties:
+        id:                      { type: integer }
+        asset_symbol:            { $ref: '#/components/schemas/SymbolResponse' }
+        quantity:                { type: number }
+        avg_cost:                { type: number, description: 가중평균 단가 }
+        first_purchased_at:      { type: string, format: date-time }
+        latest_price:            { type: number, nullable: true }
+        latest_value:            { type: number, nullable: true }
+        cost_basis:              { type: number, nullable: true }
+        pnl_abs:                 { type: number, nullable: true }
+        pnl_pct:                 { type: number, nullable: true }
+        last_price_refreshed_at: { type: string, format: date-time, nullable: true }
+        is_stale:                { type: boolean, description: 마지막 갱신이 3시간 초과 }
+
+    TransactionCreateRequest:
+      type: object
+      required: [type, quantity, unit_price, executed_at]
+      properties:
+        type:         { type: string, enum: [BUY] }
+        quantity:     { type: number, exclusiveMinimum: 0 }
+        unit_price:   { type: number, exclusiveMinimum: 0 }
+        executed_at:  { type: string, format: date-time }
+        memo:         { type: string, nullable: true, maxLength: 200 }
+
+    TransactionResponse:
+      type: object
+      required: [id, type, quantity, unit_price, executed_at, created_at]
+      properties:
+        id:           { type: integer }
+        type:         { type: string, enum: [BUY] }
+        quantity:     { type: number }
+        unit_price:   { type: number }
+        executed_at:  { type: string, format: date-time }
+        memo:         { type: string, nullable: true }
+        created_at:   { type: string, format: date-time }
+
+    CurrencyAmountMap:
+      type: object
+      additionalProperties: { type: number }
+      description: 통화 코드를 키로 하는 금액 맵 (예. { "KRW": 12500000, "USD": 8200.12 })
+
+    PnlByCurrencyEntry:
+      type: object
+      required: [abs, pct]
+      properties:
+        abs: { type: number }
+        pct: { type: number }
+
+    AllocationEntry:
+      type: object
+      required: [asset_type, pct]
+      properties:
+        asset_type: { $ref: '#/components/schemas/AssetType' }
+        pct:        { type: number, description: 0 ~ 100 }
+
+    PortfolioSummaryResponse:
+      type: object
+      required:
+        - total_value_by_currency
+        - total_cost_by_currency
+        - pnl_by_currency
+        - allocation
+        - last_price_refreshed_at
+      properties:
+        total_value_by_currency: { $ref: '#/components/schemas/CurrencyAmountMap' }
+        total_cost_by_currency:  { $ref: '#/components/schemas/CurrencyAmountMap' }
+        pnl_by_currency:
+          type: object
+          additionalProperties: { $ref: '#/components/schemas/PnlByCurrencyEntry' }
+        allocation:
+          type: array
+          items: { $ref: '#/components/schemas/AllocationEntry' }
+        last_price_refreshed_at:
+          type: string
+          format: date-time
+          nullable: true
