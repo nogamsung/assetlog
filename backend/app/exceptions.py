@@ -49,3 +49,15 @@ class InsufficientHoldingError(ValueError):  # ADDED
     def __init__(self, detail: str | None = None) -> None:
         self.detail = detail if detail is not None else self.__class__.detail
         super().__init__(self.detail)
+
+
+class CsvImportValidationError(ValueError):
+    """CSV rows failed validation — carries per-row errors.
+
+    Raised by TransactionService.import_csv when one or more rows are invalid.
+    The ``errors`` attribute is a list of dicts conforming to CsvImportError schema.
+    """
+
+    def __init__(self, errors: list[dict[str, object]]) -> None:
+        super().__init__(f"{len(errors)} rows have errors")
+        self.errors = errors

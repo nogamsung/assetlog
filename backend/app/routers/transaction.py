@@ -2,16 +2,19 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Path, Query, status
+from fastapi import APIRouter, File, HTTPException, Path, Query, UploadFile, status
 
 from app.core.deps import CurrentUser, TransactionServiceDep
 from app.schemas.auth import ErrorResponse
 from app.schemas.transaction import (
     TransactionCreate,
+    TransactionImportResponse,
     TransactionResponse,
     TransactionUpdate,  # ADDED
     UserAssetSummaryResponse,
 )
+
+_MAX_CSV_BYTES = 1_048_576  # 1 MB
 
 router = APIRouter(prefix="/api/user-assets", tags=["transactions"])
 
@@ -124,6 +127,75 @@ async def delete_transaction(
     Returns 404 if the transaction or user_asset_id does not exist or is not owned by the caller.
     """
     await transaction_service.remove(current_user.id, user_asset_id, transaction_id)
+
+
+@router.post(
+    "/{user_asset_id}/transactions/import",
+    response_model=TransactionImportResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Bulk import transactions from CSV",
+    responses={
+        400: {
+            "model": ErrorResponse,
+            "description": "File too large, bad encoding, or CSV header error",
+        },
+        401: {"model": ErrorResponse, "description": "Not authenticated"},
+        404: {"model": ErrorResponse, "description": "UserAsset not found or not owned"},
+        413: {"model": ErrorResponse, "description": "File exceeds 1 MB limit"},
+        422: {"model": ErrorResponse, "description": "CSV rows failed validation"},
+    },
+)
+async def import_transactions_csv(
+    current_user: CurrentUser,
+    transaction_service: TransactionServiceDep,
+    user_asset_id: int = Path(..., ge=1, description="UserAsset ID to import transactions into"),
+    file: UploadFile = File(..., description="UTF-8 CSV file (≤ 1 MB)"),
+) -> TransactionImportResponse:
+    """Bulk-import transactions from a UTF-8 CSV file (all-or-nothing).
+
+    The CSV must include a header row with at least these columns (any order):
+    ``type``, ``quantity``, ``price``, ``traded_at``, ``memo``.
+    Additional columns are silently ignored.
+
+    ``type`` accepts: ``buy`` / ``sell`` (case-insensitive) or ``매수`` / ``매도``.
+    ``traded_at`` must be an ISO 8601 timezone-aware datetime string.
+    ``memo`` may be empty (treated as null).
+
+    Returns 422 with a per-row ``errors`` array if any row fails validation.
+    Returns 413 if the file exceeds 1 MB.
+    Returns 400 if the file cannot be decoded as UTF-8 or the header is missing.
+    """
+    raw_bytes = await file.read()
+
+    # Size guard
+    if len(raw_bytes) > _MAX_CSV_BYTES:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail=f"File too large: {len(raw_bytes)} bytes (limit {_MAX_CSV_BYTES} bytes).",
+        )
+
+    # Decode — try utf-8-sig first (handles BOM from Excel) then plain utf-8
+    try:
+        csv_text = raw_bytes.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        try:
+            csv_text = raw_bytes.decode("utf-8")
+        except UnicodeDecodeError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid UTF-8 encoding. Please export the CSV as UTF-8.",
+            ) from exc
+
+    imported_count, preview_txs = await transaction_service.import_csv(
+        user_id=current_user.id,
+        user_asset_id=user_asset_id,
+        csv_text=csv_text,
+    )
+
+    return TransactionImportResponse(
+        imported_count=imported_count,
+        preview=[TransactionResponse.model_validate(tx) for tx in preview_txs],
+    )
 
 
 @router.get(

@@ -16,6 +16,7 @@ from app.core.config import settings
 from app.exceptions import (
     AppError,
     ConflictError,
+    CsvImportValidationError,
     InsufficientHoldingError,  # ADDED
     NotFoundError,
     UnauthorizedError,
@@ -135,6 +136,18 @@ async def insufficient_holding_handler(
     """Map InsufficientHoldingError → 409."""
     logger.debug("InsufficientHoldingError: %s", exc.detail)
     return JSONResponse(status_code=409, content={"detail": exc.detail})
+
+
+@app.exception_handler(CsvImportValidationError)
+async def csv_import_validation_handler(
+    request: Request, exc: CsvImportValidationError
+) -> JSONResponse:
+    """Map CsvImportValidationError → 422 with per-row error details."""
+    logger.debug("CsvImportValidationError: %s errors", len(exc.errors))
+    return JSONResponse(
+        status_code=422,
+        content={"detail": str(exc), "errors": exc.errors},
+    )
 
 
 app.include_router(auth_router)
