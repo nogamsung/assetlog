@@ -50,6 +50,9 @@ class AssetSymbol(Base):
     last_price_refreshed_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    last_synced_at: Mapped[datetime | None] = mapped_column(  # ADDED
+        DateTime(timezone=True), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),

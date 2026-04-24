@@ -7,10 +7,12 @@ from collections.abc import Sequence
 from datetime import UTC, datetime
 from decimal import Decimal
 
+from app.adapters._symbol_cache import SymbolListCache  # ADDED
 from app.adapters.base import _wrap_failure
 from app.adapters.normalize import normalize_crypto_pair
 from app.domain.asset_type import AssetType
 from app.domain.price_refresh import FetchBatchResult, FetchFailure, PriceQuote, SymbolRef
+from app.domain.symbol_search import SymbolCandidate  # ADDED
 
 logger = logging.getLogger("app.adapters.crypto")
 
@@ -20,6 +22,56 @@ def _guess_currency(pair: str) -> str:
     if "/" in pair:
         return pair.split("/", maxsplit=1)[1]
     return "USD"
+
+
+async def _load_markets_async(exchange_name: str = "binance") -> list[SymbolCandidate]:  # ADDED
+    """Load all markets from *exchange_name* and convert to SymbolCandidate list.
+
+    Runs in the event loop (ccxt.async_support is natively async).
+
+    Args:
+        exchange_name: ccxt exchange id string.
+
+    Returns:
+        List of SymbolCandidate, one per active market.
+    """
+    import ccxt.async_support as ccxt  # noqa: PLC0415
+
+    exchange_cls = getattr(ccxt, exchange_name)
+    exchange = exchange_cls({"enableRateLimit": True})
+    candidates: list[SymbolCandidate] = []
+    try:
+        markets_raw = await exchange.load_markets()
+        markets: dict[str, object] = markets_raw if isinstance(markets_raw, dict) else {}
+        for symbol, market_info in markets.items():
+            if not isinstance(market_info, dict):
+                continue
+            if not market_info.get("active", True):
+                continue
+            base: str = str(market_info.get("base") or symbol.split("/")[0])
+            quote: str = str(market_info.get("quote") or "USDT")
+            name: str = str(market_info.get("baseName") or base)
+            candidates.append(
+                SymbolCandidate(
+                    asset_type=AssetType.CRYPTO,
+                    symbol=symbol,
+                    name=name,
+                    exchange=exchange_name,
+                    currency=quote,
+                )
+            )
+    finally:
+        await exchange.close()
+
+    logger.debug(
+        "crypto market list loaded",
+        extra={
+            "event": "crypto_market_list_loaded",
+            "exchange": exchange_name,
+            "count": len(candidates),
+        },
+    )
+    return candidates
 
 
 class CryptoAdapter:
@@ -34,6 +86,14 @@ class CryptoAdapter:
     """
 
     asset_type: AssetType = AssetType.CRYPTO
+
+    def __init__(  # ADDED
+        self,
+        exchange_name: str = "binance",
+        cache: SymbolListCache | None = None,
+    ) -> None:
+        self._exchange_name = exchange_name
+        self._symbol_cache: SymbolListCache = cache if cache is not None else SymbolListCache()
 
     async def _fetch_from_exchange(
         self,
@@ -174,3 +234,48 @@ class CryptoAdapter:
                     )
 
         return FetchBatchResult(successes=successes, failures=failures)
+
+    async def search_symbols(self, query: str, limit: int) -> list[SymbolCandidate]:  # ADDED
+        """Search crypto trading pairs matching *query*.
+
+        Loads the full market list once (24h TTL), then filters in memory.
+        If query contains '/', exact pair match is prioritised.
+        Otherwise, BASE prefix matching is used (e.g. 'BTC' -> 'BTC/USDT', ...).
+
+        Args:
+            query: User query string (pre-stripped by caller).
+            limit: Maximum number of results.
+
+        Returns:
+            Up to *limit* SymbolCandidate items.
+        """
+        exchange_name = self._exchange_name
+        norm = normalize_crypto_pair(query, exchange_name)
+
+        async def _loader() -> list[SymbolCandidate]:
+            return await _load_markets_async(exchange_name)
+
+        try:
+            all_markets = await self._symbol_cache.get_or_load(_loader)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "crypto market list load failed: %s",
+                exc,
+                extra={"event": "crypto_market_list_fail"},
+            )
+            return []
+
+        exact: list[SymbolCandidate] = []
+        prefix: list[SymbolCandidate] = []
+
+        has_slash = "/" in norm
+        base = norm.split("/")[0] if has_slash else norm
+
+        for candidate in all_markets:
+            if candidate.symbol == norm:
+                exact.append(candidate)
+            elif not has_slash and candidate.symbol.startswith(base + "/"):
+                prefix.append(candidate)
+
+        merged = exact + prefix
+        return merged[:limit]

@@ -31,6 +31,31 @@ def normalize_us_stock_symbol(raw: str) -> str:
     return raw.strip().upper()
 
 
+_US_EXCHANGE_MAP: dict[str, str] = {  # ADDED
+    "NMS": "NASDAQ",
+    "NAS": "NASDAQ",
+    "NGM": "NASDAQ",
+    "NYQ": "NYSE",
+    "NYS": "NYSE",
+    "PCX": "NYSE",
+    "ASE": "AMEX",
+    "BTS": "BATS",
+    "NCM": "NASDAQ",
+}
+
+
+def normalize_us_exchange_code(raw: str) -> str:  # ADDED
+    """Map a yfinance exchange code to a human-readable exchange name.
+
+    Examples::
+
+        normalize_us_exchange_code("NMS") -> "NASDAQ"
+        normalize_us_exchange_code("NYQ") -> "NYSE"
+        normalize_us_exchange_code("XYZ") -> "XYZ"   # unknown codes pass through
+    """
+    return _US_EXCHANGE_MAP.get(raw.strip().upper(), raw.strip().upper())
+
+
 def normalize_crypto_pair(raw: str, exchange: str) -> str:
     """Return a ccxt-compatible trading pair string.
 

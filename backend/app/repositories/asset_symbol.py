@@ -2,16 +2,21 @@
 
 from __future__ import annotations
 
+import logging  # ADDED
 from collections.abc import Sequence
 from datetime import datetime
 from decimal import Decimal
 
-from sqlalchemy import select, update
+from sqlalchemy import select, tuple_, update  # MODIFIED
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domain.asset_type import AssetType
 from app.domain.price_refresh import SymbolRef
+from app.domain.symbol_search import SymbolCandidate  # ADDED
 from app.models.asset_symbol import AssetSymbol
+from app.repositories._dialect import get_dialect_name  # ADDED
+
+logger = logging.getLogger(__name__)  # ADDED
 
 
 class AssetSymbolRepository:
@@ -124,6 +129,103 @@ class AssetSymbolRepository:
             )
             for row in rows
         ]
+
+    async def upsert_many(  # ADDED
+        self,
+        candidates: Sequence[SymbolCandidate],
+        *,
+        now: datetime,
+    ) -> list[AssetSymbol]:
+        """Insert or update-on-conflict (asset_type, symbol, exchange).
+
+        On match: UPDATE name, currency, last_synced_at.
+        On insert: set last_synced_at = now.
+
+        Dialect-aware: MySQL uses ON DUPLICATE KEY UPDATE,
+        SQLite uses ON CONFLICT DO UPDATE.
+
+        Args:
+            candidates: Symbol candidates to persist.
+            now: Timestamp to write into last_synced_at.
+
+        Returns:
+            Persisted rows in input order.
+        """
+        if not candidates:
+            return []
+
+        dialect = get_dialect_name(self._session)
+
+        if dialect == "mysql":
+            from sqlalchemy.dialects.mysql import insert as mysql_insert  # noqa: PLC0415
+
+            stmt = mysql_insert(AssetSymbol).values(
+                [
+                    {
+                        "asset_type": c.asset_type,
+                        "symbol": c.symbol,
+                        "exchange": c.exchange,
+                        "name": c.name,
+                        "currency": c.currency,
+                        "last_synced_at": now,
+                    }
+                    for c in candidates
+                ]
+            )
+            stmt = stmt.on_duplicate_key_update(
+                name=stmt.inserted.name,
+                currency=stmt.inserted.currency,
+                last_synced_at=stmt.inserted.last_synced_at,
+            )
+            await self._session.execute(stmt)
+        else:
+            from sqlalchemy.dialects.sqlite import insert as sqlite_insert  # noqa: PLC0415
+
+            stmt_sqlite = sqlite_insert(AssetSymbol).values(
+                [
+                    {
+                        "asset_type": c.asset_type,
+                        "symbol": c.symbol,
+                        "exchange": c.exchange,
+                        "name": c.name,
+                        "currency": c.currency,
+                        "last_synced_at": now,
+                    }
+                    for c in candidates
+                ]
+            )
+            stmt_sqlite = stmt_sqlite.on_conflict_do_update(
+                index_elements=["asset_type", "symbol", "exchange"],
+                set_={
+                    "name": stmt_sqlite.excluded.name,
+                    "currency": stmt_sqlite.excluded.currency,
+                    "last_synced_at": stmt_sqlite.excluded.last_synced_at,
+                },
+            )
+            await self._session.execute(stmt_sqlite)
+
+        await self._session.flush()
+
+        # Refetch in input order to return ORM instances.
+        triples = [(c.asset_type, c.symbol, c.exchange) for c in candidates]
+        refetch_stmt = select(AssetSymbol).where(
+            tuple_(
+                AssetSymbol.asset_type,
+                AssetSymbol.symbol,
+                AssetSymbol.exchange,
+            ).in_(triples)
+        )
+        rows = list((await self._session.execute(refetch_stmt)).scalars().all())
+
+        row_map = {(r.asset_type, r.symbol, r.exchange): r for r in rows}
+        result = [row_map[t] for t in triples if t in row_map]
+
+        logger.info(
+            "upsert_many: persisted %d symbols",
+            len(result),
+            extra={"event": "asset_symbol_upsert_many", "count": len(result)},
+        )
+        return result
 
     async def bulk_update_cache(
         self,

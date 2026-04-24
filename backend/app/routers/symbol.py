@@ -47,7 +47,13 @@ async def search_symbols(
 
     Requires authentication. Results are filtered by optional text query,
     asset type, and exchange.
-    """
+
+    Pipeline: DB hits are returned first. If DB results are fewer than
+    *limit* and both *q* and *asset_type* are supplied, an external adapter
+    fallback is triggered (pykrx / yfinance / ccxt depending on asset_type).
+    External results are upserted so subsequent calls are served from DB only.
+    External adapter failures degrade gracefully — DB hits are always returned.
+    """  # MODIFIED
     symbols = await symbol_service.search(
         q=q,
         asset_type=asset_type,
