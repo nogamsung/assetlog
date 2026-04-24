@@ -15,12 +15,14 @@ from app.exceptions import UnauthorizedError
 from app.models.user import User
 from app.repositories.asset_symbol import AssetSymbolRepository
 from app.repositories.portfolio import PortfolioRepository
+from app.repositories.portfolio_history import PortfolioHistoryRepository
 from app.repositories.price_point import PricePointRepository
 from app.repositories.transaction import TransactionRepository
 from app.repositories.user import UserRepository
 from app.repositories.user_asset import UserAssetRepository
 from app.services.auth import AuthService
 from app.services.portfolio import PortfolioService
+from app.services.portfolio_history import PortfolioHistoryService
 from app.services.price_refresh import PriceRefreshService
 from app.services.symbol import SymbolService
 from app.services.transaction import TransactionService
@@ -132,6 +134,28 @@ def get_portfolio_service(repo: PortfolioRepositoryDep) -> PortfolioService:
 
 
 PortfolioServiceDep = Annotated[PortfolioService, Depends(get_portfolio_service)]
+
+
+def get_portfolio_history_repository(session: DbSession) -> PortfolioHistoryRepository:
+    """Inject a PortfolioHistoryRepository bound to the current request session."""
+    return PortfolioHistoryRepository(session)
+
+
+PortfolioHistoryRepositoryDep = Annotated[
+    PortfolioHistoryRepository, Depends(get_portfolio_history_repository)
+]
+
+
+def get_portfolio_history_service(
+    repo: PortfolioHistoryRepositoryDep,
+) -> PortfolioHistoryService:
+    """Inject a PortfolioHistoryService bound to the current request session."""
+    return PortfolioHistoryService(repo)
+
+
+PortfolioHistoryServiceDep = Annotated[
+    PortfolioHistoryService, Depends(get_portfolio_history_service)
+]
 
 # ---------------------------------------------------------------------------
 # Price refresh DI

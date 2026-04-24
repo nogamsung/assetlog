@@ -8,6 +8,7 @@ from decimal import Decimal
 from pydantic import BaseModel, ConfigDict, Field, field_serializer
 
 from app.domain.asset_type import AssetType
+from app.domain.portfolio_history import HistoryBucket, HistoryPeriod
 
 
 class SymbolEmbedded(BaseModel):
@@ -150,3 +151,33 @@ class PortfolioSummaryResponse(BaseModel):
         description="Number of holdings whose price is older than 3 hours",
         examples=[0],
     )
+
+
+# ---------------------------------------------------------------------------
+# Portfolio history schemas
+# ---------------------------------------------------------------------------
+
+
+class HistoryPointResponse(BaseModel):
+    """Single bucket snapshot in a portfolio value time series."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    timestamp: datetime = Field(..., description="Bucket start timestamp (UTC)")
+    value: Decimal = Field(..., description="Portfolio value at this bucket")
+    cost_basis: Decimal = Field(..., description="Cost basis (sum of BUY tx up to T)")
+
+    @field_serializer("value", "cost_basis")
+    def _serialize_decimal(self, v: Decimal) -> str:
+        return str(v)
+
+
+class PortfolioHistoryResponse(BaseModel):
+    """Portfolio value time series for a given period and currency."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    currency: str = Field(..., description="Quote currency", examples=["KRW"])
+    period: HistoryPeriod = Field(..., description="Requested time window")
+    bucket: HistoryBucket = Field(..., description="Aggregation granularity")
+    points: list[HistoryPointResponse] = Field(..., description="Ordered list of value snapshots")
