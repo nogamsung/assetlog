@@ -3,6 +3,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   createTransaction,
+  updateTransaction,
   listTransactions,
   deleteTransaction,
   getAssetSummary,
@@ -51,6 +52,30 @@ export function useCreateTransaction() {
     { userAssetId: number; data: TransactionCreateInput }
   >({
     mutationFn: ({ userAssetId, data }) => createTransaction(userAssetId, data),
+    onSuccess: (_result, { userAssetId }) => {
+      void queryClient.invalidateQueries({
+        queryKey: transactionKeys.list(userAssetId),
+      });
+      void queryClient.invalidateQueries({
+        queryKey: transactionKeys.summary(userAssetId),
+      });
+      for (const key of portfolioInvalidationKeys) {
+        void queryClient.invalidateQueries({ queryKey: key });
+      }
+    },
+  });
+}
+
+export function useUpdateTransaction() { // ADDED
+  const queryClient = useQueryClient();
+
+  return useMutation<
+    TransactionResponse,
+    Error,
+    { userAssetId: number; transactionId: number; data: TransactionCreateInput }
+  >({
+    mutationFn: ({ userAssetId, transactionId, data }) =>
+      updateTransaction(userAssetId, transactionId, data),
     onSuccess: (_result, { userAssetId }) => {
       void queryClient.invalidateQueries({
         queryKey: transactionKeys.list(userAssetId),

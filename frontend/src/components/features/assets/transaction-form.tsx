@@ -5,7 +5,8 @@ import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { isAxiosError } from "axios"; // ADDED
 import { transactionCreateSchema, type TransactionCreateInput } from "@/lib/schemas/transaction";
-import { useCreateTransaction } from "@/hooks/use-transactions";
+import { useCreateTransaction, useUpdateTransaction } from "@/hooks/use-transactions"; // MODIFIED
+import type { TransactionResponse } from "@/types/transaction"; // ADDED
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -13,10 +14,14 @@ import { Label } from "@/components/ui/label";
 interface TransactionFormProps {
   userAssetId: number;
   onSuccess?: () => void;
+  mode?: "create" | "edit"; // ADDED
+  initialValues?: TransactionResponse; // ADDED
 }
 
-export function TransactionForm({ userAssetId, onSuccess }: TransactionFormProps) {
+export function TransactionForm({ userAssetId, onSuccess, mode = "create", initialValues }: TransactionFormProps) { // MODIFIED
   const createMutation = useCreateTransaction();
+  const updateMutation = useUpdateTransaction(); // ADDED
+  const activeMutation = mode === "edit" ? updateMutation : createMutation; // ADDED
   const [conflictError, setConflictError] = useState<string | null>(null); // ADDED
 
   const today = new Date();
@@ -34,17 +39,42 @@ export function TransactionForm({ userAssetId, onSuccess }: TransactionFormProps
     reset,
   } = useForm<TransactionCreateInput>({
     resolver: zodResolver(transactionCreateSchema),
-    defaultValues: {
-      type: "buy",
-      quantity: "",
-      price: "",
-      tradedAt: new Date(),
-      memo: null,
-    },
+    defaultValues: mode === "edit" && initialValues // MODIFIED
+      ? {
+          type: initialValues.type,
+          quantity: initialValues.quantity,
+          price: initialValues.price,
+          tradedAt: new Date(initialValues.tradedAt),
+          memo: initialValues.memo,
+        }
+      : {
+          type: "buy",
+          quantity: "",
+          price: "",
+          tradedAt: new Date(),
+          memo: null,
+        },
   });
 
   function onSubmit(data: TransactionCreateInput) {
     setConflictError(null); // ADDED
+    if (mode === "edit" && initialValues) { // ADDED
+      updateMutation.mutate(
+        { userAssetId, transactionId: initialValues.id, data },
+        {
+          onSuccess: () => {
+            onSuccess?.();
+          },
+          onError: (err) => {
+            if (isAxiosError(err) && err.response?.status === 409) {
+              const detail = (err.response.data as { detail?: string }).detail;
+              setConflictError(detail ?? "수정 결과가 보유 수량을 초과합니다.");
+            }
+          },
+        },
+      );
+      return;
+    }
     createMutation.mutate(
       { userAssetId, data },
       {
@@ -67,16 +97,16 @@ export function TransactionForm({ userAssetId, onSuccess }: TransactionFormProps
       onSubmit={handleSubmit(onSubmit)}
       className="space-y-4"
       noValidate
-      aria-label="거래 추가 폼"
+      aria-label={mode === "edit" ? "거래 수정 폼" : "거래 추가 폼"} // MODIFIED
     >
       {conflictError && ( // ADDED
         <p role="alert" className="text-sm font-medium text-destructive">
           {conflictError}
         </p>
       )}
-      {!conflictError && createMutation.isError && ( // MODIFIED
+      {!conflictError && activeMutation.isError && ( // MODIFIED
         <p role="alert" className="text-sm font-medium text-destructive">
-          {createMutation.error?.message ?? "거래 등록에 실패했습니다."}
+          {activeMutation.error?.message ?? (mode === "edit" ? "거래 수정에 실패했습니다." : "거래 등록에 실패했습니다.")}
         </p>
       )}
 
@@ -190,10 +220,12 @@ export function TransactionForm({ userAssetId, onSuccess }: TransactionFormProps
       <Button
         type="submit"
         className="w-full"
-        disabled={createMutation.isPending}
-        aria-busy={createMutation.isPending}
+        disabled={activeMutation.isPending} // MODIFIED
+        aria-busy={activeMutation.isPending} // MODIFIED
       >
-        {createMutation.isPending ? "등록 중..." : "거래 추가"}
+        {activeMutation.isPending // MODIFIED
+          ? mode === "edit" ? "수정 중..." : "등록 중..."
+          : mode === "edit" ? "수정하기" : "거래 추가"}
       </Button>
     </form>
   );

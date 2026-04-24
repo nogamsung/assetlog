@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, Plus, X } from "lucide-react";
+import { ArrowLeft, Plus, X, Pencil } from "lucide-react"; // MODIFIED
 import { usePortfolioHoldings } from "@/hooks/use-portfolio";
 import { useAssetSummary } from "@/hooks/use-transactions";
 import { TransactionList } from "./transaction-list";
@@ -16,6 +16,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { formatCurrency, formatQuantity } from "@/lib/format";
+import type { TransactionResponse } from "@/types/transaction"; // ADDED
 
 interface AssetDetailProps {
   userAssetId: number;
@@ -33,6 +34,7 @@ function AssetDetailSkeleton() {
 
 export function AssetDetail({ userAssetId }: AssetDetailProps) {
   const [showAddForm, setShowAddForm] = useState(false);
+  const [editingTx, setEditingTx] = useState<TransactionResponse | null>(null); // ADDED
 
   const holdingsQuery = usePortfolioHoldings();
   const summaryQuery = useAssetSummary(userAssetId);
@@ -238,7 +240,37 @@ export function AssetDetail({ userAssetId }: AssetDetailProps) {
               />
             </div>
           )}
-          <TransactionList userAssetId={userAssetId} />
+          {editingTx && ( // ADDED
+            <div className="rounded-lg border bg-muted/20 p-4">
+              <div className="flex items-center justify-between mb-3">
+                <p className="text-sm font-medium flex items-center gap-1">
+                  <Pencil className="h-3.5 w-3.5" aria-hidden="true" />
+                  거래 수정
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setEditingTx(null)}
+                  aria-label="거래 수정 폼 닫기"
+                  className="rounded p-1 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                >
+                  <X className="h-4 w-4" aria-hidden="true" />
+                </button>
+              </div>
+              <TransactionForm
+                userAssetId={userAssetId}
+                mode="edit"
+                initialValues={editingTx}
+                onSuccess={() => setEditingTx(null)}
+              />
+            </div>
+          )}
+          <TransactionList
+            userAssetId={userAssetId}
+            onEdit={(tx) => {
+              setShowAddForm(false);
+              setEditingTx(tx);
+            }}
+          /> {/* MODIFIED */}
         </CardContent>
       </Card>
     </div>

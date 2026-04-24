@@ -4,17 +4,23 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import React from "react";
 import { TransactionForm } from "@/components/features/assets/transaction-form";
 import * as useTransactionsHook from "@/hooks/use-transactions";
+import type { TransactionResponse } from "@/types/transaction";
 
 jest.mock("@/hooks/use-transactions", () => ({
   ...jest.requireActual("@/hooks/use-transactions"),
   useCreateTransaction: jest.fn(),
+  useUpdateTransaction: jest.fn(), // ADDED
 }));
 
 const mockedUseCreateTransaction = jest.mocked(
   useTransactionsHook.useCreateTransaction,
 );
+const mockedUseUpdateTransaction = jest.mocked( // ADDED
+  useTransactionsHook.useUpdateTransaction,
+);
 
 const mockMutate = jest.fn();
+const mockUpdateMutate = jest.fn(); // ADDED
 const mockOnSuccess = jest.fn();
 
 function makeWrapper() {
@@ -44,9 +50,27 @@ function setupMutationMock(opts: {
     isError: opts.isError ?? false,
     error: opts.error ?? null,
   } as unknown as ReturnType<typeof useTransactionsHook.useCreateTransaction>);
+  mockedUseUpdateTransaction.mockReturnValue({ // ADDED
+    mutate: mockUpdateMutate,
+    isPending: false,
+    isSuccess: false,
+    isError: false,
+    error: null,
+  } as unknown as ReturnType<typeof useTransactionsHook.useUpdateTransaction>);
 }
 
-describe("TransactionForm", () => {
+const fakeInitialTx: TransactionResponse = { // ADDED
+  id: 5,
+  userAssetId: 10,
+  type: "sell",
+  quantity: "2.0",
+  price: "60000",
+  tradedAt: "2026-04-20T12:00:00Z",
+  memo: "기존 메모",
+  createdAt: "2026-04-20T12:01:00Z",
+};
+
+describe("TransactionForm (create 모드 — 기본값)", () => {
   beforeEach(() => {
     jest.clearAllMocks();
     setupMutationMock();
@@ -146,6 +170,97 @@ describe("TransactionForm", () => {
 
     await waitFor(() => {
       expect(screen.getAllByText("유효한 숫자를 입력하세요").length).toBeGreaterThan(0);
+    });
+  });
+});
+
+describe("TransactionForm (edit 모드)", () => { // ADDED
+  beforeEach(() => {
+    jest.clearAllMocks();
+    setupMutationMock();
+  });
+
+  it("edit 모드에서 '수정하기' 버튼과 '거래 수정 폼' aria-label 이 렌더링된다", () => {
+    const { Wrapper } = makeWrapper();
+    render(
+      <TransactionForm userAssetId={10} mode="edit" initialValues={fakeInitialTx} />,
+      { wrapper: Wrapper },
+    );
+
+    expect(screen.getByRole("form", { name: "거래 수정 폼" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "수정하기" })).toBeInTheDocument();
+  });
+
+  it("initialValues 의 값이 폼 초기값으로 설정된다", () => {
+    const { Wrapper } = makeWrapper();
+    render(
+      <TransactionForm userAssetId={10} mode="edit" initialValues={fakeInitialTx} />,
+      { wrapper: Wrapper },
+    );
+
+    const quantityInput = screen.getByLabelText("거래 수량") as HTMLInputElement;
+    const priceInput = screen.getByLabelText("거래 단가") as HTMLInputElement;
+    expect(quantityInput.value).toBe("2.0");
+    expect(priceInput.value).toBe("60000");
+  });
+
+  it("edit 모드 제출 시 useUpdateTransaction.mutate 가 호출된다", async () => {
+    const user = userEvent.setup();
+    const { Wrapper } = makeWrapper();
+    render(
+      <TransactionForm userAssetId={10} mode="edit" initialValues={fakeInitialTx} />,
+      { wrapper: Wrapper },
+    );
+
+    await user.click(screen.getByRole("button", { name: "수정하기" }));
+
+    await waitFor(() => {
+      expect(mockUpdateMutate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          userAssetId: 10,
+          transactionId: 5,
+          data: expect.objectContaining({ quantity: "2.0", price: "60000" }),
+        }),
+        expect.any(Object),
+      );
+    });
+    expect(mockMutate).not.toHaveBeenCalled();
+  });
+
+  it("409 에러 시 '수정 결과가 보유 수량을 초과합니다' 한글 메시지가 표시된다", async () => {
+    const AxiosError = (await import("axios")).AxiosError;
+    const conflictErr = new AxiosError("Conflict", "ERR_BAD_RESPONSE");
+    conflictErr.response = {
+      status: 409,
+      data: { detail: "수정 결과가 보유 수량을 초과합니다." },
+      headers: {},
+      config: {} as import("axios").InternalAxiosRequestConfig,
+      statusText: "Conflict",
+    };
+
+    mockedUseUpdateTransaction.mockReturnValue({
+      mutate: ((_vars: unknown, opts?: { onError?: (e: Error) => void }) => {
+        opts?.onError?.(conflictErr);
+      }) as unknown as ReturnType<typeof useTransactionsHook.useUpdateTransaction>["mutate"],
+      isPending: false,
+      isSuccess: false,
+      isError: false,
+      error: null,
+    } as unknown as ReturnType<typeof useTransactionsHook.useUpdateTransaction>);
+
+    const user = userEvent.setup();
+    const { Wrapper } = makeWrapper();
+    render(
+      <TransactionForm userAssetId={10} mode="edit" initialValues={fakeInitialTx} />,
+      { wrapper: Wrapper },
+    );
+
+    await user.click(screen.getByRole("button", { name: "수정하기" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("alert")).toHaveTextContent(
+        "수정 결과가 보유 수량을 초과합니다.",
+      );
     });
   });
 });
