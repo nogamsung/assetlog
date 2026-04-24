@@ -1,70 +1,8 @@
 {
   "enabledPlugins": {
-    "typescript-lsp@claude-plugins-official": true,
+    "zoom-plugin@claude-plugins-official": true,
     "frontend-design@claude-plugins-official": true,
-    "playwright@claude-plugins-official": true,
-    "github@claude-plugins-official": true,
-    "feature-dev@claude-plugins-official": true,
-    "commit-commands@claude-plugins-official": true,
-    "hookify@claude-plugins-official": true,
-    "claude-md-management@claude-plugins-official": true
-  },
-  "permissions": {
-    "allow": [
-      "Bash(uv *)",
-      "Bash(uvx *)",
-      "Bash(python *)",
-      "Bash(python3 *)",
-      "Bash(pytest *)",
-      "Bash(ruff *)",
-      "Bash(mypy *)",
-      "Bash(alembic *)",
-      "Bash(uvicorn *)",
-      "Bash(npm *)",
-      "Bash(npx *)",
-      "Bash(node *)",
-      "Bash(pnpm *)",
-      "Bash(yarn *)",
-      "Bash(git *)",
-      "Bash(docker *)",
-      "Bash(docker-compose *)",
-      "Bash(docker compose *)",
-      "Bash(mkdir *)",
-      "Bash(cp *)",
-      "Bash(mv *)",
-      "Bash(touch *)",
-      "Bash(jq *)"
-    ],
-    "deny": [
-      "Bash(rm -rf /)",
-      "Bash(rm -rf ~*)",
-      "Bash(git push --force *)",
-      "Bash(git push -f *)",
-      "Bash(DROP TABLE*)",
-      "Bash(TRUNCATE *)"
-    ]
-  },
-  "hooks": {
-    "SessionStart": [
-      { "hooks": [{ "type": "command", "command": "bash .claude/hooks/session-start.sh" }] }
-    ],
-    "PreToolUse": [
-      { "matcher": "Bash", "hooks": [{ "type": "command", "command": "bash .claude/hooks/safety-guard.sh" }] },
-      { "matcher": "Bash", "hooks": [{ "type": "command", "command": "bash .claude/hooks/pre-push.sh" }] }
-    ],
-    "PostToolUse": [
-      { "matcher": "Edit|Write|MultiEdit", "hooks": [{ "type": "command", "command": "bash .claude/hooks/post-edit-lint.sh" }] }
-    ],
-    "UserPromptSubmit": [
-      { "hooks": [{ "type": "command", "command": "bash .claude/hooks/memory-context.sh" }] }
-    ],
-    "Stop": [
-      {
-        "hooks": [
-          { "type": "command", "command": "[ ! -f .claude/stacks.json ] && exit 0; echo \"[Harness] stack tests\"; jq -c '.stacks[]' .claude/stacks.json 2>/dev/null | while read -r s; do P=$(echo \"$s\" | jq -r '.path'); T=$(echo \"$s\" | jq -r '.type'); [ ! -d \"$P\" ] && continue; echo \"  -> [$P] ($T)\"; case \"$T\" in python*) (cd \"$P\" && [ -f pyproject.toml ] && command -v uv &>/dev/null && uv run pytest 2>&1 | tail -15) ;; nextjs*) (cd \"$P\" && [ -f package.json ] && npx tsc --noEmit 2>&1 | tail -10 && npx jest --passWithNoTests 2>&1 | tail -15) ;; esac; done" },
-          { "type": "command", "command": "bash .claude/hooks/memory-reminder.sh" }
-        ]
-      }
-    ]
+    "typescript-lsp@claude-plugins-official": true,
+    "marketing-skills@marketingskills": true
   }
 }
