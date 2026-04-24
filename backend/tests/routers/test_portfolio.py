@@ -166,7 +166,66 @@ class TestGetPortfolioSummary:
 
         try:
             await async_client.get("/api/portfolio/summary")
-            mock_service.get_summary.assert_called_once_with(42)
+            mock_service.get_summary.assert_called_once_with(42, convert_to=None)
+        finally:
+            app.dependency_overrides.pop(get_current_user, None)
+            app.dependency_overrides.pop(get_portfolio_service, None)
+
+    async def test_convert_to_KRW_파라미터_전달(self, async_client: AsyncClient) -> None:
+        user = _make_user()
+        mock_service = AsyncMock(spec=PortfolioService)
+        mock_service.get_summary.return_value = PortfolioSummaryResponse(
+            total_value_by_currency={"USD": "1000.00"},
+            converted_total_value=Decimal("1380000.00"),
+            converted_total_cost=Decimal("1100000.00"),
+            converted_pnl_abs=Decimal("280000.00"),
+            converted_realized_pnl=Decimal("50000.00"),
+            display_currency="KRW",
+        )
+
+        app.dependency_overrides[get_current_user] = lambda: user
+        app.dependency_overrides[get_portfolio_service] = lambda: mock_service
+
+        try:
+            response = await async_client.get("/api/portfolio/summary?convert_to=krw")
+            assert response.status_code == 200
+            body = response.json()
+            assert body["display_currency"] == "KRW"
+            assert body["converted_total_value"] is not None
+            mock_service.get_summary.assert_called_once_with(user.id, convert_to="KRW")
+        finally:
+            app.dependency_overrides.pop(get_current_user, None)
+            app.dependency_overrides.pop(get_portfolio_service, None)
+
+    async def test_convert_to_없으면_converted_필드_null(self, async_client: AsyncClient) -> None:
+        user = _make_user()
+        mock_service = AsyncMock(spec=PortfolioService)
+        mock_service.get_summary.return_value = PortfolioSummaryResponse()
+
+        app.dependency_overrides[get_current_user] = lambda: user
+        app.dependency_overrides[get_portfolio_service] = lambda: mock_service
+
+        try:
+            response = await async_client.get("/api/portfolio/summary")
+            assert response.status_code == 200
+            body = response.json()
+            assert body["converted_total_value"] is None
+            assert body["display_currency"] is None
+        finally:
+            app.dependency_overrides.pop(get_current_user, None)
+            app.dependency_overrides.pop(get_portfolio_service, None)
+
+    async def test_convert_to_너무_짧으면_422(self, async_client: AsyncClient) -> None:
+        user = _make_user()
+        mock_service = AsyncMock(spec=PortfolioService)
+        mock_service.get_summary.return_value = PortfolioSummaryResponse()
+
+        app.dependency_overrides[get_current_user] = lambda: user
+        app.dependency_overrides[get_portfolio_service] = lambda: mock_service
+
+        try:
+            response = await async_client.get("/api/portfolio/summary?convert_to=K")
+            assert response.status_code == 422
         finally:
             app.dependency_overrides.pop(get_current_user, None)
             app.dependency_overrides.pop(get_portfolio_service, None)

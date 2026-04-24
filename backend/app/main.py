@@ -17,12 +17,14 @@ from app.exceptions import (
     AppError,
     ConflictError,
     CsvImportValidationError,
+    FxRateNotAvailableError,
     InsufficientHoldingError,  # ADDED
     NotFoundError,
     UnauthorizedError,
     ValidationError,
 )
 from app.routers.auth import router as auth_router
+from app.routers.fx import router as fx_router
 from app.routers.portfolio import router as portfolio_router
 from app.routers.symbol import router as symbol_router
 from app.routers.transaction import router as transaction_router
@@ -150,11 +152,21 @@ async def csv_import_validation_handler(
     )
 
 
+@app.exception_handler(FxRateNotAvailableError)
+async def fx_rate_not_available_handler(
+    request: Request, exc: FxRateNotAvailableError
+) -> JSONResponse:
+    """Map FxRateNotAvailableError → 503 Service Unavailable (temporary)."""
+    logger.debug("FxRateNotAvailableError: %s", exc.detail)
+    return JSONResponse(status_code=503, content={"detail": exc.detail})
+
+
 app.include_router(auth_router)
 app.include_router(symbol_router)
 app.include_router(user_asset_router)
 app.include_router(transaction_router)
 app.include_router(portfolio_router)
+app.include_router(fx_router)
 
 
 @app.get(

@@ -61,3 +61,21 @@ class CsvImportValidationError(ValueError):
     def __init__(self, errors: list[dict[str, object]]) -> None:
         super().__init__(f"{len(errors)} rows have errors")
         self.errors = errors
+
+
+class FxFetchError(AppError):
+    """External FX rate fetch from Frankfurter API failed."""
+
+    status_code: int = HTTPStatus.BAD_GATEWAY.value
+    detail: str = "Failed to fetch exchange rates from external provider."
+
+
+class FxRateNotAvailableError(AppError):
+    """Cached FX rate for requested currency pair does not exist.
+
+    Raised when convert() is called but no rate has been fetched yet.
+    The caller should retry after the hourly fx_refresh job runs.
+    """
+
+    status_code: int = HTTPStatus.SERVICE_UNAVAILABLE.value
+    detail: str = "Exchange rate not available yet. Please retry later."
