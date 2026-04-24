@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react"; // ADDED
-import { useForm, Controller } from "react-hook-form";
+import { useForm, useWatch, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { isAxiosError } from "axios"; // ADDED
 import { transactionCreateSchema, type TransactionCreateInput } from "@/lib/schemas/transaction";
@@ -14,15 +14,23 @@ import { Label } from "@/components/ui/label";
 interface TransactionFormProps {
   userAssetId: number;
   onSuccess?: () => void;
-  mode?: "create" | "edit"; // ADDED
-  initialValues?: TransactionResponse; // ADDED
+  mode?: "create" | "edit";
+  initialValues?: TransactionResponse;
+  /** 현재 보유 수량 — SELL 사전 검증에 사용 */
+  remainingQuantity?: string;
 }
 
-export function TransactionForm({ userAssetId, onSuccess, mode = "create", initialValues }: TransactionFormProps) { // MODIFIED
+export function TransactionForm({
+  userAssetId,
+  onSuccess,
+  mode = "create",
+  initialValues,
+  remainingQuantity,
+}: TransactionFormProps) {
   const createMutation = useCreateTransaction();
-  const updateMutation = useUpdateTransaction(); // ADDED
-  const activeMutation = mode === "edit" ? updateMutation : createMutation; // ADDED
-  const [conflictError, setConflictError] = useState<string | null>(null); // ADDED
+  const updateMutation = useUpdateTransaction();
+  const activeMutation = mode === "edit" ? updateMutation : createMutation;
+  const [conflictError, setConflictError] = useState<string | null>(null);
 
   const today = new Date();
   const todayLocal = new Date(
@@ -56,8 +64,26 @@ export function TransactionForm({ userAssetId, onSuccess, mode = "create", initi
         },
   });
 
+  const watchedType = useWatch({ control, name: "type" });
+  const watchedQuantity = useWatch({ control, name: "quantity" });
+
+  const sellExceedsHolding: boolean =
+    watchedType === "sell" &&
+    remainingQuantity !== undefined &&
+    mode === "create" &&
+    typeof watchedQuantity === "string" &&
+    watchedQuantity.trim() !== "" &&
+    Number.isFinite(Number(watchedQuantity)) &&
+    Number(watchedQuantity) > Number(remainingQuantity);
+
   function onSubmit(data: TransactionCreateInput) {
-    setConflictError(null); // ADDED
+    setConflictError(null);
+    if (sellExceedsHolding) {
+      setConflictError(
+        `보유 수량(${remainingQuantity}) 을 초과하여 매도할 수 없습니다.`,
+      );
+      return;
+    }
     if (mode === "edit" && initialValues) { // ADDED
       updateMutation.mutate(
         { userAssetId, transactionId: initialValues.id, data },
@@ -136,12 +162,22 @@ export function TransactionForm({ userAssetId, onSuccess, mode = "create", initi
           inputMode="decimal"
           placeholder="예: 1.5"
           aria-label="거래 수량"
-          aria-invalid={!!errors.quantity}
+          aria-invalid={!!errors.quantity || sellExceedsHolding}
           {...register("quantity")}
         />
+        {watchedType === "sell" && remainingQuantity !== undefined && (
+          <p className="text-xs text-muted-foreground" aria-live="polite">
+            보유 수량: {remainingQuantity}
+          </p>
+        )}
         {errors.quantity && (
           <p role="alert" className="text-xs text-destructive">
             {errors.quantity.message}
+          </p>
+        )}
+        {sellExceedsHolding && !errors.quantity && (
+          <p role="alert" className="text-xs text-destructive">
+            보유 수량을 초과하여 매도할 수 없습니다.
           </p>
         )}
       </div>
@@ -220,12 +256,16 @@ export function TransactionForm({ userAssetId, onSuccess, mode = "create", initi
       <Button
         type="submit"
         className="w-full"
-        disabled={activeMutation.isPending} // MODIFIED
-        aria-busy={activeMutation.isPending} // MODIFIED
+        disabled={activeMutation.isPending || sellExceedsHolding}
+        aria-busy={activeMutation.isPending}
       >
-        {activeMutation.isPending // MODIFIED
-          ? mode === "edit" ? "수정 중..." : "등록 중..."
-          : mode === "edit" ? "수정하기" : "거래 추가"}
+        {activeMutation.isPending
+          ? mode === "edit"
+            ? "수정 중..."
+            : "등록 중..."
+          : mode === "edit"
+            ? "수정하기"
+            : "거래 추가"}
       </Button>
     </form>
   );

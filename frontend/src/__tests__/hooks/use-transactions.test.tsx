@@ -12,11 +12,21 @@ import * as txApi from "@/lib/api/transaction";
 import type { TransactionResponse, UserAssetSummaryResponse } from "@/types/transaction";
 
 jest.mock("@/lib/api/transaction");
+jest.mock("sonner", () => ({
+  toast: { success: jest.fn(), error: jest.fn() },
+}));
+
 const mockedListTransactions = jest.mocked(txApi.listTransactions);
 const mockedGetAssetSummary = jest.mocked(txApi.getAssetSummary);
 const mockedCreateTransaction = jest.mocked(txApi.createTransaction);
 const mockedUpdateTransaction = jest.mocked(txApi.updateTransaction); // ADDED
 const mockedDeleteTransaction = jest.mocked(txApi.deleteTransaction);
+
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const mockedToast = jest.mocked(require("sonner").toast) as {
+  success: jest.Mock;
+  error: jest.Mock;
+};
 
 function makeWrapper() {
   const queryClient = new QueryClient({
@@ -259,5 +269,117 @@ describe("useDeleteTransaction", () => {
     });
 
     await waitFor(() => expect(result.current.isError).toBe(true));
+  });
+});
+
+describe("toast 알림", () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it("useCreateTransaction 성공 시 success toast 를 호출한다", async () => {
+    mockedCreateTransaction.mockResolvedValueOnce(fakeTx);
+    const { Wrapper } = makeWrapper();
+    const { result } = renderHook(() => useCreateTransaction(), {
+      wrapper: Wrapper,
+    });
+
+    act(() => {
+      result.current.mutate({
+        userAssetId: 10,
+        data: {
+          type: "buy",
+          quantity: "1.5",
+          price: "50000",
+          tradedAt: new Date("2026-04-23"),
+          memo: null,
+        },
+      });
+    });
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(mockedToast.success).toHaveBeenCalledWith("거래가 기록되었습니다.");
+  });
+
+  it("useCreateTransaction 실패 시 axios detail 을 error toast 로 호출한다", async () => {
+    const axiosErr = Object.assign(new Error("Request failed"), {
+      isAxiosError: true,
+      response: { status: 409, data: { detail: "보유 수량 부족" } },
+      toJSON: () => ({}),
+    });
+    mockedCreateTransaction.mockRejectedValueOnce(axiosErr);
+    const { Wrapper } = makeWrapper();
+    const { result } = renderHook(() => useCreateTransaction(), {
+      wrapper: Wrapper,
+    });
+
+    act(() => {
+      result.current.mutate({
+        userAssetId: 10,
+        data: {
+          type: "sell",
+          quantity: "10",
+          price: "50000",
+          tradedAt: new Date("2026-04-23"),
+          memo: null,
+        },
+      });
+    });
+
+    await waitFor(() => expect(result.current.isError).toBe(true));
+    expect(mockedToast.error).toHaveBeenCalledWith("보유 수량 부족");
+  });
+
+  it("useUpdateTransaction 성공 시 success toast 를 호출한다", async () => {
+    mockedUpdateTransaction.mockResolvedValueOnce(fakeTx);
+    const { Wrapper } = makeWrapper();
+    const { result } = renderHook(() => useUpdateTransaction(), {
+      wrapper: Wrapper,
+    });
+
+    act(() => {
+      result.current.mutate({
+        userAssetId: 10,
+        transactionId: 1,
+        data: {
+          type: "buy",
+          quantity: "2",
+          price: "50000",
+          tradedAt: new Date("2026-04-23"),
+          memo: null,
+        },
+      });
+    });
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(mockedToast.success).toHaveBeenCalledWith("거래가 수정되었습니다.");
+  });
+
+  it("useDeleteTransaction 성공 시 success toast 를 호출한다", async () => {
+    mockedDeleteTransaction.mockResolvedValueOnce(undefined);
+    const { Wrapper } = makeWrapper();
+    const { result } = renderHook(() => useDeleteTransaction(), {
+      wrapper: Wrapper,
+    });
+
+    act(() => {
+      result.current.mutate({ userAssetId: 10, txId: 1 });
+    });
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(mockedToast.success).toHaveBeenCalledWith("거래가 삭제되었습니다.");
+  });
+
+  it("useDeleteTransaction 실패 시 fallback 메시지로 error toast 를 호출한다", async () => {
+    mockedDeleteTransaction.mockRejectedValueOnce(new Error("boom"));
+    const { Wrapper } = makeWrapper();
+    const { result } = renderHook(() => useDeleteTransaction(), {
+      wrapper: Wrapper,
+    });
+
+    act(() => {
+      result.current.mutate({ userAssetId: 10, txId: 1 });
+    });
+
+    await waitFor(() => expect(result.current.isError).toBe(true));
+    expect(mockedToast.error).toHaveBeenCalledWith("거래 삭제에 실패했습니다.");
   });
 });
