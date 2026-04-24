@@ -237,6 +237,7 @@ export function AssetDetail({ userAssetId }: AssetDetailProps) {
               <TransactionForm
                 userAssetId={userAssetId}
                 onSuccess={() => setShowAddForm(false)}
+                remainingQuantity={summaryQuery.data?.remainingQuantity}
               />
             </div>
           )}

@@ -264,3 +264,69 @@ describe("TransactionForm (edit 모드)", () => { // ADDED
     });
   });
 });
+
+describe("TransactionForm — SELL 사전 검증", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    setupMutationMock();
+  });
+
+  it("SELL 선택 시 보유 수량 힌트가 노출된다", async () => {
+    const user = userEvent.setup();
+    const { Wrapper } = makeWrapper();
+    render(
+      <TransactionForm userAssetId={10} remainingQuantity="3.5" />,
+      { wrapper: Wrapper },
+    );
+
+    await user.selectOptions(screen.getByLabelText("거래 유형"), "sell");
+
+    expect(screen.getByText("보유 수량: 3.5")).toBeInTheDocument();
+  });
+
+  it("SELL 수량이 보유 수량을 초과하면 제출이 차단된다", async () => {
+    const user = userEvent.setup();
+    const { Wrapper } = makeWrapper();
+    render(
+      <TransactionForm userAssetId={10} remainingQuantity="3" />,
+      { wrapper: Wrapper },
+    );
+
+    await user.selectOptions(screen.getByLabelText("거래 유형"), "sell");
+    await user.type(screen.getByLabelText("거래 수량"), "5");
+    await user.type(screen.getByLabelText("거래 단가"), "50000");
+
+    const submitBtn = screen.getByRole("button", { name: "거래 추가" });
+    expect(submitBtn).toBeDisabled();
+    expect(
+      screen.getByText("보유 수량을 초과하여 매도할 수 없습니다."),
+    ).toBeInTheDocument();
+    expect(mockMutate).not.toHaveBeenCalled();
+  });
+
+  it("BUY 타입일 때는 remainingQuantity 가 있어도 제한 없이 제출된다", async () => {
+    const user = userEvent.setup();
+    const { Wrapper } = makeWrapper();
+    render(
+      <TransactionForm userAssetId={10} remainingQuantity="3" />,
+      { wrapper: Wrapper },
+    );
+
+    await user.type(screen.getByLabelText("거래 수량"), "100");
+    await user.type(screen.getByLabelText("거래 단가"), "50000");
+    await user.click(screen.getByRole("button", { name: "거래 추가" }));
+
+    await waitFor(() => {
+      expect(mockMutate).toHaveBeenCalled();
+    });
+  });
+
+  it("remainingQuantity 가 없으면 SELL 에도 힌트·차단이 없다", async () => {
+    const user = userEvent.setup();
+    const { Wrapper } = makeWrapper();
+    render(<TransactionForm userAssetId={10} />, { wrapper: Wrapper });
+
+    await user.selectOptions(screen.getByLabelText("거래 유형"), "sell");
+    expect(screen.queryByText(/보유 수량:/)).not.toBeInTheDocument();
+  });
+});

@@ -1,6 +1,8 @@
 "use client";
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { isAxiosError } from "axios";
+import { toast } from "sonner";
 import {
   createTransaction,
   updateTransaction,
@@ -43,6 +45,30 @@ export function useAssetSummary(userAssetId: number) {
   });
 }
 
+function invalidateAll(
+  queryClient: ReturnType<typeof useQueryClient>,
+  userAssetId: number,
+): void {
+  void queryClient.invalidateQueries({
+    queryKey: transactionKeys.list(userAssetId),
+  });
+  void queryClient.invalidateQueries({
+    queryKey: transactionKeys.summary(userAssetId),
+  });
+  for (const key of portfolioInvalidationKeys) {
+    void queryClient.invalidateQueries({ queryKey: key });
+  }
+}
+
+function extractErrorMessage(err: Error, fallback: string): string {
+  if (isAxiosError(err)) {
+    const detail = (err.response?.data as { detail?: string } | undefined)
+      ?.detail;
+    if (detail) return detail;
+  }
+  return fallback;
+}
+
 export function useCreateTransaction() {
   const queryClient = useQueryClient();
 
@@ -53,20 +79,16 @@ export function useCreateTransaction() {
   >({
     mutationFn: ({ userAssetId, data }) => createTransaction(userAssetId, data),
     onSuccess: (_result, { userAssetId }) => {
-      void queryClient.invalidateQueries({
-        queryKey: transactionKeys.list(userAssetId),
-      });
-      void queryClient.invalidateQueries({
-        queryKey: transactionKeys.summary(userAssetId),
-      });
-      for (const key of portfolioInvalidationKeys) {
-        void queryClient.invalidateQueries({ queryKey: key });
-      }
+      invalidateAll(queryClient, userAssetId);
+      toast.success("거래가 기록되었습니다.");
+    },
+    onError: (err) => {
+      toast.error(extractErrorMessage(err, "거래 기록에 실패했습니다."));
     },
   });
 }
 
-export function useUpdateTransaction() { // ADDED
+export function useUpdateTransaction() {
   const queryClient = useQueryClient();
 
   return useMutation<
@@ -77,15 +99,11 @@ export function useUpdateTransaction() { // ADDED
     mutationFn: ({ userAssetId, transactionId, data }) =>
       updateTransaction(userAssetId, transactionId, data),
     onSuccess: (_result, { userAssetId }) => {
-      void queryClient.invalidateQueries({
-        queryKey: transactionKeys.list(userAssetId),
-      });
-      void queryClient.invalidateQueries({
-        queryKey: transactionKeys.summary(userAssetId),
-      });
-      for (const key of portfolioInvalidationKeys) {
-        void queryClient.invalidateQueries({ queryKey: key });
-      }
+      invalidateAll(queryClient, userAssetId);
+      toast.success("거래가 수정되었습니다.");
+    },
+    onError: (err) => {
+      toast.error(extractErrorMessage(err, "거래 수정에 실패했습니다."));
     },
   });
 }
@@ -96,15 +114,11 @@ export function useDeleteTransaction() {
   return useMutation<void, Error, { userAssetId: number; txId: number }>({
     mutationFn: ({ userAssetId, txId }) => deleteTransaction(userAssetId, txId),
     onSuccess: (_result, { userAssetId }) => {
-      void queryClient.invalidateQueries({
-        queryKey: transactionKeys.list(userAssetId),
-      });
-      void queryClient.invalidateQueries({
-        queryKey: transactionKeys.summary(userAssetId),
-      });
-      for (const key of portfolioInvalidationKeys) {
-        void queryClient.invalidateQueries({ queryKey: key });
-      }
+      invalidateAll(queryClient, userAssetId);
+      toast.success("거래가 삭제되었습니다.");
+    },
+    onError: (err) => {
+      toast.error(extractErrorMessage(err, "거래 삭제에 실패했습니다."));
     },
   });
 }
