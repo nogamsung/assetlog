@@ -10,7 +10,11 @@ from app.exceptions import InsufficientHoldingError, NotFoundError  # MODIFIED
 from app.models.transaction import Transaction
 from app.repositories.transaction import TransactionRepository
 from app.repositories.user_asset import UserAssetRepository
-from app.schemas.transaction import TransactionCreate, UserAssetSummaryResponse
+from app.schemas.transaction import (
+    TransactionCreate,
+    TransactionUpdate,
+    UserAssetSummaryResponse,
+)  # MODIFIED
 
 logger = logging.getLogger(__name__)
 
@@ -136,6 +140,78 @@ class TransactionService:
             transaction_count=agg.tx_count,
             currency=ua.asset_symbol.currency,
         )
+
+    async def edit(  # ADDED
+        self,
+        user_id: int,
+        user_asset_id: int,
+        transaction_id: int,
+        data: TransactionUpdate,
+    ) -> Transaction:
+        """Replace all fields of an existing transaction.
+
+        Args:
+            user_id: The authenticated user's ID.
+            user_asset_id: The UserAsset the transaction belongs to.
+            transaction_id: The Transaction row to update.
+            data: Validated replacement payload.
+
+        Returns:
+            The updated Transaction row.
+
+        Raises:
+            NotFoundError: If the UserAsset or Transaction does not exist / not owned.
+            InsufficientHoldingError: If the edit would produce a negative holding.
+        """
+        ua = await self._ua_repo.get_by_id_for_user(user_asset_id, user_id)
+        if ua is None:
+            raise NotFoundError(f"UserAsset with id={user_asset_id} not found or not owned by you.")
+
+        tx = await self._tx_repo.get_by_id_for_user_asset(transaction_id, user_asset_id)
+        if tx is None:
+            raise NotFoundError(
+                f"Transaction with id={transaction_id} not found in UserAsset id={user_asset_id}."
+            )
+
+        # SELL 수량 검증 — 수정 대상 tx 를 제외한 나머지 집계로 가상 remaining 계산
+        agg = await self._tx_repo.get_summary(user_asset_id)
+        # 현재 tx 의 기여분을 제거해 "다른 tx 들만의" 집계로 환원
+        if tx.type == TransactionType.BUY:
+            other_bought = agg.total_bought_qty - tx.quantity
+            other_bought_cost = agg.total_bought_cost - tx.quantity * tx.price
+        else:
+            other_bought = agg.total_bought_qty
+            other_bought_cost = agg.total_bought_cost
+        if tx.type == TransactionType.SELL:
+            other_sold = agg.total_sold_qty - tx.quantity
+        else:
+            other_sold = agg.total_sold_qty
+
+        if data.type == TransactionType.BUY:
+            hypothetical_remaining = other_bought + data.quantity - other_sold
+        else:
+            hypothetical_remaining = other_bought - other_sold - data.quantity
+
+        if hypothetical_remaining < 0:
+            raise InsufficientHoldingError("Edit would leave negative holding.")
+
+        # avg_buy_price 기반 realized P&L 재계산이 필요한 경우를 위해 other_bought_cost 는 보존
+        _ = other_bought_cost  # noqa: F841  # referenced for clarity, unused in update path
+
+        updated = await self._tx_repo.update(transaction_id, user_asset_id, data)
+        if updated is None:  # 실제로는 위에서 이미 확인했으므로 방어 코드
+            raise NotFoundError(
+                f"Transaction with id={transaction_id} not found in UserAsset id={user_asset_id}."
+            )
+        logger.info(
+            "Transaction updated: id=%s user_asset_id=%s type=%s quantity=%s price=%s",
+            transaction_id,
+            user_asset_id,
+            data.type,
+            data.quantity,
+            data.price,
+        )
+        return updated
 
     async def remove(
         self,

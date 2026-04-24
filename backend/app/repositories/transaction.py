@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domain.transaction_type import TransactionType
 from app.models.transaction import Transaction
-from app.schemas.transaction import TransactionCreate
+from app.schemas.transaction import TransactionCreate, TransactionUpdate  # MODIFIED
 
 
 class SummaryAggregates(NamedTuple):  # ADDED
@@ -152,6 +152,28 @@ class TransactionRepository:
         )
         result = await self._session.execute(stmt)
         return result.scalar_one_or_none()
+
+    async def update(  # ADDED
+        self,
+        transaction_id: int,
+        user_asset_id: int,
+        data: TransactionUpdate,
+    ) -> Transaction | None:
+        """Apply full-replace update to a Transaction belonging to user_asset.
+
+        Returns the refreshed Transaction, or None if the row does not exist.
+        """
+        tx = await self.get_by_id_for_user_asset(transaction_id, user_asset_id)
+        if tx is None:
+            return None
+        tx.type = data.type
+        tx.quantity = data.quantity
+        tx.price = data.price
+        tx.traded_at = data.traded_at
+        tx.memo = data.memo
+        await self._session.flush()
+        await self._session.refresh(tx)
+        return tx
 
     async def delete_by_id_for_user_asset(
         self,

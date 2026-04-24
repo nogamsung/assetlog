@@ -17,8 +17,8 @@ from app.domain.transaction_type import TransactionType
 _FUTURE_TOLERANCE_SECONDS = 60
 
 
-class TransactionCreate(BaseModel):
-    """Payload for recording a new transaction."""
+class _TransactionBase(BaseModel):  # ADDED — shared validator base for Create & Update
+    """Common fields and validators for transaction write schemas."""
 
     model_config = ConfigDict(str_strip_whitespace=True)
 
@@ -65,6 +65,14 @@ class TransactionCreate(BaseModel):
         if v > now_utc + timedelta(seconds=_FUTURE_TOLERANCE_SECONDS):
             raise ValueError("traded_at must not be in the future.")
         return v
+
+
+class TransactionCreate(_TransactionBase):  # MODIFIED — now extends _TransactionBase
+    """Payload for recording a new transaction."""
+
+
+class TransactionUpdate(_TransactionBase):  # ADDED — full replace (PUT semantics)
+    """Payload for replacing an existing transaction (all fields required)."""
 
 
 class TransactionResponse(BaseModel):
