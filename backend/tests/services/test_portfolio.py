@@ -10,6 +10,7 @@ from app.domain.asset_type import AssetType
 from app.domain.portfolio import STALE_THRESHOLD, HoldingRow
 from app.models.asset_symbol import AssetSymbol
 from app.repositories.portfolio import PortfolioRepository
+from app.services.fx_rate import FxRateService
 from app.services.portfolio import PortfolioService
 
 # ---------------------------------------------------------------------------
@@ -58,10 +59,39 @@ def _make_row(
     )
 
 
-def _make_service(rows: list[HoldingRow]) -> PortfolioService:
+def _make_service(
+    rows: list[HoldingRow],
+    fx_service: FxRateService | None = None,
+) -> PortfolioService:
     mock_repo = AsyncMock(spec=PortfolioRepository)
     mock_repo.list_user_holdings_with_aggregates.return_value = rows
-    return PortfolioService(mock_repo)
+    return PortfolioService(mock_repo, fx_service=fx_service)
+
+
+def _make_fx_service(
+    rates: dict[tuple[str, str], Decimal] | None = None,
+) -> FxRateService:
+    """Build a FxRateService mock with a simple rate map."""
+    mock_fx = AsyncMock(spec=FxRateService)
+
+    async def _get_all_rates(
+        from_currencies: list[str], to_currency: str
+    ) -> dict[str, Decimal] | None:
+        if rates is None:
+            return None
+        result: dict[str, Decimal] = {}
+        for cur in from_currencies:
+            if cur == to_currency:
+                result[cur] = Decimal("1")
+                continue
+            key = (cur, to_currency)
+            if key not in rates:
+                return None  # partial — return None
+            result[cur] = rates[key]
+        return result
+
+    mock_fx.get_all_rates_for_conversion.side_effect = _get_all_rates
+    return mock_fx  # type: ignore[return-value]  # AsyncMock satisfies FxRateService protocol
 
 
 # ---------------------------------------------------------------------------
@@ -271,3 +301,124 @@ class TestPortfolioServiceGetSummary:
 
         summary = await svc.get_summary(user_id=1)
         assert summary.realized_pnl_by_currency.get("KRW") == "1000"
+
+
+# ---------------------------------------------------------------------------
+# get_summary with convert_to
+# ---------------------------------------------------------------------------
+
+
+class TestPortfolioServiceGetSummaryConversion:
+    async def test_convert_to_KRW_환산값_계산(self) -> None:
+        sym_usd = _make_symbol(
+            1, "AAPL", "USD", AssetType.US_STOCK, Decimal("100"), datetime.now(UTC)
+        )
+        # value = 10 * 100 = 1000 USD, cost = 800 USD
+        row = _make_row(1, "10", "800", symbol=sym_usd)
+
+        fx = _make_fx_service(rates={("USD", "KRW"): Decimal("1380")})
+        svc = _make_service([row], fx_service=fx)
+
+        summary = await svc.get_summary(user_id=1, convert_to="KRW")
+
+        assert summary.display_currency == "KRW"
+        assert summary.converted_total_value == Decimal("1000") * Decimal("1380")
+        assert summary.converted_total_cost == Decimal("800") * Decimal("1380")
+        assert (
+            summary.converted_pnl_abs
+            == summary.converted_total_value - summary.converted_total_cost
+        )
+
+    async def test_rate_없으면_converted_필드_모두_null(self) -> None:
+        sym_usd = _make_symbol(
+            1, "AAPL", "USD", AssetType.US_STOCK, Decimal("100"), datetime.now(UTC)
+        )
+        row = _make_row(1, "10", "800", symbol=sym_usd)
+
+        # No rates provided → get_all_rates_for_conversion returns None
+        fx = _make_fx_service(rates=None)
+        svc = _make_service([row], fx_service=fx)
+
+        summary = await svc.get_summary(user_id=1, convert_to="KRW")
+
+        assert summary.converted_total_value is None
+        assert summary.converted_total_cost is None
+        assert summary.converted_pnl_abs is None
+        assert summary.converted_realized_pnl is None
+        assert summary.display_currency is None
+
+    async def test_convert_to_없으면_converted_필드_null(self) -> None:
+        sym = _make_symbol(
+            1, "BTC", "KRW", last_price=Decimal("50000000"), refreshed_at=datetime.now(UTC)
+        )
+        row = _make_row(1, "1", "40000000", symbol=sym)
+        svc = _make_service([row])
+
+        summary = await svc.get_summary(user_id=1)  # no convert_to
+
+        assert summary.converted_total_value is None
+        assert summary.display_currency is None
+
+    async def test_같은_통화_convert_to_환산값_동일(self) -> None:
+        sym_krw = _make_symbol(
+            1, "BTC", "KRW", last_price=Decimal("50000000"), refreshed_at=datetime.now(UTC)
+        )
+        # value = 50000000, cost = 40000000
+        row = _make_row(1, "1", "40000000", symbol=sym_krw)
+
+        # KRW→KRW rate = 1
+        fx = _make_fx_service(rates={})  # same currency — no key needed
+        svc = _make_service([row], fx_service=fx)
+
+        summary = await svc.get_summary(user_id=1, convert_to="KRW")
+
+        assert summary.display_currency == "KRW"
+        assert summary.converted_total_value == Decimal("50000000")
+
+    async def test_다중_통화_환산_합산(self) -> None:
+        sym_usd = _make_symbol(
+            1, "AAPL", "USD", AssetType.US_STOCK, Decimal("100"), datetime.now(UTC)
+        )
+        sym_krw = _make_symbol(
+            2, "BTC", "KRW", last_price=Decimal("50000000"), refreshed_at=datetime.now(UTC)
+        )
+        rows = [
+            _make_row(1, "10", "800", symbol=sym_usd),  # value=1000 USD
+            _make_row(2, "1", "40000000", symbol=sym_krw),  # value=50000000 KRW
+        ]
+
+        fx = _make_fx_service(
+            rates={
+                ("USD", "KRW"): Decimal("1380"),
+                # KRW→KRW is handled as same-currency (rate=1)
+            }
+        )
+        svc = _make_service(rows, fx_service=fx)
+
+        summary = await svc.get_summary(user_id=1, convert_to="KRW")
+
+        assert summary.display_currency == "KRW"
+        expected_value = Decimal("1000") * Decimal("1380") + Decimal("50000000")
+        assert summary.converted_total_value == expected_value
+
+    async def test_converted_realized_pnl_환산(self) -> None:
+        sym_usd = _make_symbol(
+            1, "AAPL", "USD", AssetType.US_STOCK, Decimal("100"), datetime.now(UTC)
+        )
+        row = _make_row(1, "10", "800", realized_pnl="50", symbol=sym_usd)
+
+        fx = _make_fx_service(rates={("USD", "KRW"): Decimal("1380")})
+        svc = _make_service([row], fx_service=fx)
+
+        summary = await svc.get_summary(user_id=1, convert_to="KRW")
+        assert summary.converted_realized_pnl == Decimal("50") * Decimal("1380")
+
+    async def test_fx_service_없으면_convert_to_무시(self) -> None:
+        sym = _make_symbol(1, "AAPL", "USD", AssetType.US_STOCK, Decimal("100"), datetime.now(UTC))
+        row = _make_row(1, "10", "800", symbol=sym)
+        # No fx_service injected
+        svc = _make_service([row])
+
+        summary = await svc.get_summary(user_id=1, convert_to="KRW")
+        assert summary.converted_total_value is None
+        assert summary.display_currency is None

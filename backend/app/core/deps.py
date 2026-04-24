@@ -14,6 +14,7 @@ from app.domain.asset_type import AssetType  # ADDED
 from app.exceptions import UnauthorizedError
 from app.models.user import User
 from app.repositories.asset_symbol import AssetSymbolRepository
+from app.repositories.fx_rate import FxRateRepository
 from app.repositories.portfolio import PortfolioRepository
 from app.repositories.portfolio_history import PortfolioHistoryRepository
 from app.repositories.price_point import PricePointRepository
@@ -21,6 +22,7 @@ from app.repositories.transaction import TransactionRepository
 from app.repositories.user import UserRepository
 from app.repositories.user_asset import UserAssetRepository
 from app.services.auth import AuthService
+from app.services.fx_rate import FxRateService
 from app.services.portfolio import PortfolioService
 from app.services.portfolio_history import PortfolioHistoryService
 from app.services.price_refresh import PriceRefreshService
@@ -128,9 +130,30 @@ def get_portfolio_repository(session: DbSession) -> PortfolioRepository:
 PortfolioRepositoryDep = Annotated[PortfolioRepository, Depends(get_portfolio_repository)]
 
 
-def get_portfolio_service(repo: PortfolioRepositoryDep) -> PortfolioService:
-    """Inject a PortfolioService bound to the current request session."""
-    return PortfolioService(repo)
+def get_fx_rate_repository(session: DbSession) -> FxRateRepository:
+    """Inject a FxRateRepository bound to the current request session."""
+    return FxRateRepository(session)
+
+
+FxRateRepositoryDep = Annotated[FxRateRepository, Depends(get_fx_rate_repository)]
+
+
+def get_fx_rate_service(repo: FxRateRepositoryDep) -> FxRateService:
+    """Inject a FxRateService bound to the current request session."""
+    from app.adapters.fx import FrankfurterAdapter  # noqa: PLC0415  # lazy to avoid circular import
+
+    return FxRateService(repo=repo, adapter=FrankfurterAdapter())
+
+
+FxRateServiceDep = Annotated[FxRateService, Depends(get_fx_rate_service)]
+
+
+def get_portfolio_service(
+    repo: PortfolioRepositoryDep,
+    fx_service: FxRateServiceDep,
+) -> PortfolioService:
+    """Inject a PortfolioService with FxRateService for optional currency conversion."""
+    return PortfolioService(repo, fx_service=fx_service)
 
 
 PortfolioServiceDep = Annotated[PortfolioService, Depends(get_portfolio_service)]

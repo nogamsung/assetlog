@@ -24,18 +24,33 @@ router = APIRouter(prefix="/api/portfolio", tags=["portfolio"])
     description=(
         "Returns total market value, cost basis, P&L, and asset-class allocation "
         "grouped by currency. Holdings whose last_price is NULL are excluded from "
-        "value/P&L totals but counted in ``pending_count``."
+        "value/P&L totals but counted in ``pending_count``. "
+        "Pass ``convert_to`` (e.g. ``KRW``) to receive converted totals in addition to "
+        "the per-currency breakdown. Converted fields are null if any required FX rate "
+        "is unavailable — no partial conversion is performed."
     ),
     responses={
         401: {"model": ErrorResponse, "description": "Not authenticated"},
+        503: {
+            "model": ErrorResponse,
+            "description": "FX rate not yet available — retry after scheduler runs",
+        },
     },
 )
 async def get_portfolio_summary(
     current_user: CurrentUser,
     portfolio_service: PortfolioServiceDep,
+    convert_to: str | None = Query(
+        default=None,
+        min_length=3,
+        max_length=10,
+        description="Target currency for conversion (e.g. KRW, USD, EUR)",
+        examples=["KRW"],
+    ),
 ) -> PortfolioSummaryResponse:
     """Return aggregated portfolio summary for the authenticated user."""
-    return await portfolio_service.get_summary(current_user.id)
+    target = convert_to.upper() if convert_to else None
+    return await portfolio_service.get_summary(current_user.id, convert_to=target)
 
 
 @router.get(

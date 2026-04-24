@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 from datetime import UTC, datetime
 from decimal import Decimal, InvalidOperation
+from typing import TYPE_CHECKING
 
 from app.domain.portfolio import STALE_THRESHOLD, HoldingRow
 from app.repositories.portfolio import PortfolioRepository
@@ -16,6 +17,9 @@ from app.schemas.portfolio import (
     SymbolEmbedded,
 )
 
+if TYPE_CHECKING:
+    from app.services.fx_rate import FxRateService
+
 logger = logging.getLogger(__name__)
 
 
@@ -23,10 +27,16 @@ class PortfolioService:
     """Compute derived portfolio values from cached price data.
 
     No external API calls — reads only from ``asset_symbol.last_price``.
+    Optionally accepts an FxRateService to compute converted totals.
     """
 
-    def __init__(self, repository: PortfolioRepository) -> None:
+    def __init__(
+        self,
+        repository: PortfolioRepository,
+        fx_service: FxRateService | None = None,
+    ) -> None:
         self._repo = repository
+        self._fx_service = fx_service
 
     # ------------------------------------------------------------------
     # Public API
@@ -66,11 +76,22 @@ class PortfolioService:
 
         return holdings
 
-    async def get_summary(self, user_id: int) -> PortfolioSummaryResponse:
+    async def get_summary(
+        self,
+        user_id: int,
+        convert_to: str | None = None,
+    ) -> PortfolioSummaryResponse:
         """Return currency-bucketed totals, P&L, allocation, and metadata.
+
+        When *convert_to* is provided and all FX rates are available, the
+        response also includes ``converted_total_value``, ``converted_total_cost``,
+        ``converted_pnl_abs``, ``converted_realized_pnl``, and ``display_currency``.
+        If any required rate is missing, all converted fields are left null
+        to prevent partial / misleading totals.
 
         Args:
             user_id: Authenticated user's PK.
+            convert_to: Optional 3-letter currency code to convert totals into.
 
         Returns:
             PortfolioSummaryResponse — never raises on empty portfolio.
@@ -153,12 +174,56 @@ class PortfolioService:
         realized_pnl_str: dict[str, str] = {k: str(v) for k, v in realized_pnl_acc.items()}  # ADDED
 
         logger.debug(
-            "get_summary: user_id=%s currencies=%s pending=%d stale=%d",
+            "get_summary: user_id=%s currencies=%s pending=%d stale=%d convert_to=%s",
             user_id,
             list(total_value.keys()),
             pending_count,
             stale_count,
+            convert_to,
         )
+
+        # ------------------------------------------------------------------
+        # Optional currency conversion
+        # ------------------------------------------------------------------
+        converted_total_value: Decimal | None = None
+        converted_total_cost: Decimal | None = None
+        converted_pnl_abs: Decimal | None = None
+        converted_realized_pnl: Decimal | None = None
+        display_currency: str | None = None
+
+        if convert_to is not None and self._fx_service is not None and total_value:
+            all_currencies = list(
+                set(total_value.keys()) | set(total_cost.keys()) | set(realized_pnl_acc.keys())
+            )
+            rate_map = await self._fx_service.get_all_rates_for_conversion(
+                all_currencies, convert_to
+            )
+            if rate_map is not None:
+                conv_value = sum(
+                    (total_value.get(cur, Decimal("0")) * rate_map[cur] for cur in all_currencies),
+                    Decimal("0"),
+                )
+                conv_cost = sum(
+                    (total_cost.get(cur, Decimal("0")) * rate_map[cur] for cur in all_currencies),
+                    Decimal("0"),
+                )
+                conv_realized = sum(
+                    (
+                        realized_pnl_acc.get(cur, Decimal("0")) * rate_map[cur]
+                        for cur in all_currencies
+                    ),
+                    Decimal("0"),
+                )
+                converted_total_value = conv_value
+                converted_total_cost = conv_cost
+                converted_pnl_abs = conv_value - conv_cost
+                converted_realized_pnl = conv_realized
+                display_currency = convert_to
+            else:
+                logger.debug(
+                    "get_summary: conversion to %s skipped — missing FX rates",
+                    convert_to,
+                )
 
         return PortfolioSummaryResponse(
             total_value_by_currency=total_value_str,
@@ -169,6 +234,11 @@ class PortfolioService:
             last_price_refreshed_at=last_refreshed,
             pending_count=pending_count,
             stale_count=stale_count,
+            converted_total_value=converted_total_value,
+            converted_total_cost=converted_total_cost,
+            converted_pnl_abs=converted_pnl_abs,
+            converted_realized_pnl=converted_realized_pnl,
+            display_currency=display_currency,
         )
 
     # ------------------------------------------------------------------

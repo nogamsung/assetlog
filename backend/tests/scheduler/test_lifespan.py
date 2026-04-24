@@ -100,15 +100,17 @@ class TestSchedulerLifespan:
         self,
         db_session: AsyncSession,
     ) -> None:
-        """build_scheduler must register job with id='price_refresh_hourly'."""
+        """build_scheduler must register both price_refresh and fx_refresh jobs."""
         session_factory = _make_session_factory("sqlite+aiosqlite:///:memory:")
         mock_registry = MagicMock(spec=AdapterRegistry)
 
         scheduler = build_scheduler(session_factory, mock_registry)
         jobs = scheduler.get_jobs()
 
-        assert len(jobs) == 1
-        assert jobs[0].id == "price_refresh_hourly"
+        assert len(jobs) == 2  # price_refresh_hourly + fx_refresh_hourly
+        job_ids = {j.id for j in jobs}
+        assert "price_refresh_hourly" in job_ids
+        assert "fx_refresh_hourly" in job_ids
         # Verify scheduler is not running yet — start() has not been called
         assert not scheduler.running
 
@@ -116,17 +118,17 @@ class TestSchedulerLifespan:
         self,
         db_session: AsyncSession,
     ) -> None:
-        """build_scheduler must configure max_instances=1 and coalesce=True."""
+        """build_scheduler must configure max_instances=1 and coalesce=True for both jobs."""
         session_factory = _make_session_factory("sqlite+aiosqlite:///:memory:")
         mock_registry = MagicMock(spec=AdapterRegistry)
 
         scheduler = build_scheduler(session_factory, mock_registry)
         jobs = scheduler.get_jobs()
 
-        assert len(jobs) == 1
-        job = jobs[0]
-        assert job.max_instances == 1
-        assert job.coalesce is True
+        assert len(jobs) == 2
+        for job in jobs:
+            assert job.max_instances == 1
+            assert job.coalesce is True
 
     async def test_build_scheduler_called_when_enabled(
         self,

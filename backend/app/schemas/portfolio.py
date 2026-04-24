@@ -164,6 +164,49 @@ class PortfolioSummaryResponse(BaseModel):
         examples=[0],
     )
 
+    # -----------------------------------------------------------------------
+    # Currency conversion (optional — only populated when convert_to is given
+    # and ALL required FX rates are available).
+    # -----------------------------------------------------------------------
+
+    converted_total_value: Decimal | None = Field(
+        default=None,
+        description=(
+            "Total market value converted to display_currency "
+            "(null if convert_to not provided or any FX rate is missing)"
+        ),
+        examples=["28000000.00"],
+    )
+    converted_total_cost: Decimal | None = Field(
+        default=None,
+        description="Total cost basis converted to display_currency (null if unavailable)",
+        examples=["25000000.00"],
+    )
+    converted_pnl_abs: Decimal | None = Field(
+        default=None,
+        description="Absolute P&L in display_currency (null if unavailable)",
+        examples=["3000000.00"],
+    )
+    converted_realized_pnl: Decimal | None = Field(
+        default=None,
+        description="Realized P&L in display_currency (null if unavailable)",
+        examples=["500000.00"],
+    )
+    display_currency: str | None = Field(
+        default=None,
+        description="Target currency for conversion (null if unavailable)",
+        examples=["KRW"],
+    )
+
+    @field_serializer(
+        "converted_total_value",
+        "converted_total_cost",
+        "converted_pnl_abs",
+        "converted_realized_pnl",
+    )
+    def _serialize_converted_decimal(self, v: Decimal | None) -> str | None:
+        return str(v) if v is not None else None
+
 
 # ---------------------------------------------------------------------------
 # Portfolio history schemas
