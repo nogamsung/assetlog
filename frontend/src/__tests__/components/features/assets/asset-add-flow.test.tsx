@@ -4,8 +4,9 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import React from "react";
 import { AssetAddFlow } from "@/components/features/assets/asset-add-flow";
 import * as useAssetsHook from "@/hooks/use-assets";
+import * as useTransactionsHook from "@/hooks/use-transactions";
 import * as assetApiModule from "@/lib/api/asset";
-import type { AssetSymbolResponse } from "@/types/asset";
+import type { AssetSymbolResponse, UserAssetResponse } from "@/types/asset";
 
 const mockPush = jest.fn();
 jest.mock("next/navigation", () => ({
@@ -18,11 +19,19 @@ jest.mock("@/hooks/use-assets", () => ({
   useCreateUserAsset: jest.fn(),
 }));
 
+jest.mock("@/hooks/use-transactions", () => ({
+  ...jest.requireActual("@/hooks/use-transactions"),
+  useCreateTransaction: jest.fn(),
+}));
+
 jest.mock("@/lib/api/asset");
 const mockedCreateSymbol = jest.mocked(assetApiModule.createSymbol);
 
 const mockedUseSymbolSearch = jest.mocked(useAssetsHook.useSymbolSearch);
 const mockedUseCreateUserAsset = jest.mocked(useAssetsHook.useCreateUserAsset);
+const mockedUseCreateTransaction = jest.mocked(
+  useTransactionsHook.useCreateTransaction,
+);
 
 const fakeSymbol: AssetSymbolResponse = {
   id: 1,
@@ -35,7 +44,16 @@ const fakeSymbol: AssetSymbolResponse = {
   updatedAt: "2024-01-01T00:00:00Z",
 };
 
-const mockCreateMutate = jest.fn();
+const fakeUserAsset: UserAssetResponse = {
+  id: 10,
+  userId: 1,
+  assetSymbol: fakeSymbol,
+  memo: null,
+  createdAt: "2024-01-01T00:00:00Z",
+};
+
+const mockCreateAssetMutate = jest.fn();
+const mockCreateTxMutate = jest.fn();
 
 function makeWrapper() {
   const queryClient = new QueryClient({
@@ -61,13 +79,13 @@ function setupSearchMock(data: AssetSymbolResponse[] = []) {
   } as unknown as ReturnType<typeof useAssetsHook.useSymbolSearch>);
 }
 
-function setupCreateMock(opts: {
+function setupCreateAssetMock(opts: {
   isPending?: boolean;
   isError?: boolean;
   error?: Error | null;
 } = {}) {
   mockedUseCreateUserAsset.mockReturnValue({
-    mutate: mockCreateMutate,
+    mutate: mockCreateAssetMutate,
     isPending: opts.isPending ?? false,
     isSuccess: false,
     isError: opts.isError ?? false,
@@ -75,11 +93,22 @@ function setupCreateMock(opts: {
   } as unknown as ReturnType<typeof useAssetsHook.useCreateUserAsset>);
 }
 
+function setupCreateTxMock() {
+  mockedUseCreateTransaction.mockReturnValue({
+    mutate: mockCreateTxMutate,
+    isPending: false,
+    isSuccess: false,
+    isError: false,
+    error: null,
+  } as unknown as ReturnType<typeof useTransactionsHook.useCreateTransaction>);
+}
+
 describe("AssetAddFlow", () => {
   beforeEach(() => {
     jest.clearAllMocks();
     setupSearchMock();
-    setupCreateMock();
+    setupCreateAssetMock();
+    setupCreateTxMock();
   });
 
   describe("Step 1 — 심볼 검색", () => {
@@ -192,7 +221,6 @@ describe("AssetAddFlow", () => {
     });
 
     it("심볼 등록 409 에러 시 '이미 등록된 심볼입니다' 에러가 표시된다", async () => {
-      // createSymbol 은 409 시 ApiError { status: 409 } 형태를 throw 함
       const conflictErr = { status: 409, detail: "이미 등록된 심볼입니다." };
       mockedCreateSymbol.mockRejectedValueOnce(conflictErr);
       const user = userEvent.setup();
@@ -308,31 +336,26 @@ describe("AssetAddFlow", () => {
       return user;
     }
 
-    it("등록 버튼 클릭 시 createMutation.mutate 가 호출된다", async () => {
+    it("'첫 거래 기록 건너뛰기' 체크 후 제출 시 assetMutate 만 호출된다", async () => {
       const user = await goToStep2();
 
+      await user.click(screen.getByLabelText("첫 거래 기록 건너뛰기"));
       await user.click(
         screen.getByRole("button", { name: /보유 자산으로 등록/ }),
       );
 
-      expect(mockCreateMutate).toHaveBeenCalledWith({
-        assetSymbolId: 1,
-        memo: null,
-      });
+      expect(mockCreateAssetMutate).toHaveBeenCalledWith(
+        { assetSymbolId: 1, memo: null },
+      );
+      expect(mockCreateTxMutate).not.toHaveBeenCalled();
     });
 
-    it("memo 입력 후 등록 시 memo 값이 전달된다", async () => {
-      const user = await goToStep2();
+    it("첫 거래 기록 필드들이 기본으로 표시된다", async () => {
+      await goToStep2();
 
-      await user.type(screen.getByLabelText("메모 (선택)"), "장기 보유");
-      await user.click(
-        screen.getByRole("button", { name: /보유 자산으로 등록/ }),
-      );
-
-      expect(mockCreateMutate).toHaveBeenCalledWith({
-        assetSymbolId: 1,
-        memo: "장기 보유",
-      });
+      expect(screen.getByLabelText("거래 수량")).toBeInTheDocument();
+      expect(screen.getByLabelText("매수 단가")).toBeInTheDocument();
+      expect(screen.getByLabelText("매수일")).toBeInTheDocument();
     });
 
     it("돌아가기 버튼 클릭 시 Step 1 로 복귀한다", async () => {
@@ -348,19 +371,61 @@ describe("AssetAddFlow", () => {
     });
 
     it("pending 중 버튼 텍스트가 '등록 중...' 이고 disabled 된다", async () => {
-      // Step 2 이동 후 pending 상태 적용
-      setupCreateMock({ isPending: true });
+      setupCreateAssetMock({ isPending: true });
       await goToStep2();
 
       const submitBtn = screen.getByRole("button", { name: /등록/ });
       expect(submitBtn).toBeDisabled();
+    });
+
+    it("첫 거래 건너뛰기 + 잘못된 수량으로 제출 시 에러가 표시된다", async () => {
+      const user = await goToStep2();
+
+      // 체크박스 해제 (기본 false 상태), 수량은 비워두고 제출
+      await user.click(
+        screen.getByRole("button", { name: /보유 자산으로 등록/ }),
+      );
+
+      await waitFor(() => {
+        expect(screen.getAllByRole("alert").length).toBeGreaterThan(0);
+      });
+    });
+
+    it("Step 2 — 자산 등록 + 첫 거래 성공 플로우: createAsset → createTransaction 순차 호출", async () => {
+      // mockCreateAssetMutate 가 onSuccess 콜백을 즉시 호출하도록 설정
+      mockCreateAssetMutate.mockImplementation(
+        (_input: unknown, callbacks: { onSuccess?: (data: UserAssetResponse) => void }) => {
+          callbacks?.onSuccess?.(fakeUserAsset);
+        },
+      );
+
+      const user = await goToStep2();
+
+      await user.type(screen.getByLabelText("거래 수량"), "1.5");
+      await user.type(screen.getByLabelText("매수 단가"), "50000");
+
+      await user.click(
+        screen.getByRole("button", { name: /보유 자산으로 등록/ }),
+      );
+
+      await waitFor(() => {
+        expect(mockCreateAssetMutate).toHaveBeenCalled();
+      });
+
+      // createTransaction 이 userAsset.id 로 호출됨
+      await waitFor(() => {
+        expect(mockCreateTxMutate).toHaveBeenCalledWith(
+          expect.objectContaining({ userAssetId: 10 }),
+          expect.any(Object),
+        );
+      });
     });
   });
 
   describe("Step 2 — 에러 표시", () => {
     async function goToStep2WithError(error: Error) {
       setupSearchMock([fakeSymbol]);
-      setupCreateMock({ isError: true, error });
+      setupCreateAssetMock({ isError: true, error });
       const user = userEvent.setup();
       const { Wrapper } = makeWrapper();
       render(<AssetAddFlow />, { wrapper: Wrapper });
@@ -377,9 +442,6 @@ describe("AssetAddFlow", () => {
         expect(screen.getByText("2. 자산 등록 확정")).toBeInTheDocument();
       });
 
-      await user.click(
-        screen.getByRole("button", { name: /보유 자산으로 등록/ }),
-      );
       return user;
     }
 

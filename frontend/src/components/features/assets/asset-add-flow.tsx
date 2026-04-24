@@ -1,8 +1,12 @@
 "use client";
 
-import { useReducer } from "react";
+import { useReducer, useState } from "react";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
 import { type AxiosError } from "axios";
 import { useCreateUserAsset } from "@/hooks/use-assets";
+import { useCreateTransaction } from "@/hooks/use-transactions";
+import { transactionCreateSchema, type TransactionCreateInput } from "@/lib/schemas/transaction";
 import { SymbolSearch } from "./symbol-search";
 import { SymbolCreateForm } from "./symbol-create-form";
 import { AssetTypeBadge } from "./asset-type-badge";
@@ -62,7 +66,24 @@ interface ConfirmStepProps {
 }
 
 function ConfirmStep({ symbol, onBack }: ConfirmStepProps) {
-  const createMutation = useCreateUserAsset();
+  const createAssetMutation = useCreateUserAsset();
+  const createTransactionMutation = useCreateTransaction();
+  const [txError, setTxError] = useState<string | null>(null);
+  const [skipTransaction, setSkipTransaction] = useState(false);
+
+  // Used only to access the zodResolver — actual submission is handled manually
+  // to allow sequential asset-create → transaction-create flow.
+  const _txForm = useForm<TransactionCreateInput>({
+    resolver: zodResolver(transactionCreateSchema),
+    defaultValues: {
+      type: "buy",
+      quantity: "",
+      price: "",
+      tradedAt: new Date(),
+      memo: null,
+    },
+  });
+  void _txForm;
 
   function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -70,17 +91,73 @@ function ConfirmStep({ symbol, onBack }: ConfirmStepProps) {
     const memoValue = (formData.get("memo") as string | null) ?? "";
     const memo = memoValue.trim() === "" ? null : memoValue.trim();
 
-    createMutation.mutate({ assetSymbolId: symbol.id, memo });
+    if (skipTransaction) {
+      createAssetMutation.mutate({ assetSymbolId: symbol.id, memo });
+      return;
+    }
+
+    // Validate transaction fields manually before mutating
+    const quantity = (formData.get("quantity") as string | null) ?? "";
+    const price = (formData.get("price") as string | null) ?? "";
+    const tradedAtStr = (formData.get("tradedAt") as string | null) ?? "";
+    const tradedAt = tradedAtStr ? new Date(tradedAtStr) : new Date();
+    const txMemoValue = (formData.get("txMemo") as string | null) ?? "";
+    const txMemo = txMemoValue.trim() === "" ? null : txMemoValue.trim();
+
+    const txParseResult = transactionCreateSchema.safeParse({
+      type: "buy",
+      quantity,
+      price,
+      tradedAt,
+      memo: txMemo,
+    });
+
+    if (!txParseResult.success) {
+      const firstError = txParseResult.error.errors[0];
+      setTxError(firstError?.message ?? "거래 정보를 확인하세요");
+      return;
+    }
+
+    setTxError(null);
+    const txData = txParseResult.data;
+
+    createAssetMutation.mutate(
+      { assetSymbolId: symbol.id, memo },
+      {
+        onSuccess: (userAsset) => {
+          createTransactionMutation.mutate(
+            { userAssetId: userAsset.id, data: txData },
+            {
+              onError: () => {
+                setTxError(
+                  `자산은 생성됐으나 거래 기록 실패 — 자산 상세(ID: ${userAsset.id})에서 다시 추가하세요`,
+                );
+              },
+            },
+          );
+        },
+      },
+    );
   }
 
-  const errorMessage = (() => {
-    if (!createMutation.isError) return null;
-    const axiosErr = createMutation.error as AxiosError<{ detail: string }>;
+  const assetErrorMessage = (() => {
+    if (!createAssetMutation.isError) return null;
+    const axiosErr = createAssetMutation.error as AxiosError<{ detail: string }>;
     const status = axiosErr.response?.status;
     if (status === 409) return "이미 등록된 자산입니다.";
     if (status === 404) return "심볼을 다시 선택하세요.";
     return axiosErr.response?.data?.detail ?? "자산 등록에 실패했습니다.";
   })();
+
+  const isPending =
+    createAssetMutation.isPending || createTransactionMutation.isPending;
+
+  const today = new Date();
+  const todayLocal = new Date(
+    today.getTime() - today.getTimezoneOffset() * 60000,
+  )
+    .toISOString()
+    .slice(0, 16);
 
   return (
     <div className="space-y-4">
@@ -118,9 +195,9 @@ function ConfirmStep({ symbol, onBack }: ConfirmStepProps) {
       </Card>
 
       <form onSubmit={handleSubmit} className="space-y-4" noValidate>
-        {errorMessage && (
+        {assetErrorMessage && (
           <p role="alert" className="text-sm font-medium text-destructive">
-            {errorMessage}
+            {assetErrorMessage}
           </p>
         )}
 
@@ -134,13 +211,89 @@ function ConfirmStep({ symbol, onBack }: ConfirmStepProps) {
           />
         </div>
 
+        <div className="flex items-center gap-2">
+          <input
+            type="checkbox"
+            id="skipTransaction"
+            name="skipTransaction"
+            checked={skipTransaction}
+            onChange={(e) => setSkipTransaction(e.target.checked)}
+            className="h-4 w-4 rounded border border-input"
+          />
+          <Label htmlFor="skipTransaction" className="cursor-pointer font-normal">
+            첫 거래 기록 건너뛰기
+          </Label>
+        </div>
+
+        {!skipTransaction && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">첫 거래 정보</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {txError && (
+                <p role="alert" className="text-sm font-medium text-destructive">
+                  {txError}
+                </p>
+              )}
+
+              <div className="space-y-2">
+                <Label htmlFor="quantity">수량</Label>
+                <Input
+                  id="quantity"
+                  name="quantity"
+                  type="text"
+                  inputMode="decimal"
+                  placeholder="예: 1.5"
+                  aria-label="거래 수량"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="price">매수 단가</Label>
+                <Input
+                  id="price"
+                  name="price"
+                  type="text"
+                  inputMode="decimal"
+                  placeholder="예: 50000"
+                  aria-label="매수 단가"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="tradedAt">매수일</Label>
+                <Input
+                  id="tradedAt"
+                  name="tradedAt"
+                  type="datetime-local"
+                  defaultValue={todayLocal}
+                  max={todayLocal}
+                  aria-label="매수일"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="txMemo">거래 메모 (선택)</Label>
+                <Input
+                  id="txMemo"
+                  name="txMemo"
+                  placeholder="거래 관련 메모..."
+                  maxLength={255}
+                  aria-label="거래 메모"
+                />
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
         <Button
           type="submit"
           className="w-full"
-          disabled={createMutation.isPending}
-          aria-busy={createMutation.isPending}
+          disabled={isPending}
+          aria-busy={isPending}
         >
-          {createMutation.isPending ? "등록 중..." : "보유 자산으로 등록"}
+          {isPending ? "등록 중..." : "보유 자산으로 등록"}
         </Button>
       </form>
     </div>

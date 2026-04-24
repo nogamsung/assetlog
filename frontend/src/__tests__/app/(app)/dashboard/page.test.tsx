@@ -1,6 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import { DashboardView } from "@/components/features/portfolio/dashboard-view";
 import * as usePortfolioModule from "@/hooks/use-portfolio";
+import * as usePortfolioHistoryModule from "@/hooks/use-portfolio-history";
 import type { PortfolioSummary, HoldingResponse } from "@/types/portfolio";
 
 const mockPush = jest.fn();
@@ -9,9 +10,33 @@ jest.mock("next/navigation", () => ({
 }));
 
 jest.mock("@/hooks/use-portfolio");
+jest.mock("@/hooks/use-portfolio-history");
+
+// recharts 는 ResizeObserver / SVG 처리가 필요하므로 모킹
+jest.mock("recharts", () => {
+  const OriginalRecharts = jest.requireActual<typeof import("recharts")>("recharts");
+  return {
+    ...OriginalRecharts,
+    ResponsiveContainer: ({
+      children,
+    }: {
+      children: React.ReactNode;
+    }) => <div data-testid="responsive-container">{children}</div>,
+    LineChart: ({ children }: { children: React.ReactNode }) => (
+      <div data-testid="line-chart">{children}</div>
+    ),
+    Line: () => <div data-testid="line" />,
+    XAxis: () => <div data-testid="x-axis" />,
+    YAxis: () => <div data-testid="y-axis" />,
+    Tooltip: () => <div data-testid="tooltip" />,
+  };
+});
 
 const mockUseSummary = jest.mocked(usePortfolioModule.usePortfolioSummary);
 const mockUseHoldings = jest.mocked(usePortfolioModule.usePortfolioHoldings);
+const mockUsePortfolioHistory = jest.mocked(
+  usePortfolioHistoryModule.usePortfolioHistory,
+);
 
 const fakeSummary: PortfolioSummary = {
   totalValueByCurrency: { KRW: "12500000.00" },
@@ -67,6 +92,15 @@ function setupMocks(
     error: null,
     ...holdingsState,
   } as ReturnType<typeof usePortfolioModule.usePortfolioHoldings>);
+
+  // 기본: 차트는 빈 상태
+  mockUsePortfolioHistory.mockReturnValue({
+    data: undefined,
+    isLoading: false,
+    isError: false,
+    error: null,
+    isSuccess: false,
+  } as unknown as ReturnType<typeof usePortfolioHistoryModule.usePortfolioHistory>);
 }
 
 describe("DashboardView", () => {
@@ -109,6 +143,8 @@ describe("DashboardView", () => {
     expect(screen.getByText("총손익")).toBeInTheDocument();
     // 테이블
     expect(screen.getByText("005930")).toBeInTheDocument();
+    // 차트 영역
+    expect(screen.getByRole("img", { name: "포트폴리오 시계열 차트" })).toBeInTheDocument();
   });
 
   it("pending 100% 상태에서도 정상 렌더된다", () => {

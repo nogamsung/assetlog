@@ -1,0 +1,91 @@
+import { apiClient } from "@/lib/api-client";
+import { snakeToCamel } from "@/lib/case";
+import type { TransactionResponse, UserAssetSummaryResponse } from "@/types/transaction";
+import type { TransactionCreateInput } from "@/lib/schemas/transaction";
+
+// ── Raw shapes (snake_case from backend) ──────────────────────────────────────
+
+interface RawTransactionResponse {
+  id: number;
+  user_asset_id: number;
+  type: "buy" | "sell";
+  quantity: string;
+  price: string;
+  traded_at: string;
+  memo: string | null;
+  created_at: string;
+}
+
+interface RawUserAssetSummaryResponse {
+  user_asset_id: number;
+  total_quantity: string;
+  avg_cost: string;
+  cost_basis: string;
+  transaction_count: number;
+}
+
+// ── Converters ─────────────────────────────────────────────────────────────────
+
+function toTransaction(raw: RawTransactionResponse): TransactionResponse {
+  return snakeToCamel(raw) as unknown as TransactionResponse;
+}
+
+function toUserAssetSummary(raw: RawUserAssetSummaryResponse): UserAssetSummaryResponse {
+  return snakeToCamel(raw) as unknown as UserAssetSummaryResponse;
+}
+
+// ── Public API helpers ─────────────────────────────────────────────────────────
+
+export interface ListTransactionsParams {
+  limit?: number;
+  offset?: number;
+}
+
+export async function createTransaction(
+  userAssetId: number,
+  data: TransactionCreateInput,
+): Promise<TransactionResponse> {
+  const payload = {
+    type: data.type,
+    quantity: data.quantity,
+    price: data.price,
+    traded_at: data.tradedAt.toISOString(),
+    memo: data.memo ?? null,
+  };
+  const response = await apiClient.post<RawTransactionResponse>(
+    `/api/user-assets/${userAssetId}/transactions`,
+    payload,
+  );
+  return toTransaction(response.data);
+}
+
+export async function listTransactions(
+  userAssetId: number,
+  params: ListTransactionsParams = {},
+): Promise<TransactionResponse[]> {
+  const query: Record<string, number> = {};
+  if (params.limit !== undefined) query["limit"] = params.limit;
+  if (params.offset !== undefined) query["offset"] = params.offset;
+
+  const response = await apiClient.get<RawTransactionResponse[]>(
+    `/api/user-assets/${userAssetId}/transactions`,
+    { params: query },
+  );
+  return response.data.map(toTransaction);
+}
+
+export async function deleteTransaction(
+  userAssetId: number,
+  txId: number,
+): Promise<void> {
+  await apiClient.delete(`/api/user-assets/${userAssetId}/transactions/${txId}`);
+}
+
+export async function getAssetSummary(
+  userAssetId: number,
+): Promise<UserAssetSummaryResponse> {
+  const response = await apiClient.get<RawUserAssetSummaryResponse>(
+    `/api/user-assets/${userAssetId}/summary`,
+  );
+  return toUserAssetSummary(response.data);
+}
