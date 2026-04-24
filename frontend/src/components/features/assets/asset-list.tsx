@@ -2,10 +2,12 @@
 
 import Link from "next/link";
 import { type AxiosError } from "axios";
-import { useUserAssets, useDeleteUserAsset } from "@/hooks/use-assets";
+import { usePortfolioHoldings } from "@/hooks/use-portfolio";
+import { useDeleteUserAsset } from "@/hooks/use-assets";
 import { AssetTypeBadge } from "./asset-type-badge";
 import { Button } from "@/components/ui/button";
 import { Trash2, Plus } from "lucide-react";
+import { formatCurrency, formatQuantity } from "@/lib/format";
 
 function AssetListSkeleton() {
   return (
@@ -13,7 +15,7 @@ function AssetListSkeleton() {
       {[1, 2, 3].map((i) => (
         <div
           key={i}
-          className="h-16 rounded-lg border bg-muted/40 animate-pulse"
+          className="h-20 rounded-lg border bg-muted/40 animate-pulse"
         />
       ))}
     </div>
@@ -36,7 +38,7 @@ function EmptyState() {
 }
 
 export function AssetList() {
-  const { data: assets, isLoading, isError, error } = useUserAssets();
+  const { data: holdings, isLoading, isError, error } = usePortfolioHoldings();
   const deleteMutation = useDeleteUserAsset();
 
   if (isLoading) return <AssetListSkeleton />;
@@ -52,7 +54,7 @@ export function AssetList() {
     );
   }
 
-  if (!assets || assets.length === 0) return <EmptyState />;
+  if (!holdings || holdings.length === 0) return <EmptyState />;
 
   function handleDelete(id: number, symbolName: string) {
     if (window.confirm(`"${symbolName}" 을(를) 보유 자산에서 삭제하시겠습니까?`)) {
@@ -62,41 +64,74 @@ export function AssetList() {
 
   return (
     <div className="space-y-2">
-      {assets.map((asset) => (
-        <div
-          key={asset.id}
-          className="flex items-center justify-between rounded-lg border bg-card px-4 py-3 shadow-sm"
-        >
-          <div className="flex items-center gap-4">
-            <div>
-              <p className="font-semibold text-sm">
-                {asset.assetSymbol.symbol}
-              </p>
-              <p className="text-xs text-muted-foreground">
-                {asset.assetSymbol.name}
-              </p>
-            </div>
-            <AssetTypeBadge assetType={asset.assetSymbol.assetType} />
-            <span className="text-xs text-muted-foreground hidden sm:inline">
-              {asset.assetSymbol.exchange}
-            </span>
-            <span className="text-xs text-muted-foreground hidden sm:inline">
-              {asset.assetSymbol.currency}
-            </span>
-          </div>
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() =>
-              handleDelete(asset.id, asset.assetSymbol.symbol)
-            }
-            disabled={deleteMutation.isPending}
-            aria-label={`${asset.assetSymbol.symbol} 삭제`}
+      {holdings.map((holding) => {
+        const { assetSymbol, userAssetId } = holding;
+        const currency = assetSymbol.currency;
+
+        return (
+          <div
+            key={userAssetId}
+            className="flex items-center justify-between rounded-lg border bg-card px-4 py-3 shadow-sm"
           >
-            <Trash2 className="h-4 w-4 text-destructive" aria-hidden="true" />
-          </Button>
-        </div>
-      ))}
+            <Link
+              href={`/assets/${userAssetId}`}
+              className="flex flex-1 items-center gap-4 min-w-0"
+              aria-label={`${assetSymbol.symbol} 상세 보기`}
+            >
+              <div className="min-w-0">
+                <p className="font-semibold text-sm">{assetSymbol.symbol}</p>
+                <p className="text-xs text-muted-foreground truncate">
+                  {assetSymbol.name}
+                </p>
+              </div>
+              <AssetTypeBadge assetType={assetSymbol.assetType} />
+              <div className="hidden sm:flex items-center gap-4 text-xs text-muted-foreground">
+                <span>{assetSymbol.exchange}</span>
+                <span>{assetSymbol.currency}</span>
+              </div>
+              <div className="hidden md:flex items-center gap-4 text-xs ml-auto mr-4">
+                <div className="text-right">
+                  <p className="text-muted-foreground">수량</p>
+                  <p className="font-medium">
+                    {formatQuantity(holding.quantity, assetSymbol.assetType)}
+                  </p>
+                </div>
+                <div className="text-right">
+                  <p className="text-muted-foreground">평단가</p>
+                  <p className="font-medium">
+                    {formatCurrency(holding.avgCost, currency)}
+                  </p>
+                </div>
+                <div className="text-right">
+                  <p className="text-muted-foreground">현재가</p>
+                  <p className="font-medium">
+                    {holding.latestPrice !== null
+                      ? formatCurrency(holding.latestPrice, currency)
+                      : "—"}
+                  </p>
+                </div>
+                <div className="text-right">
+                  <p className="text-muted-foreground">평가액</p>
+                  <p className="font-medium">
+                    {holding.latestValue !== null
+                      ? formatCurrency(holding.latestValue, currency)
+                      : "—"}
+                  </p>
+                </div>
+              </div>
+            </Link>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => handleDelete(userAssetId, assetSymbol.symbol)}
+              disabled={deleteMutation.isPending}
+              aria-label={`${assetSymbol.symbol} 삭제`}
+            >
+              <Trash2 className="h-4 w-4 text-destructive" aria-hidden="true" />
+            </Button>
+          </div>
+        );
+      })}
     </div>
   );
 }

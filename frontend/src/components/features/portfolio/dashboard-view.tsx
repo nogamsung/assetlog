@@ -5,6 +5,7 @@ import { usePortfolioSummary, usePortfolioHoldings } from "@/hooks/use-portfolio
 import { SummaryCards } from "./summary-cards";
 import { AllocationDonut } from "./allocation-donut";
 import { HoldingsTable } from "./holdings-table";
+import { PortfolioHistoryChart } from "./portfolio-history-chart";
 
 function DashboardSkeleton() {
   return (
@@ -68,10 +69,18 @@ export function DashboardView() {
     return <EmptyPortfolio />;
   }
 
+  // 가장 큰 보유액 통화 결정 (차트 기본 currency)
+  const totalValueByCurrency = summary.totalValueByCurrency;
+  const defaultCurrency =
+    Object.entries(totalValueByCurrency).sort(
+      ([, a], [, b]) => Number(b) - Number(a),
+    )[0]?.[0] ?? "KRW";
+
   return (
     <div className="space-y-6">
       <SummaryCards summary={summary} />
       <AllocationDonut allocation={summary.allocation} />
+      <PortfolioHistoryChart currency={defaultCurrency} />
       <HoldingsTable holdings={holdings} />
     </div>
   );
