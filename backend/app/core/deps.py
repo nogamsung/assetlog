@@ -11,10 +11,12 @@ from app.db.base import get_db_session
 from app.exceptions import UnauthorizedError
 from app.models.user import User
 from app.repositories.asset_symbol import AssetSymbolRepository
+from app.repositories.portfolio import PortfolioRepository
 from app.repositories.transaction import TransactionRepository
 from app.repositories.user import UserRepository
 from app.repositories.user_asset import UserAssetRepository
 from app.services.auth import AuthService
+from app.services.portfolio import PortfolioService
 from app.services.symbol import SymbolService
 from app.services.transaction import TransactionService
 from app.services.user_asset import UserAssetService
@@ -99,6 +101,22 @@ def get_transaction_service(
 
 
 TransactionServiceDep = Annotated[TransactionService, Depends(get_transaction_service)]
+
+
+def get_portfolio_repository(session: DbSession) -> PortfolioRepository:
+    """Inject a PortfolioRepository bound to the current request session."""
+    return PortfolioRepository(session)
+
+
+PortfolioRepositoryDep = Annotated[PortfolioRepository, Depends(get_portfolio_repository)]
+
+
+def get_portfolio_service(repo: PortfolioRepositoryDep) -> PortfolioService:
+    """Inject a PortfolioService bound to the current request session."""
+    return PortfolioService(repo)
+
+
+PortfolioServiceDep = Annotated[PortfolioService, Depends(get_portfolio_service)]
 
 # ---------------------------------------------------------------------------
 # Current-user guard

@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 from datetime import datetime
+from decimal import Decimal
 
-from sqlalchemy import DateTime, Index, String, UniqueConstraint, func
+from sqlalchemy import DateTime, Index, Numeric, String, UniqueConstraint, func
 from sqlalchemy import Enum as SqlEnum
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -29,6 +30,7 @@ class AssetSymbol(Base):
         ),
         Index("ix_asset_symbols_symbol", "symbol"),
         Index("ix_asset_symbols_type_exchange", "asset_type", "exchange"),
+        Index("ix_asset_symbols_last_refreshed", "last_price_refreshed_at"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
@@ -40,6 +42,10 @@ class AssetSymbol(Base):
     exchange: Mapped[str] = mapped_column(String(50), nullable=False)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     currency: Mapped[str] = mapped_column(String(10), nullable=False)
+    last_price: Mapped[Decimal | None] = mapped_column(Numeric(20, 6), nullable=True)
+    last_price_refreshed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),
