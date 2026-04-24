@@ -9,11 +9,14 @@ from datetime import UTC, datetime
 from decimal import Decimal
 
 from app.adapters.base import _wrap_failure
-from app.adapters.normalize import normalize_us_stock_symbol
+from app.adapters.normalize import normalize_us_exchange_code, normalize_us_stock_symbol  # MODIFIED
 from app.domain.asset_type import AssetType
 from app.domain.price_refresh import FetchBatchResult, FetchFailure, PriceQuote, SymbolRef
+from app.domain.symbol_search import SymbolCandidate  # ADDED
 
 logger = logging.getLogger("app.adapters.us_stock")
+
+_MISSING = object()  # sentinel for negative cache entries
 
 
 def _fetch_prices_sync(tickers: list[str]) -> dict[str, Decimal]:
@@ -72,6 +75,34 @@ def _fetch_prices_sync(tickers: list[str]) -> dict[str, Decimal]:
     return prices
 
 
+def _fetch_info_sync(ticker: str) -> SymbolCandidate | None:  # ADDED
+    """Fetch yfinance Ticker.info for *ticker* (sync, runs in thread pool).
+
+    Args:
+        ticker: Upper-cased, normalised US ticker symbol.
+
+    Returns:
+        SymbolCandidate if info is usable, None otherwise.
+    """
+    import yfinance as yf  # noqa: PLC0415
+
+    raw_info = yf.Ticker(ticker).info
+    info: dict[str, object] = raw_info if isinstance(raw_info, dict) else {}
+    short_name = info.get("shortName") or info.get("longName")
+    if not short_name:
+        return None
+    raw_exchange = str(info.get("exchange", "")) or "US"
+    exchange = normalize_us_exchange_code(raw_exchange)
+    currency = str(info.get("currency") or "USD")
+    return SymbolCandidate(
+        asset_type=AssetType.US_STOCK,
+        symbol=ticker,
+        name=str(short_name),
+        exchange=exchange,
+        currency=currency,
+    )
+
+
 class UsStockAdapter:
     """Fetch latest prices for US-listed equities and ETFs via yfinance.
 
@@ -80,6 +111,11 @@ class UsStockAdapter:
     """
 
     asset_type: AssetType = AssetType.US_STOCK
+
+    def __init__(self) -> None:  # ADDED
+        # Positive cache: ticker -> SymbolCandidate
+        # Negative cache: ticker -> _MISSING  (avoids repeated failed lookups)
+        self._info_cache: dict[str, SymbolCandidate | object] = {}
 
     async def fetch_batch(
         self,
@@ -150,3 +186,51 @@ class UsStockAdapter:
                 )
 
         return FetchBatchResult(successes=successes, failures=failures)
+
+    async def search_symbols(self, query: str, limit: int) -> list[SymbolCandidate]:  # ADDED
+        """Search US stocks by exact-match info lookup via yfinance.
+
+        Strategy: exact symbol match only (yfinance does not support fuzzy search).
+        Result is cached per-ticker (positive + negative TTL handled by instance lifetime).
+
+        Note: This method logs a ``us_stock_search_exact_only`` event since it
+        can only return at most 1 candidate per query.
+
+        Args:
+            query: User query string (pre-stripped by caller).
+            limit: Maximum number of results (only 1 ever returned).
+
+        Returns:
+            List with at most 1 SymbolCandidate.
+        """
+        norm = normalize_us_stock_symbol(query)
+        logger.debug(
+            "us_stock search (exact only)",
+            extra={"event": "us_stock_search_exact_only", "ticker": norm},
+        )
+
+        cached = self._info_cache.get(norm)
+        if cached is _MISSING:
+            return []
+        if isinstance(cached, SymbolCandidate):
+            return [cached]
+
+        # Not in cache — fetch from yfinance.
+        try:
+            candidate = await asyncio.to_thread(_fetch_info_sync, norm)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "us_stock info fetch failed for %s: %s",
+                norm,
+                exc,
+                extra={"event": "us_stock_info_fetch_fail", "ticker": norm},
+            )
+            self._info_cache[norm] = _MISSING
+            return []
+
+        if candidate is None:
+            self._info_cache[norm] = _MISSING
+            return []
+
+        self._info_cache[norm] = candidate
+        return [candidate]

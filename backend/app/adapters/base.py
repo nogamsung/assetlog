@@ -7,6 +7,30 @@ from typing import Protocol, runtime_checkable
 
 from app.domain.asset_type import AssetType
 from app.domain.price_refresh import FetchBatchResult, FetchFailure, SymbolRef
+from app.domain.symbol_search import SymbolCandidate  # ADDED
+
+
+@runtime_checkable
+class SymbolSearchAdapter(Protocol):  # ADDED
+    """Protocol for adapters that support symbol search.
+
+    Implementations must be safe to use concurrently across multiple requests.
+    The internal cache handles single-flight loading.
+    """
+
+    asset_type: AssetType
+
+    async def search_symbols(self, query: str, limit: int) -> list[SymbolCandidate]:
+        """Search for symbol candidates matching *query*.
+
+        Args:
+            query: User-supplied search string (already stripped by caller).
+            limit: Maximum number of candidates to return.
+
+        Returns:
+            List of SymbolCandidate, possibly empty on failure.
+        """
+        ...
 
 
 def _wrap_failure(ref: SymbolRef, exc: BaseException) -> FetchFailure:

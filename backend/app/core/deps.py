@@ -8,7 +8,9 @@ from fastapi import Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.adapters import AdapterRegistry, build_default_adapter_registry
+from app.adapters.base import SymbolSearchAdapter  # ADDED
 from app.db.base import get_db_session
+from app.domain.asset_type import AssetType  # ADDED
 from app.exceptions import UnauthorizedError
 from app.models.user import User
 from app.repositories.asset_symbol import AssetSymbolRepository
@@ -71,9 +73,19 @@ def get_auth_service(repo: UserRepositoryDep) -> AuthService:
 AuthServiceDep = Annotated[AuthService, Depends(get_auth_service)]
 
 
-def get_symbol_service(repo: AssetSymbolRepositoryDep) -> SymbolService:
-    """Inject a SymbolService bound to the current request session."""
-    return SymbolService(repo)
+def get_symbol_service(
+    repo: AssetSymbolRepositoryDep,
+    adapter_registry: AdapterRegistryDep,  # ADDED
+) -> SymbolService:
+    """Inject a SymbolService bound to the current request session and adapter registry."""
+    # Build a Mapping[AssetType, SymbolSearchAdapter] from the registry,
+    # filtering to only adapters that satisfy the SymbolSearchAdapter protocol.
+    search_adapters: dict[AssetType, SymbolSearchAdapter] = {}
+    for at in adapter_registry.all_types():
+        adapter = adapter_registry.get(at)
+        if isinstance(adapter, SymbolSearchAdapter):
+            search_adapters[at] = adapter
+    return SymbolService(repo, adapters=search_adapters)  # MODIFIED
 
 
 SymbolServiceDep = Annotated[SymbolService, Depends(get_symbol_service)]
