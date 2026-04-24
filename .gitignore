@@ -24,10 +24,12 @@ out/
 dist/
 build/
 
-# Env
+# Env — never commit secrets. .env.example / .env.local.example are tracked.
 .env
-.env.local
-.env.*.local
+.env.*
+!.env.example
+!.env.local.example
+!.env.*.example
 
 # Claude Code
 .claude/settings.local.json
