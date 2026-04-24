@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+import io
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from typing import Any
 from unittest.mock import AsyncMock
@@ -11,7 +12,11 @@ from httpx import AsyncClient
 
 from app.core.deps import get_current_user, get_transaction_service
 from app.domain.transaction_type import TransactionType
-from app.exceptions import InsufficientHoldingError, NotFoundError  # MODIFIED
+from app.exceptions import (  # MODIFIED
+    CsvImportValidationError,
+    InsufficientHoldingError,
+    NotFoundError,
+)
 from app.main import app
 from app.models.transaction import Transaction
 from app.models.user import User
@@ -451,6 +456,164 @@ class TestUpdateTransaction:  # ADDED
         try:
             response = await async_client.put(
                 "/api/user-assets/1/transactions/0", json=_UPDATE_PAYLOAD
+            )
+            assert response.status_code == 422
+        finally:
+            app.dependency_overrides.pop(get_current_user, None)
+
+
+def _make_import_tx(tx_id: int = 1, user_asset_id: int = 1) -> Transaction:
+    """Build a Transaction row as returned after import."""
+    tx = Transaction(
+        user_asset_id=user_asset_id,
+        type=TransactionType.BUY,
+        quantity=Decimal("1.0"),
+        price=Decimal("50000.0"),
+        traded_at=datetime.now(UTC) - timedelta(hours=1),
+    )
+    tx.id = tx_id
+    tx.memo = None
+    tx.created_at = datetime.now(UTC)
+    tx.updated_at = datetime.now(UTC)
+    return tx
+
+
+def _csv_bytes(
+    rows: list[str],
+    header: str = "type,quantity,price,traded_at,memo",
+) -> bytes:
+    """Build CSV bytes suitable for UploadFile in tests."""
+    content = "\n".join([header] + rows)
+    return content.encode("utf-8")
+
+
+def _past_iso(hours_ago: int = 1) -> str:
+    return (datetime.now(UTC) - timedelta(hours=hours_ago)).isoformat()
+
+
+class TestImportTransactionsCsv:
+    async def test_200_happy_path(self, async_client: AsyncClient) -> None:
+        user = _make_user()
+        mock_service = AsyncMock(spec=TransactionService)
+        imported_tx = _make_import_tx()
+        mock_service.import_csv.return_value = (1, [imported_tx])
+
+        app.dependency_overrides[get_current_user] = lambda: user
+        app.dependency_overrides[get_transaction_service] = lambda: mock_service
+
+        csv_content = _csv_bytes([f"buy,1.0,50000,{_past_iso()},"])
+        try:
+            response = await async_client.post(
+                "/api/user-assets/1/transactions/import",
+                files={"file": ("trades.csv", io.BytesIO(csv_content), "text/csv")},
+            )
+            assert response.status_code == 200
+            body = response.json()
+            assert body["imported_count"] == 1
+            assert isinstance(body["preview"], list)
+            assert len(body["preview"]) == 1
+        finally:
+            app.dependency_overrides.pop(get_current_user, None)
+            app.dependency_overrides.pop(get_transaction_service, None)
+
+    async def test_401_unauthenticated(self, async_client: AsyncClient) -> None:
+        csv_content = _csv_bytes([f"buy,1.0,50000,{_past_iso()},"])
+        response = await async_client.post(
+            "/api/user-assets/1/transactions/import",
+            files={"file": ("trades.csv", io.BytesIO(csv_content), "text/csv")},
+        )
+        assert response.status_code == 401
+
+    async def test_404_user_asset_없음(self, async_client: AsyncClient) -> None:
+        user = _make_user()
+        mock_service = AsyncMock(spec=TransactionService)
+        mock_service.import_csv.side_effect = NotFoundError("not found")
+
+        app.dependency_overrides[get_current_user] = lambda: user
+        app.dependency_overrides[get_transaction_service] = lambda: mock_service
+
+        csv_content = _csv_bytes([f"buy,1.0,50000,{_past_iso()},"])
+        try:
+            response = await async_client.post(
+                "/api/user-assets/999/transactions/import",
+                files={"file": ("trades.csv", io.BytesIO(csv_content), "text/csv")},
+            )
+            assert response.status_code == 404
+        finally:
+            app.dependency_overrides.pop(get_current_user, None)
+            app.dependency_overrides.pop(get_transaction_service, None)
+
+    async def test_413_1MB_초과(self, async_client: AsyncClient) -> None:
+        user = _make_user()
+        app.dependency_overrides[get_current_user] = lambda: user
+
+        # Slightly over 1 MB
+        oversized = b"x" * (1_048_576 + 1)
+        try:
+            response = await async_client.post(
+                "/api/user-assets/1/transactions/import",
+                files={"file": ("big.csv", io.BytesIO(oversized), "text/csv")},
+            )
+            assert response.status_code == 413
+        finally:
+            app.dependency_overrides.pop(get_current_user, None)
+
+    async def test_422_row_errors(self, async_client: AsyncClient) -> None:
+        user = _make_user()
+        mock_service = AsyncMock(spec=TransactionService)
+        mock_service.import_csv.side_effect = CsvImportValidationError(
+            [{"row": 1, "field": "type", "message": "Invalid transaction type."}]
+        )
+
+        app.dependency_overrides[get_current_user] = lambda: user
+        app.dependency_overrides[get_transaction_service] = lambda: mock_service
+
+        csv_content = _csv_bytes([f"INVALID,1.0,50000,{_past_iso()},"])
+        try:
+            response = await async_client.post(
+                "/api/user-assets/1/transactions/import",
+                files={"file": ("trades.csv", io.BytesIO(csv_content), "text/csv")},
+            )
+            assert response.status_code == 422
+            body = response.json()
+            assert "errors" in body
+            assert len(body["errors"]) == 1
+            assert body["errors"][0]["row"] == 1
+        finally:
+            app.dependency_overrides.pop(get_current_user, None)
+            app.dependency_overrides.pop(get_transaction_service, None)
+
+    async def test_빈_CSV_200_imported_count_0(self, async_client: AsyncClient) -> None:
+        user = _make_user()
+        mock_service = AsyncMock(spec=TransactionService)
+        mock_service.import_csv.return_value = (0, [])
+
+        app.dependency_overrides[get_current_user] = lambda: user
+        app.dependency_overrides[get_transaction_service] = lambda: mock_service
+
+        csv_content = b"type,quantity,price,traded_at,memo\n"
+        try:
+            response = await async_client.post(
+                "/api/user-assets/1/transactions/import",
+                files={"file": ("empty.csv", io.BytesIO(csv_content), "text/csv")},
+            )
+            assert response.status_code == 200
+            body = response.json()
+            assert body["imported_count"] == 0
+            assert body["preview"] == []
+        finally:
+            app.dependency_overrides.pop(get_current_user, None)
+            app.dependency_overrides.pop(get_transaction_service, None)
+
+    async def test_user_asset_id_0이면_422(self, async_client: AsyncClient) -> None:
+        user = _make_user()
+        app.dependency_overrides[get_current_user] = lambda: user
+
+        csv_content = _csv_bytes([f"buy,1.0,50000,{_past_iso()},"])
+        try:
+            response = await async_client.post(
+                "/api/user-assets/0/transactions/import",
+                files={"file": ("trades.csv", io.BytesIO(csv_content), "text/csv")},
             )
             assert response.status_code == 422
         finally:

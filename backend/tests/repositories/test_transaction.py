@@ -356,6 +356,65 @@ class TestTransactionUpdate:  # ADDED
         assert result is None
 
 
+class TestListAllForUserAsset:
+    async def test_traded_at_오름차순으로_반환된다(
+        self,
+        db_session: AsyncSession,
+        user_asset_factory: Any,
+        user_factory: Any,
+        asset_symbol_factory: Any,
+    ) -> None:
+        user = await user_factory(email="all_asc@example.com")
+        sym = await asset_symbol_factory(symbol="ALL_ASC_COIN")
+        ua = await user_asset_factory(user=user, asset_symbol=sym)
+
+        repo = TransactionRepository(db_session)
+        # Insert in reverse order — most recent first
+        await repo.create(ua.id, _buy(hours_ago=0))
+        await repo.create(ua.id, _buy(hours_ago=2))
+        await repo.create(ua.id, _buy(hours_ago=1))
+
+        result = await repo.list_all_for_user_asset(ua.id)
+        assert len(result) == 3
+        # Should be ASC (oldest first)
+        assert result[0].traded_at <= result[1].traded_at <= result[2].traded_at
+
+    async def test_다른_user_asset_거래는_포함되지_않는다(
+        self,
+        db_session: AsyncSession,
+        user_asset_factory: Any,
+        user_factory: Any,
+        asset_symbol_factory: Any,
+    ) -> None:
+        user = await user_factory(email="all_iso@example.com")
+        sym1 = await asset_symbol_factory(symbol="ALL_ISO_COIN_A")
+        sym2 = await asset_symbol_factory(symbol="ALL_ISO_COIN_B")
+        ua1 = await user_asset_factory(user=user, asset_symbol=sym1)
+        ua2 = await user_asset_factory(user=user, asset_symbol=sym2)
+
+        repo = TransactionRepository(db_session)
+        await repo.create(ua1.id, _buy())
+        await repo.create(ua2.id, _buy())
+
+        result = await repo.list_all_for_user_asset(ua1.id)
+        assert all(tx.user_asset_id == ua1.id for tx in result)
+
+    async def test_거래_없으면_빈_리스트(
+        self,
+        db_session: AsyncSession,
+        user_asset_factory: Any,
+        user_factory: Any,
+        asset_symbol_factory: Any,
+    ) -> None:
+        user = await user_factory(email="all_empty@example.com")
+        sym = await asset_symbol_factory(symbol="ALL_EMPTY_COIN")
+        ua = await user_asset_factory(user=user, asset_symbol=sym)
+
+        repo = TransactionRepository(db_session)
+        result = await repo.list_all_for_user_asset(ua.id)
+        assert result == []
+
+
 class TestTransactionDelete:
     async def test_삭제하면_True_반환하고_사라진다(
         self,

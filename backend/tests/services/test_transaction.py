@@ -2,16 +2,20 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from typing import Any
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 from app.domain.asset_type import AssetType
 from app.domain.transaction_type import TransactionType
-from app.exceptions import InsufficientHoldingError, NotFoundError  # MODIFIED
+from app.exceptions import (  # MODIFIED
+    CsvImportValidationError,
+    InsufficientHoldingError,
+    NotFoundError,
+)
 from app.models.asset_symbol import AssetSymbol
 from app.models.transaction import Transaction
 from app.models.user_asset import UserAsset
@@ -428,3 +432,268 @@ class TestTransactionServiceListPagination:
 # Helper for type-checking — ensure service does not use Any from mock
 def _check_types(data: Any) -> None:  # noqa: ANN401
     pass
+
+
+# ---------------------------------------------------------------------------
+# Helpers for import_csv tests
+# ---------------------------------------------------------------------------
+
+
+def _make_flushed_tx(
+    tx_id: int = 1,
+    user_asset_id: int = 1,
+    tx_type: TransactionType = TransactionType.BUY,
+    quantity: str = "1.0",
+    price: str = "50000.0",
+    hours_ago: int = 0,
+) -> Transaction:
+    """Build a Transaction instance that mimics a post-flush DB row."""
+    tx = Transaction(
+        user_asset_id=user_asset_id,
+        type=tx_type,
+        quantity=Decimal(quantity),
+        price=Decimal(price),
+        traded_at=datetime.now(UTC) - timedelta(hours=hours_ago),
+    )
+    tx.id = tx_id
+    tx.memo = None
+    tx.created_at = datetime.now(UTC)
+    tx.updated_at = datetime.now(UTC)
+    return tx
+
+
+def _make_import_service(
+    ua: UserAsset | None = None,
+    existing_txs: list[Transaction] | None = None,
+    flushed_txs: list[Transaction] | None = None,
+) -> TransactionService:
+    """Build a TransactionService with mocked repos for import_csv tests.
+
+    The mock session's add_all / flush / refresh are also wired up so that
+    the service can call them without a real DB.
+    """
+    ua_repo = AsyncMock(spec=UserAssetRepository)
+    ua_repo.get_by_id_for_user.return_value = ua
+
+    tx_repo = AsyncMock(spec=TransactionRepository)
+    tx_repo.list_all_for_user_asset.return_value = existing_txs or []
+
+    # Wire up a mock session so add_all/flush/refresh don't fail
+    mock_session = MagicMock()
+    mock_session.add_all = MagicMock()
+    mock_session.flush = AsyncMock()
+
+    flush_counter: list[int] = [0]
+
+    async def _refresh(tx: Transaction) -> None:
+        # After refresh, give the tx an id if not set
+        if not hasattr(tx, "id") or tx.id is None:
+            flush_counter[0] += 1
+            tx.id = flush_counter[0]
+        if not hasattr(tx, "created_at") or tx.created_at is None:
+            tx.created_at = datetime.now(UTC)
+        if not hasattr(tx, "updated_at") or tx.updated_at is None:
+            tx.updated_at = datetime.now(UTC)
+
+    mock_session.refresh = _refresh
+    tx_repo._session = mock_session
+
+    return TransactionService(transaction_repo=tx_repo, user_asset_repo=ua_repo)
+
+
+def _csv(rows: list[str], header: str = "type,quantity,price,traded_at,memo") -> str:
+    """Build a CSV string from a header line and data rows."""
+    return "\n".join([header] + rows)
+
+
+def _past_ts(hours_ago: int = 1) -> str:
+    return (datetime.now(UTC) - timedelta(hours=hours_ago)).isoformat()
+
+
+class TestTransactionServiceImportCsv:
+    async def test_BUY_2행_정상_import(self) -> None:
+        ua = _make_user_asset()
+        svc = _make_import_service(ua=ua)
+
+        csv_text = _csv(
+            [
+                f"buy,1.0,50000,{_past_ts(2)},",
+                f"buy,2.0,51000,{_past_ts(1)},DCA",
+            ]
+        )
+        count, preview = await svc.import_csv(user_id=1, user_asset_id=1, csv_text=csv_text)
+        assert count == 2
+        assert len(preview) <= 10
+
+    async def test_BUY_후_SELL_정상_import(self) -> None:
+        ua = _make_user_asset()
+        svc = _make_import_service(ua=ua)
+
+        csv_text = _csv(
+            [
+                f"buy,5.0,50000,{_past_ts(3)},",
+                f"sell,2.0,55000,{_past_ts(1)},profit",
+            ]
+        )
+        count, preview = await svc.import_csv(user_id=1, user_asset_id=1, csv_text=csv_text)
+        assert count == 2
+
+    async def test_헤더_누락시_CsvImportValidationError(self) -> None:
+        ua = _make_user_asset()
+        svc = _make_import_service(ua=ua)
+
+        # Missing "price" and "memo"
+        csv_text = _csv(
+            [f"buy,1.0,{_past_ts()},"],
+            header="type,quantity,traded_at",
+        )
+        with pytest.raises(CsvImportValidationError) as exc_info:
+            await svc.import_csv(user_id=1, user_asset_id=1, csv_text=csv_text)
+        errs = exc_info.value.errors
+        assert len(errs) == 1
+        assert errs[0]["row"] == 0  # header-level error
+        assert errs[0]["field"] is None
+
+    async def test_잘못된_type_행_인덱스와_함께_422(self) -> None:
+        ua = _make_user_asset()
+        svc = _make_import_service(ua=ua)
+
+        csv_text = _csv(
+            [
+                f"buy,1.0,50000,{_past_ts(2)},",
+                f"UNKNOWN,1.0,50000,{_past_ts(1)},",  # row 2
+            ]
+        )
+        with pytest.raises(CsvImportValidationError) as exc_info:
+            await svc.import_csv(user_id=1, user_asset_id=1, csv_text=csv_text)
+        errs = exc_info.value.errors
+        # At least one error for row 2
+        row_indices = [e["row"] for e in errs]
+        assert 2 in row_indices
+
+    async def test_미래_traded_at은_validator_통해_422(self) -> None:
+        ua = _make_user_asset()
+        svc = _make_import_service(ua=ua)
+
+        future_ts = (datetime.now(UTC) + timedelta(hours=2)).isoformat()
+        csv_text = _csv([f"buy,1.0,50000,{future_ts},"])
+        with pytest.raises(CsvImportValidationError) as exc_info:
+            await svc.import_csv(user_id=1, user_asset_id=1, csv_text=csv_text)
+        errs = exc_info.value.errors
+        assert any(e["row"] == 1 for e in errs)
+
+    async def test_기존_DB_포함_SELL_초과시_CsvImportValidationError(self) -> None:
+        ua = _make_user_asset()
+        # Existing DB has only 1 BUY of qty=1.0
+        existing = [
+            _make_flushed_tx(tx_id=10, quantity="1.0", tx_type=TransactionType.BUY, hours_ago=5)
+        ]
+        svc = _make_import_service(ua=ua, existing_txs=existing)
+
+        # New CSV tries to sell 2.0 — exceeds existing 1.0
+        csv_text = _csv([f"sell,2.0,55000,{_past_ts(1)},"])
+        with pytest.raises(CsvImportValidationError) as exc_info:
+            await svc.import_csv(user_id=1, user_asset_id=1, csv_text=csv_text)
+        errs = exc_info.value.errors
+        assert any("negative" in str(e["message"]).lower() for e in errs)
+
+    async def test_기존_DB_없이_SELL_초과시_CsvImportValidationError(self) -> None:
+        ua = _make_user_asset()
+        svc = _make_import_service(ua=ua, existing_txs=[])
+
+        csv_text = _csv([f"sell,1.0,55000,{_past_ts(1)},"])
+        with pytest.raises(CsvImportValidationError) as exc_info:
+            await svc.import_csv(user_id=1, user_asset_id=1, csv_text=csv_text)
+        errs = exc_info.value.errors
+        assert any("negative" in str(e["message"]).lower() for e in errs)
+
+    async def test_빈_CSV는_imported_count_0(self) -> None:
+        ua = _make_user_asset()
+        svc = _make_import_service(ua=ua)
+
+        # Header only — no data rows
+        csv_text = "type,quantity,price,traded_at,memo\n"
+        count, preview = await svc.import_csv(user_id=1, user_asset_id=1, csv_text=csv_text)
+        assert count == 0
+        assert preview == []
+
+    async def test_한글_type_매수_수락(self) -> None:
+        ua = _make_user_asset()
+        svc = _make_import_service(ua=ua)
+
+        csv_text = _csv([f"매수,1.0,50000,{_past_ts(1)},"])
+        count, _ = await svc.import_csv(user_id=1, user_asset_id=1, csv_text=csv_text)
+        assert count == 1
+
+    async def test_한글_type_매도_수락(self) -> None:
+        ua = _make_user_asset()
+        svc = _make_import_service(ua=ua)
+
+        csv_text = _csv(
+            [
+                f"매수,5.0,50000,{_past_ts(2)},",
+                f"매도,2.0,55000,{_past_ts(1)},",
+            ]
+        )
+        count, _ = await svc.import_csv(user_id=1, user_asset_id=1, csv_text=csv_text)
+        assert count == 2
+
+    async def test_BOM_포함_CSV_수락(self) -> None:
+        ua = _make_user_asset()
+        svc = _make_import_service(ua=ua)
+
+        # UTF-8 BOM prepended to header
+        bom = "﻿"
+        csv_text = bom + _csv([f"buy,1.0,50000,{_past_ts(1)},"])
+        count, _ = await svc.import_csv(user_id=1, user_asset_id=1, csv_text=csv_text)
+        assert count == 1
+
+    async def test_ua_없으면_NotFoundError(self) -> None:
+        svc = _make_import_service(ua=None)
+
+        csv_text = _csv([f"buy,1.0,50000,{_past_ts(1)},"])
+        with pytest.raises(NotFoundError):
+            await svc.import_csv(user_id=1, user_asset_id=999, csv_text=csv_text)
+
+    async def test_preview는_최대_10건(self) -> None:
+        ua = _make_user_asset()
+        svc = _make_import_service(ua=ua)
+
+        rows = [f"buy,1.0,50000,{_past_ts(i + 1)}," for i in range(15)]
+        csv_text = _csv(rows)
+        count, preview = await svc.import_csv(user_id=1, user_asset_id=1, csv_text=csv_text)
+        assert count == 15
+        assert len(preview) == 10
+
+    async def test_컬럼_순서_무관(self) -> None:
+        ua = _make_user_asset()
+        svc = _make_import_service(ua=ua)
+
+        # Different column order from default
+        csv_text = _csv(
+            [f"1.0,50000,{_past_ts(1)},buy,note"],
+            header="quantity,price,traded_at,type,memo",
+        )
+        count, _ = await svc.import_csv(user_id=1, user_asset_id=1, csv_text=csv_text)
+        assert count == 1
+
+    async def test_추가_컬럼_무시(self) -> None:
+        ua = _make_user_asset()
+        svc = _make_import_service(ua=ua)
+
+        csv_text = _csv(
+            [f"buy,1.0,50000,{_past_ts(1)},note,EXTRA"],
+            header="type,quantity,price,traded_at,memo,extra_col",
+        )
+        count, _ = await svc.import_csv(user_id=1, user_asset_id=1, csv_text=csv_text)
+        assert count == 1
+
+    async def test_memo_빈문자열은_None으로_처리(self) -> None:
+        ua = _make_user_asset()
+        svc = _make_import_service(ua=ua)
+
+        csv_text = _csv([f"buy,1.0,50000,{_past_ts(1)},"])
+        count, preview = await svc.import_csv(user_id=1, user_asset_id=1, csv_text=csv_text)
+        assert count == 1
+        # memo should be None (empty string normalised to None)
+        assert preview[0].memo is None

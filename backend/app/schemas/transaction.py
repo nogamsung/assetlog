@@ -10,6 +10,33 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from app.domain.transaction_type import TransactionType
 
 # ---------------------------------------------------------------------------
+# CSV import schemas
+# ---------------------------------------------------------------------------
+
+
+class CsvImportError(BaseModel):
+    """A single per-row validation error produced during CSV import."""
+
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    row: int = Field(
+        ...,
+        description="1-based row index (0 = header row, 1 = first data row)",
+        examples=[1],
+    )
+    field: str | None = Field(
+        default=None,
+        description="CSV column name that caused the error, or null for row-level errors",
+        examples=["traded_at"],
+    )
+    message: str = Field(
+        ...,
+        description="Human-readable error description",
+        examples=["traded_at must not be in the future."],
+    )
+
+
+# ---------------------------------------------------------------------------
 # Transaction schemas
 # ---------------------------------------------------------------------------
 
@@ -90,6 +117,22 @@ class TransactionResponse(BaseModel):
     traded_at: datetime = Field(..., description="UTC datetime of the trade")
     memo: str | None = Field(default=None, description="Personal note", examples=["DCA buy"])
     created_at: datetime = Field(..., description="Record creation timestamp")
+
+
+class TransactionImportResponse(BaseModel):
+    """Response body for the CSV bulk-import endpoint."""
+
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    imported_count: int = Field(
+        ...,
+        description="Number of transactions successfully imported",
+        examples=[5],
+    )
+    preview: list[TransactionResponse] = Field(
+        ...,
+        description="First 10 imported transactions (chronological order)",
+    )
 
 
 # ---------------------------------------------------------------------------

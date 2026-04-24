@@ -70,6 +70,20 @@ class TransactionRepository:
         result = await self._session.execute(stmt)
         return list(result.scalars().all())
 
+    async def list_all_for_user_asset(self, user_asset_id: int) -> list[Transaction]:
+        """Return all transactions for a UserAsset ordered by traded_at ASC.
+
+        Used by import_csv to perform running-balance validation against existing
+        transactions before bulk-inserting new ones.
+        """
+        stmt = (
+            select(Transaction)
+            .where(Transaction.user_asset_id == user_asset_id)
+            .order_by(Transaction.traded_at.asc())
+        )
+        result = await self._session.execute(stmt)
+        return list(result.scalars().all())
+
     async def get_summary(  # MODIFIED — BUY/SELL 분리 집계
         self,
         user_asset_id: int,
