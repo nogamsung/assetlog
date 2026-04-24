@@ -133,3 +133,20 @@ PRD 오픈 이슈 #4 (JWT storage) 해소. 사용자 요청("JWT 는 backend, fr
 - **API 응답**: Pydantic 이 `Decimal` 을 자동으로 JSON string 으로 직렬화 (`"1.5000000000"`). 프론트엔드는 문자열로 받아 BigDecimal 라이브러리 없이 표시만 할 때는 `parseFloat` OK, 계산 개입 시 `decimal.js` 도입 검토.
 
 **관련 파일:** `backend/app/models/transaction.py` (`Numeric`), `backend/app/repositories/transaction.py` (`get_summary` 에서 `Decimal(str(...))`), `backend/app/schemas/transaction.py` (`Decimal` 타입 + Pydantic 자동 직렬화).
+
+---
+
+## 2026-04-24: 로컬 개발 환경 — 네이티브 MySQL + Node 20 + .env.local
+
+**카테고리:** 참고
+
+로컬 실행 구성 확정:
+
+- **MySQL**: 네이티브 설치본(`/usr/local/mysql/bin/mysql`, 8.0.29)을 그대로 사용 — Docker 안 씀. 포트 3306 이미 네이티브가 점유 중이라 `docker-compose.yml` 은 **템플릿으로만** 남김.
+- **DB 이름**: `assetlog_local` (로컬), 접속 유저는 `root`. 비밀번호는 `backend/.env.local` 에만 보관, **절대 커밋 금지**.
+- **Node**: Next.js 16 은 Node ≥20.9.0 필수. 시스템 기본이 18.20.8 이면 `source ~/.nvm/nvm.sh && nvm use 20` 후 `npm install` → `npm run dev`. darwin-arm64 환경에서 Node 18 로 설치한 `node_modules` 는 `@tailwindcss/oxide` native binding 에러 발생 — 반드시 `rm -rf node_modules package-lock.json && nvm use 20 && npm install` 로 재설치.
+- **환경 파일**: `.env.example` / `.env.local.example` 만 추적. `.env`, `.env.*` (`.env.local`, `.env.dev`, `.env.prd` 포함) 는 root + backend `.gitignore` 로 차단. `backend/app/core/config.py` 는 `env_file=(".env", ".env.local")` — 둘 다 있으면 `.env.local` 이 override.
+- **Alembic**: 병렬 슬라이스 두 개가 같은 부모에서 분기해 heads 두 개가 되면 `uv run alembic merge -m "..." HEAD1 HEAD2` 로 merge revision 생성 후 `upgrade head`.
+- **포트**: backend `8000`, frontend `3000`. `frontend/.env.local` 의 `NEXT_PUBLIC_API_URL` 은 `http://localhost:8000` (과거 8080 오타 수정됨).
+
+**기동 순서:** MySQL 기동 확인 → `cd backend && uv run alembic upgrade head` → `uv run uvicorn app.main:app --port 8000 --reload` → 다른 터미널에서 `cd frontend && nvm use 20 && npm run dev`.
