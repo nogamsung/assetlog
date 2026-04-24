@@ -32,14 +32,6 @@ if [[ "$CMD" != *"git push"* ]]; then
   exit 0
 fi
 
-# 수동 우회 — 초기 setup / 긴급 hotfix / 환경 이슈 시 사용
-# 사용: touch .claude/.skip-coverage && git push ... && rm .claude/.skip-coverage
-# ⚠️  상시 사용 금지 — 테스트 없는 push 는 커버리지 게이트의 존재 의의 자체를 훼손
-if [ -f ".claude/.skip-coverage" ] || [ "${CLAUDE_SKIP_COVERAGE:-}" = "1" ]; then
-  echo "[Pre-push] ⚠️  커버리지 게이트 우회됨 (.claude/.skip-coverage 감지) — 테스트 추가 후 파일 제거 필수"
-  exit 0
-fi
-
 THRESHOLD=90
 
 echo ""
