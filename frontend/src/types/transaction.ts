@@ -13,8 +13,13 @@ export interface TransactionResponse {
 
 export interface UserAssetSummaryResponse {
   userAssetId: number;
-  totalQuantity: string;  // Decimal as string
-  avgCost: string;        // Decimal as string
-  costBasis: string;      // Decimal as string
+  totalBoughtQuantity: string;  // MODIFIED — Decimal as string
+  totalSoldQuantity: string;    // ADDED
+  remainingQuantity: string;    // ADDED
+  avgBuyPrice: string;          // ADDED — Decimal as string
+  totalInvested: string;        // ADDED — Decimal as string
+  totalSoldValue: string;       // ADDED — Decimal as string
+  realizedPnl: string;          // ADDED — Decimal as string
   transactionCount: number;
+  currency: string;             // ADDED
 }

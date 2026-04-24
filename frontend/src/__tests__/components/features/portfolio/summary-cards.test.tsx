@@ -6,6 +6,7 @@ const baseSummary: PortfolioSummary = {
   totalValueByCurrency: { KRW: "12500000.00" },
   totalCostByCurrency: { KRW: "11000000.00" },
   pnlByCurrency: { KRW: { abs: "1500000.00", pct: 13.64 } },
+  realizedPnlByCurrency: { KRW: "0.000000" },
   allocation: [{ assetType: "kr_stock", pct: 100 }],
   lastPriceRefreshedAt: "2026-04-24T00:00:00Z",
   pendingCount: 0,
@@ -16,7 +17,8 @@ describe("SummaryCards", () => {
   it("3개의 카드를 렌더링한다", () => {
     render(<SummaryCards summary={baseSummary} />);
     expect(screen.getByText("총평가액")).toBeInTheDocument();
-    expect(screen.getByText("총손익")).toBeInTheDocument();
+    expect(screen.getByText("미실현 손익")).toBeInTheDocument();
+    expect(screen.getByText("실현 손익")).toBeInTheDocument();
     expect(screen.getByText("갱신 정보")).toBeInTheDocument();
   });
 

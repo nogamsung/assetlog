@@ -91,7 +91,7 @@ export function AssetList() {
               </div>
               <div className="hidden md:flex items-center gap-4 text-xs ml-auto mr-4">
                 <div className="text-right">
-                  <p className="text-muted-foreground">수량</p>
+                  <p className="text-muted-foreground">보유 수량</p>{/* MODIFIED */}
                   <p className="font-medium">
                     {formatQuantity(holding.quantity, assetSymbol.assetType)}
                   </p>
@@ -118,6 +118,21 @@ export function AssetList() {
                       : "—"}
                   </p>
                 </div>
+                {Number(holding.realizedPnl) !== 0 && ( // ADDED realized_pnl 뱃지
+                  <div className="text-right">
+                    <p className="text-muted-foreground">실현</p>
+                    <p
+                      className={`font-medium ${
+                        Number(holding.realizedPnl) > 0
+                          ? "text-emerald-600"
+                          : "text-rose-600"
+                      }`}
+                    >
+                      {Number(holding.realizedPnl) > 0 ? "+" : ""}
+                      {formatCurrency(holding.realizedPnl, currency)}
+                    </p>
+                  </div>
+                )}
               </div>
             </Link>
             <Button

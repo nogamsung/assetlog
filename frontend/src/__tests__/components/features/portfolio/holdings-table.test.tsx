@@ -23,6 +23,7 @@ const makeHolding = (overrides: Partial<HoldingResponse> = {}): HoldingResponse 
   quantity: "10.0000",
   avgCost: "70000.0000",
   costBasis: "700000.00",
+  realizedPnl: "0.000000",
   latestPrice: "75000.0000",
   latestValue: "750000.00",
   pnlAbs: "50000.00",

@@ -17,6 +17,7 @@ const rawSummary = {
     KRW: { abs: "1500000.00", pct: 13.64 },
     USD: { abs: "700.12", pct: 9.34 },
   },
+  realized_pnl_by_currency: { KRW: "0.000000", USD: "0.000000" },
   allocation: [
     { asset_type: "kr_stock", pct: 42.1 },
     { asset_type: "us_stock", pct: 57.9 },
@@ -33,6 +34,7 @@ const expectedSummary: PortfolioSummary = {
     KRW: { abs: "1500000.00", pct: 13.64 },
     USD: { abs: "700.12", pct: 9.34 },
   },
+  realizedPnlByCurrency: { KRW: "0.000000", USD: "0.000000" },
   allocation: [
     { assetType: "kr_stock", pct: 42.1 },
     { assetType: "us_stock", pct: 57.9 },
@@ -57,6 +59,7 @@ const rawHolding = {
   quantity: "10.0000000000",
   avg_cost: "170.500000",
   cost_basis: "1705.00",
+  realized_pnl: "0.000000",
   latest_price: "175.200000",
   latest_value: "1752.00",
   pnl_abs: "47.00",
@@ -82,6 +85,7 @@ const expectedHolding: HoldingResponse = {
   quantity: "10.0000000000",
   avgCost: "170.500000",
   costBasis: "1705.00",
+  realizedPnl: "0.000000",
   latestPrice: "175.200000",
   latestValue: "1752.00",
   pnlAbs: "47.00",
