@@ -35,6 +35,9 @@ const config: Config = {
     "!src/components/features/auth/auth-guard.tsx",
     "!src/components/features/home-header.tsx",
     "!src/components/features/assets/asset-type-badge.tsx",
+    // portfolio 단순 배지 컴포넌트
+    "!src/components/features/portfolio/pending-badge.tsx",
+    "!src/components/features/portfolio/stale-badge.tsx",
     // API 클라이언트 (통합 테스트 대상)
     "!src/lib/api-client.ts",
     "!src/lib/query-client.ts",

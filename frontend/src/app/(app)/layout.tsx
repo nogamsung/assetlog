@@ -19,6 +19,12 @@ function AppHeader() {
         </Link>
         <nav className="flex items-center gap-4">
           <Link
+            href="/dashboard"
+            className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+          >
+            대시보드
+          </Link>
+          <Link
             href="/assets"
             className="text-sm text-muted-foreground hover:text-foreground transition-colors"
           >
