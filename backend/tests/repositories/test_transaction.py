@@ -275,6 +275,87 @@ class TestTransactionGetSummary:
         assert remaining == Decimal("3.0")
 
 
+class TestTransactionUpdate:  # ADDED
+    async def test_update_필드가_모두_반영된다(
+        self,
+        db_session: AsyncSession,
+        user_asset_factory: Any,
+        user_factory: Any,
+        asset_symbol_factory: Any,
+    ) -> None:
+        from app.schemas.transaction import TransactionUpdate
+
+        user = await user_factory(email="repo_upd@example.com")
+        sym = await asset_symbol_factory(symbol="UPD_COIN")
+        ua = await user_asset_factory(user=user, asset_symbol=sym)
+
+        repo = TransactionRepository(db_session)
+        tx = await repo.create(ua.id, _buy(quantity="1.0", price="1000.0"))
+
+        new_data = TransactionUpdate(
+            type=TransactionType.BUY,
+            quantity=Decimal("2.5"),
+            price=Decimal("2000.0"),
+            traded_at=datetime.now(tz=UTC),
+            memo="updated memo",
+        )
+        updated = await repo.update(tx.id, ua.id, new_data)
+
+        assert updated is not None
+        assert updated.id == tx.id
+        assert updated.quantity == Decimal("2.5")
+        assert updated.price == Decimal("2000.0")
+        assert updated.memo == "updated memo"
+
+    async def test_update_다른_user_asset_id면_None_반환(
+        self,
+        db_session: AsyncSession,
+        user_asset_factory: Any,
+        user_factory: Any,
+        asset_symbol_factory: Any,
+    ) -> None:
+        from app.schemas.transaction import TransactionUpdate
+
+        user = await user_factory(email="repo_upd_wrong@example.com")
+        sym = await asset_symbol_factory(symbol="UPD_WRONG_COIN")
+        ua = await user_asset_factory(user=user, asset_symbol=sym)
+
+        repo = TransactionRepository(db_session)
+        tx = await repo.create(ua.id, _buy())
+
+        new_data = TransactionUpdate(
+            type=TransactionType.BUY,
+            quantity=Decimal("1.0"),
+            price=Decimal("1000.0"),
+            traded_at=datetime.now(tz=UTC),
+        )
+        result = await repo.update(tx.id, ua.id + 9999, new_data)
+        assert result is None
+
+    async def test_update_존재하지_않는_tx면_None_반환(
+        self,
+        db_session: AsyncSession,
+        user_asset_factory: Any,
+        user_factory: Any,
+        asset_symbol_factory: Any,
+    ) -> None:
+        from app.schemas.transaction import TransactionUpdate
+
+        user = await user_factory(email="repo_upd_missing@example.com")
+        sym = await asset_symbol_factory(symbol="UPD_MISS_COIN")
+        ua = await user_asset_factory(user=user, asset_symbol=sym)
+
+        repo = TransactionRepository(db_session)
+        new_data = TransactionUpdate(
+            type=TransactionType.BUY,
+            quantity=Decimal("1.0"),
+            price=Decimal("1000.0"),
+            traded_at=datetime.now(tz=UTC),
+        )
+        result = await repo.update(99999, ua.id, new_data)
+        assert result is None
+
+
 class TestTransactionDelete:
     async def test_삭제하면_True_반환하고_사라진다(
         self,

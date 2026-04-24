@@ -9,6 +9,7 @@ from app.schemas.auth import ErrorResponse
 from app.schemas.transaction import (
     TransactionCreate,
     TransactionResponse,
+    TransactionUpdate,  # ADDED
     UserAssetSummaryResponse,
 )
 
@@ -70,6 +71,37 @@ async def list_transactions(
         current_user.id, user_asset_id, limit=limit, offset=offset
     )
     return [TransactionResponse.model_validate(tx) for tx in transactions]
+
+
+@router.put(  # ADDED
+    "/{user_asset_id}/transactions/{transaction_id}",
+    response_model=TransactionResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Update an existing transaction",
+    responses={
+        401: {"model": ErrorResponse, "description": "Not authenticated"},
+        404: {"model": ErrorResponse, "description": "Transaction or UserAsset not found"},
+        409: {
+            "model": ErrorResponse,
+            "description": "Edit would result in negative holding",
+        },
+        422: {"model": ErrorResponse, "description": "Validation error"},
+    },
+)
+async def update_transaction(
+    data: TransactionUpdate,
+    current_user: CurrentUser,
+    transaction_service: TransactionServiceDep,
+    user_asset_id: int = Path(..., ge=1, description="UserAsset ID that owns the transaction"),
+    transaction_id: int = Path(..., ge=1, description="Transaction ID to update"),
+) -> TransactionResponse:
+    """Replace all fields of an existing transaction (full PUT replace semantics).
+
+    Returns 404 if the transaction or user_asset_id does not exist or is not owned by the caller.
+    Returns 409 if the edit would result in negative remaining holding.
+    """
+    tx = await transaction_service.edit(current_user.id, user_asset_id, transaction_id, data)
+    return TransactionResponse.model_validate(tx)
 
 
 @router.delete(

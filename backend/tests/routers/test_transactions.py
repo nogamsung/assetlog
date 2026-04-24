@@ -341,6 +341,122 @@ class TestGetSummary:
             app.dependency_overrides.pop(get_transaction_service, None)
 
 
+_UPDATE_PAYLOAD = {  # ADDED
+    "type": "buy",
+    "quantity": "2.0",
+    "price": "55000.0",
+    "traded_at": "2026-04-23T10:00:00+00:00",
+}
+
+
+class TestUpdateTransaction:  # ADDED
+    async def test_인증_없이_접근하면_401(self, async_client: AsyncClient) -> None:
+        response = await async_client.put("/api/user-assets/1/transactions/1", json=_UPDATE_PAYLOAD)
+        assert response.status_code == 401
+
+    async def test_수정_성공하면_200_반환(self, async_client: AsyncClient) -> None:
+        user = _make_user()
+        tx = _make_transaction()
+        mock_service = AsyncMock(spec=TransactionService)
+        mock_service.edit.return_value = tx
+
+        app.dependency_overrides[get_current_user] = lambda: user
+        app.dependency_overrides[get_transaction_service] = lambda: mock_service
+
+        try:
+            response = await async_client.put(
+                "/api/user-assets/1/transactions/1", json=_UPDATE_PAYLOAD
+            )
+            assert response.status_code == 200
+            body = response.json()
+            assert body["id"] == tx.id
+        finally:
+            app.dependency_overrides.pop(get_current_user, None)
+            app.dependency_overrides.pop(get_transaction_service, None)
+
+    async def test_없는_transaction이면_404(self, async_client: AsyncClient) -> None:
+        user = _make_user()
+        mock_service = AsyncMock(spec=TransactionService)
+        mock_service.edit.side_effect = NotFoundError("not found")
+
+        app.dependency_overrides[get_current_user] = lambda: user
+        app.dependency_overrides[get_transaction_service] = lambda: mock_service
+
+        try:
+            response = await async_client.put(
+                "/api/user-assets/1/transactions/9999", json=_UPDATE_PAYLOAD
+            )
+            assert response.status_code == 404
+        finally:
+            app.dependency_overrides.pop(get_current_user, None)
+            app.dependency_overrides.pop(get_transaction_service, None)
+
+    async def test_보유_부족_SELL이면_409(self, async_client: AsyncClient) -> None:
+        user = _make_user()
+        mock_service = AsyncMock(spec=TransactionService)
+        mock_service.edit.side_effect = InsufficientHoldingError(
+            "Edit would leave negative holding."
+        )
+
+        app.dependency_overrides[get_current_user] = lambda: user
+        app.dependency_overrides[get_transaction_service] = lambda: mock_service
+
+        sell_update = {**_UPDATE_PAYLOAD, "type": "sell", "quantity": "999.0"}
+        try:
+            response = await async_client.put("/api/user-assets/1/transactions/1", json=sell_update)
+            assert response.status_code == 409
+            body = response.json()
+            assert "detail" in body
+        finally:
+            app.dependency_overrides.pop(get_current_user, None)
+            app.dependency_overrides.pop(get_transaction_service, None)
+
+    async def test_quantity가_0이면_422(self, async_client: AsyncClient) -> None:
+        user = _make_user()
+        app.dependency_overrides[get_current_user] = lambda: user
+
+        try:
+            bad_payload = {**_UPDATE_PAYLOAD, "quantity": "0"}
+            response = await async_client.put("/api/user-assets/1/transactions/1", json=bad_payload)
+            assert response.status_code == 422
+        finally:
+            app.dependency_overrides.pop(get_current_user, None)
+
+    async def test_naive_traded_at이면_422(self, async_client: AsyncClient) -> None:
+        user = _make_user()
+        app.dependency_overrides[get_current_user] = lambda: user
+
+        try:
+            bad_payload = {**_UPDATE_PAYLOAD, "traded_at": "2026-04-23T10:00:00"}
+            response = await async_client.put("/api/user-assets/1/transactions/1", json=bad_payload)
+            assert response.status_code == 422
+        finally:
+            app.dependency_overrides.pop(get_current_user, None)
+
+    async def test_미래_traded_at이면_422(self, async_client: AsyncClient) -> None:
+        user = _make_user()
+        app.dependency_overrides[get_current_user] = lambda: user
+
+        try:
+            bad_payload = {**_UPDATE_PAYLOAD, "traded_at": "2099-01-01T00:00:00+00:00"}
+            response = await async_client.put("/api/user-assets/1/transactions/1", json=bad_payload)
+            assert response.status_code == 422
+        finally:
+            app.dependency_overrides.pop(get_current_user, None)
+
+    async def test_transaction_id가_0이면_422(self, async_client: AsyncClient) -> None:
+        user = _make_user()
+        app.dependency_overrides[get_current_user] = lambda: user
+
+        try:
+            response = await async_client.put(
+                "/api/user-assets/1/transactions/0", json=_UPDATE_PAYLOAD
+            )
+            assert response.status_code == 422
+        finally:
+            app.dependency_overrides.pop(get_current_user, None)
+
+
 class TestTransactionUserIsolation:
     """Full integration test: user A's transactions must not be accessible by user B."""
 

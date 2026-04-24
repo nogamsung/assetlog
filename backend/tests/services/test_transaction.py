@@ -17,7 +17,7 @@ from app.models.transaction import Transaction
 from app.models.user_asset import UserAsset
 from app.repositories.transaction import SummaryAggregates, TransactionRepository  # MODIFIED
 from app.repositories.user_asset import UserAssetRepository
-from app.schemas.transaction import TransactionCreate
+from app.schemas.transaction import TransactionCreate, TransactionUpdate  # MODIFIED
 from app.services.transaction import TransactionService
 
 
@@ -100,6 +100,19 @@ def _make_aggregates(  # ADDED — helper to build SummaryAggregates
     )
 
 
+def _update_data(
+    tx_type: TransactionType = TransactionType.BUY,
+    quantity: str = "1.0",
+    price: str = "50000.0",
+) -> TransactionUpdate:  # ADDED
+    return TransactionUpdate(
+        type=tx_type,
+        quantity=Decimal(quantity),
+        price=Decimal(price),
+        traded_at=datetime.now(UTC),
+    )
+
+
 def _make_service(
     ua: UserAsset | None = None,
     tx: Transaction | None = None,
@@ -107,6 +120,7 @@ def _make_service(
     remaining_quantity: Decimal | None = None,  # ADDED
     transactions: list[Transaction] | None = None,
     delete_result: bool = True,
+    update_result: Transaction | None = None,  # ADDED
 ) -> TransactionService:
     ua_repo = AsyncMock(spec=UserAssetRepository)
     ua_repo.get_by_id_for_user.return_value = ua
@@ -114,6 +128,7 @@ def _make_service(
     tx_repo = AsyncMock(spec=TransactionRepository)
     if tx is not None:
         tx_repo.create.return_value = tx
+        tx_repo.get_by_id_for_user_asset.return_value = tx
     if summary is not None:
         tx_repo.get_summary.return_value = summary
     if remaining_quantity is not None:  # ADDED
@@ -121,6 +136,8 @@ def _make_service(
     if transactions is not None:
         tx_repo.list_for_user_asset.return_value = transactions
     tx_repo.delete_by_id_for_user_asset.return_value = delete_result
+    if update_result is not None:  # ADDED
+        tx_repo.update.return_value = update_result
 
     return TransactionService(transaction_repo=tx_repo, user_asset_repo=ua_repo)
 
@@ -283,6 +300,114 @@ class TestTransactionServiceRemove:
 
         with pytest.raises(NotFoundError):
             await svc.remove(user_id=2, user_asset_id=1, transaction_id=1)
+
+
+class TestTransactionServiceEdit:  # ADDED
+    async def test_edit_성공_BUY_수정(self) -> None:
+        ua = _make_user_asset()
+        tx = _make_transaction()
+        updated_tx = _make_transaction()
+        updated_tx.quantity = Decimal("2.0")
+
+        # 기존 tx 는 BUY 1.0 → 수정 후 BUY 2.0, 전체 집계는 bought=1.0
+        agg = _make_aggregates(bought_qty="1.0", bought_cost="50000.0", tx_count=1)
+        svc = _make_service(ua=ua, tx=tx, summary=agg, update_result=updated_tx)
+
+        result = await svc.edit(
+            user_id=1,
+            user_asset_id=1,
+            transaction_id=1,
+            data=_update_data(tx_type=TransactionType.BUY, quantity="2.0"),
+        )
+        assert result.quantity == Decimal("2.0")
+
+    async def test_edit_성공_SELL_수정_보유_충분(self) -> None:
+        ua = _make_user_asset()
+        # 기존 tx: BUY 1.0, 다른 tx: BUY 5.0 → total bought=6.0, sold=0
+        tx = _make_transaction()
+        updated_tx = _make_transaction()
+        updated_tx.type = TransactionType.SELL
+        updated_tx.quantity = Decimal("3.0")
+
+        agg = _make_aggregates(bought_qty="6.0", bought_cost="300000.0", tx_count=2)
+        svc = _make_service(ua=ua, tx=tx, summary=agg, update_result=updated_tx)
+
+        result = await svc.edit(
+            user_id=1,
+            user_asset_id=1,
+            transaction_id=1,
+            data=_update_data(tx_type=TransactionType.SELL, quantity="3.0"),
+        )
+        assert result.type == TransactionType.SELL
+
+    async def test_edit_ua_없으면_NotFoundError(self) -> None:
+        svc = _make_service(ua=None)
+
+        with pytest.raises(NotFoundError):
+            await svc.edit(
+                user_id=1,
+                user_asset_id=999,
+                transaction_id=1,
+                data=_update_data(),
+            )
+
+    async def test_edit_tx_없으면_NotFoundError(self) -> None:
+        ua = _make_user_asset()
+        # tx_repo.get_by_id_for_user_asset returns None (tx not found)
+        ua_repo = AsyncMock(spec=UserAssetRepository)
+        ua_repo.get_by_id_for_user.return_value = ua
+        tx_repo = AsyncMock(spec=TransactionRepository)
+        tx_repo.get_by_id_for_user_asset.return_value = None
+        svc = TransactionService(transaction_repo=tx_repo, user_asset_repo=ua_repo)
+
+        with pytest.raises(NotFoundError):
+            await svc.edit(
+                user_id=1,
+                user_asset_id=1,
+                transaction_id=9999,
+                data=_update_data(),
+            )
+
+    async def test_edit_SELL로_변경_보유_부족시_InsufficientHoldingError(self) -> None:
+        ua = _make_user_asset()
+        # 기존 tx: BUY 1.0, 전체 집계 bought=1.0 sold=0
+        # 수정: BUY→SELL 5.0 → hypothetical = (1-1) - 5 = -5 < 0
+        tx = _make_transaction()  # BUY 1.0
+        agg = _make_aggregates(bought_qty="1.0", bought_cost="50000.0", tx_count=1)
+        svc = _make_service(ua=ua, tx=tx, summary=agg)
+
+        with pytest.raises(InsufficientHoldingError):
+            await svc.edit(
+                user_id=1,
+                user_asset_id=1,
+                transaction_id=1,
+                data=_update_data(tx_type=TransactionType.SELL, quantity="5.0"),
+            )
+
+    async def test_edit_BUY_수량_변경_정상(self) -> None:
+        ua = _make_user_asset()
+        # 기존 BUY 1.0, 전체 bought=3.0 sold=1.0 → other_bought=2.0 other_sold=1.0
+        # 수정 후 BUY 4.0 → hypothetical = 2+4-1 = 5 ≥ 0 → OK
+        tx = _make_transaction()
+        updated_tx = _make_transaction()
+        updated_tx.quantity = Decimal("4.0")
+
+        agg = _make_aggregates(
+            bought_qty="3.0",
+            bought_cost="150000.0",
+            sold_qty="1.0",
+            sold_value="55000.0",
+            tx_count=3,
+        )
+        svc = _make_service(ua=ua, tx=tx, summary=agg, update_result=updated_tx)
+
+        result = await svc.edit(
+            user_id=1,
+            user_asset_id=1,
+            transaction_id=1,
+            data=_update_data(tx_type=TransactionType.BUY, quantity="4.0"),
+        )
+        assert result.quantity == Decimal("4.0")
 
 
 class TestTransactionServiceListPagination:
