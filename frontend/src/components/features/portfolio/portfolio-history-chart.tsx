@@ -9,10 +9,14 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from "recharts";
-import { format } from "date-fns";
-import { ko } from "date-fns/locale";
 import { usePortfolioHistory } from "@/hooks/use-portfolio-history";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  formatCompactNumber,
+  formatCurrencyValue,
+  formatTimestamp,
+  formatTooltipLabel,
+} from "@/lib/chart-format";
 import type { HistoryPeriod } from "@/types/portfolio-history";
 
 const PERIODS: { label: string; value: HistoryPeriod }[] = [
@@ -22,14 +26,6 @@ const PERIODS: { label: string; value: HistoryPeriod }[] = [
   { label: "1년", value: "1Y" },
   { label: "전체", value: "ALL" },
 ];
-
-function formatTimestamp(date: Date, period: HistoryPeriod): string {
-  if (period === "1D") return format(date, "HH:mm", { locale: ko });
-  if (period === "1W") return format(date, "M/d", { locale: ko });
-  if (period === "1M") return format(date, "M/d", { locale: ko });
-  if (period === "1Y") return format(date, "yy/MM", { locale: ko });
-  return format(date, "yyyy/MM", { locale: ko });
-}
 
 function ChartSkeleton() {
   return (
@@ -139,27 +135,12 @@ export function PortfolioHistoryChart({ currency }: PortfolioHistoryChartProps) 
                   tick={{ fontSize: 11 }}
                   tickLine={false}
                   axisLine={false}
-                  tickFormatter={(val: number) =>
-                    new Intl.NumberFormat("ko-KR", {
-                      notation: "compact",
-                      maximumFractionDigits: 1,
-                    }).format(val)
-                  }
+                  tickFormatter={formatCompactNumber}
                   width={60}
                 />
                 <Tooltip
-                  formatter={(val: unknown) => {
-                    const num = typeof val === "number" ? val : Number(val);
-                    return new Intl.NumberFormat("ko-KR", {
-                      style: "currency",
-                      currency,
-                      maximumFractionDigits: 0,
-                    }).format(num);
-                  }}
-                  labelFormatter={(label: unknown) => {
-                    const d = label instanceof Date ? label : new Date(label as string);
-                    return format(d, "yyyy년 M월 d일 HH:mm", { locale: ko });
-                  }}
+                  formatter={(val: unknown) => formatCurrencyValue(val, currency)}
+                  labelFormatter={formatTooltipLabel}
                 />
                 <Line
                   type="monotone"
