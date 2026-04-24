@@ -172,6 +172,7 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/PortfolioSummaryResponse' }
+        '401': { description: Unauthorized }
 
   /portfolio/holdings:
     get:
@@ -184,7 +185,8 @@ paths:
             application/json:
               schema:
                 type: array
-                items: { $ref: '#/components/schemas/UserAssetResponse' }
+                items: { $ref: '#/components/schemas/HoldingResponse' }
+        '401': { description: Unauthorized }
 
 components:
   securitySchemes:
@@ -244,6 +246,8 @@ components:
         name:       { type: string }
         exchange:   { type: string, nullable: true }
         currency:   { $ref: '#/components/schemas/Currency' }
+        last_price:              { type: string, nullable: true, description: 캐시된 최신 가격 (Decimal → string, null=pending) }
+        last_price_refreshed_at: { type: string, format: date-time, nullable: true, description: 가격 마지막 갱신 시각 }
 
     SymbolCreateRequest:
       type: object
@@ -312,7 +316,7 @@ components:
       type: object
       required: [abs, pct]
       properties:
-        abs: { type: number }
+        abs: { type: string, description: 절대 손익 (Decimal → string) }
         pct: { type: number }
 
     AllocationEntry:
@@ -322,6 +326,32 @@ components:
         asset_type: { $ref: '#/components/schemas/AssetType' }
         pct:        { type: number, description: 0 ~ 100 }
 
+    HoldingResponse:
+      type: object
+      required:
+        - user_asset_id
+        - asset_symbol
+        - quantity
+        - avg_cost
+        - cost_basis
+        - weight_pct
+        - is_stale
+        - is_pending
+      properties:
+        user_asset_id:           { type: integer }
+        asset_symbol:            { $ref: '#/components/schemas/SymbolResponse' }
+        quantity:                { type: string, description: 총 보유 수량 (Decimal → string) }
+        avg_cost:                { type: string, description: 가중평균 매입 단가 (Decimal → string) }
+        cost_basis:              { type: string, description: 총 매입 원가 (Decimal → string) }
+        latest_price:            { type: string, nullable: true, description: 최신 캐시 가격 (null=pending) }
+        latest_value:            { type: string, nullable: true, description: 현재 평가액 (null=pending) }
+        pnl_abs:                 { type: string, nullable: true, description: 절대 손익 (null=pending) }
+        pnl_pct:                 { type: number, nullable: true, description: 손익률 % (null=pending) }
+        weight_pct:              { type: number, description: 포트폴리오 비중 % }
+        last_price_refreshed_at: { type: string, format: date-time, nullable: true }
+        is_stale:                { type: boolean, description: 가격이 3시간 초과 된 경우 true }
+        is_pending:              { type: boolean, description: latest_price 가 null 이면 true }
+
     PortfolioSummaryResponse:
       type: object
       required:
@@ -330,9 +360,17 @@ components:
         - pnl_by_currency
         - allocation
         - last_price_refreshed_at
+        - pending_count
+        - stale_count
       properties:
-        total_value_by_currency: { $ref: '#/components/schemas/CurrencyAmountMap' }
-        total_cost_by_currency:  { $ref: '#/components/schemas/CurrencyAmountMap' }
+        total_value_by_currency:
+          type: object
+          additionalProperties: { type: string }
+          description: 통화별 총 평가액 (Decimal → string)
+        total_cost_by_currency:
+          type: object
+          additionalProperties: { type: string }
+          description: 통화별 총 원가 (Decimal → string)
         pnl_by_currency:
           type: object
           additionalProperties: { $ref: '#/components/schemas/PnlByCurrencyEntry' }
@@ -343,3 +381,9 @@ components:
           type: string
           format: date-time
           nullable: true
+        pending_count:
+          type: integer
+          description: 가격 미확인 보유 종목 수
+        stale_count:
+          type: integer
+          description: 가격이 3시간 초과 된 보유 종목 수
