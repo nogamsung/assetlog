@@ -9,8 +9,14 @@ import {
   listTransactions,
   deleteTransaction,
   getAssetSummary,
+  importTransactionsCsv,
 } from "@/lib/api/transaction";
-import type { TransactionResponse, UserAssetSummaryResponse } from "@/types/transaction";
+import type {
+  TransactionResponse,
+  UserAssetSummaryResponse,
+  TransactionImportResponse,
+  CsvImportValidationErrorBody,
+} from "@/types/transaction";
 import type { TransactionCreateInput } from "@/lib/schemas/transaction";
 
 // ── Query keys (co-located) ───────────────────────────────────────────────────
@@ -104,6 +110,34 @@ export function useUpdateTransaction() {
     },
     onError: (err) => {
       toast.error(extractErrorMessage(err, "거래 수정에 실패했습니다."));
+    },
+  });
+}
+
+export function useImportTransactionsCsv() {
+  const queryClient = useQueryClient();
+
+  return useMutation<
+    TransactionImportResponse,
+    Error,
+    { userAssetId: number; file: File }
+  >({
+    mutationFn: ({ userAssetId, file }) =>
+      importTransactionsCsv(userAssetId, file),
+    onSuccess: (result, { userAssetId }) => {
+      invalidateAll(queryClient, userAssetId);
+      toast.success(`${result.importedCount}건의 거래가 추가되었습니다.`);
+    },
+    onError: (err) => {
+      if (isAxiosError(err) && err.response?.status === 422) {
+        // 422 는 컴포넌트에서 errors[] 배열로 처리 — toast 스킵
+        return;
+      }
+      const body = isAxiosError(err)
+        ? (err.response?.data as CsvImportValidationErrorBody | undefined)
+        : undefined;
+      const message = body?.detail ?? "CSV 가져오기에 실패했습니다.";
+      toast.error(message);
     },
   });
 }

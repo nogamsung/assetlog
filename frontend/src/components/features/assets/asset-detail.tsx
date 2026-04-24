@@ -2,11 +2,12 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, Plus, X, Pencil } from "lucide-react"; // MODIFIED
+import { ArrowLeft, Plus, Upload, X, Pencil } from "lucide-react"; // MODIFIED
 import { usePortfolioHoldings } from "@/hooks/use-portfolio";
 import { useAssetSummary } from "@/hooks/use-transactions";
 import { TransactionList } from "./transaction-list";
 import { TransactionForm } from "./transaction-form";
+import { TransactionImport } from "./transaction-import";
 import { AssetTypeBadge } from "./asset-type-badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -35,6 +36,7 @@ function AssetDetailSkeleton() {
 export function AssetDetail({ userAssetId }: AssetDetailProps) {
   const [showAddForm, setShowAddForm] = useState(false);
   const [editingTx, setEditingTx] = useState<TransactionResponse | null>(null); // ADDED
+  const [showImportPanel, setShowImportPanel] = useState(false);
 
   const holdingsQuery = usePortfolioHoldings();
   const summaryQuery = useAssetSummary(userAssetId);
@@ -209,29 +211,67 @@ export function AssetDetail({ userAssetId }: AssetDetailProps) {
         <CardHeader>
           <div className="flex items-center justify-between">
             <CardTitle className="text-base">거래 내역</CardTitle>
-            <Button
-              type="button"
-              size="sm"
-              variant={showAddForm ? "ghost" : "outline"}
-              onClick={() => setShowAddForm((prev) => !prev)}
-              aria-label={showAddForm ? "거래 추가 폼 닫기" : "거래 추가"}
-              className="gap-2"
-            >
-              {showAddForm ? (
-                <>
-                  <X className="h-4 w-4" aria-hidden="true" />
-                  닫기
-                </>
-              ) : (
-                <>
-                  <Plus className="h-4 w-4" aria-hidden="true" />
-                  거래 추가
-                </>
-              )}
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button
+                type="button"
+                size="sm"
+                variant={showImportPanel ? "ghost" : "outline"}
+                onClick={() => {
+                  setShowImportPanel((prev) => !prev);
+                  setShowAddForm(false);
+                  setEditingTx(null);
+                }}
+                aria-label={showImportPanel ? "CSV 가져오기 패널 닫기" : "CSV 가져오기"}
+                className="gap-2"
+              >
+                {showImportPanel ? (
+                  <>
+                    <X className="h-4 w-4" aria-hidden="true" />
+                    닫기
+                  </>
+                ) : (
+                  <>
+                    <Upload className="h-4 w-4" aria-hidden="true" />
+                    CSV 가져오기
+                  </>
+                )}
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant={showAddForm ? "ghost" : "outline"}
+                onClick={() => {
+                  setShowAddForm((prev) => !prev);
+                  setShowImportPanel(false);
+                  setEditingTx(null);
+                }}
+                aria-label={showAddForm ? "거래 추가 폼 닫기" : "거래 추가"}
+                className="gap-2"
+              >
+                {showAddForm ? (
+                  <>
+                    <X className="h-4 w-4" aria-hidden="true" />
+                    닫기
+                  </>
+                ) : (
+                  <>
+                    <Plus className="h-4 w-4" aria-hidden="true" />
+                    거래 추가
+                  </>
+                )}
+              </Button>
+            </div>
           </div>
         </CardHeader>
         <CardContent className="space-y-4">
+          {showImportPanel && (
+            <div className="rounded-lg border bg-muted/20 p-4">
+              <TransactionImport
+                userAssetId={userAssetId}
+                onSuccess={() => setShowImportPanel(false)}
+              />
+            </div>
+          )}
           {showAddForm && (
             <div className="rounded-lg border bg-muted/20 p-4">
               <TransactionForm
@@ -269,6 +309,7 @@ export function AssetDetail({ userAssetId }: AssetDetailProps) {
             userAssetId={userAssetId}
             onEdit={(tx) => {
               setShowAddForm(false);
+              setShowImportPanel(false);
               setEditingTx(tx);
             }}
           /> {/* MODIFIED */}

@@ -4,6 +4,7 @@ import {
   listTransactions,
   deleteTransaction,
   getAssetSummary,
+  importTransactionsCsv,
 } from "@/lib/api/transaction";
 import { apiClient } from "@/lib/api-client";
 import type { TransactionResponse, UserAssetSummaryResponse } from "@/types/transaction";
@@ -235,6 +236,74 @@ describe("deleteTransaction", () => {
   it("API 에러 시 에러를 그대로 throw 한다", async () => {
     mockedDelete.mockRejectedValueOnce(new Error("Delete failed"));
     await expect(deleteTransaction(10, 1)).rejects.toThrow("Delete failed");
+  });
+});
+
+describe("importTransactionsCsv", () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it("POST /api/user-assets/:id/transactions/import 를 FormData 로 호출한다", async () => {
+    const rawImportResponse = {
+      imported_count: 2,
+      preview: [rawTransaction],
+    };
+    mockedPost.mockResolvedValueOnce({ data: rawImportResponse });
+
+    const file = new File(["type,quantity\nbuy,1"], "test.csv", { type: "text/csv" });
+    const result = await importTransactionsCsv(10, file);
+
+    expect(mockedPost).toHaveBeenCalledWith(
+      "/api/user-assets/10/transactions/import",
+      expect.any(FormData),
+      expect.objectContaining({
+        headers: { "Content-Type": "multipart/form-data" },
+      }),
+    );
+    expect(result.importedCount).toBe(2);
+    expect(result.preview).toEqual([expectedTransaction]);
+  });
+
+  it("FormData 에 file 필드가 포함된다", async () => {
+    const rawImportResponse = { imported_count: 1, preview: [rawTransaction] };
+    mockedPost.mockResolvedValueOnce({ data: rawImportResponse });
+
+    const file = new File(["content"], "upload.csv", { type: "text/csv" });
+    await importTransactionsCsv(10, file);
+
+    const [, formData] = mockedPost.mock.calls[0] as [string, FormData, unknown];
+    expect(formData.get("file")).toBe(file);
+  });
+
+  it("preview 배열을 camelCase 로 변환한다", async () => {
+    mockedPost.mockResolvedValueOnce({
+      data: { imported_count: 1, preview: [rawTransaction] },
+    });
+    const file = new File([""], "a.csv");
+    const result = await importTransactionsCsv(10, file);
+
+    expect(result.preview[0]).toEqual(expectedTransaction);
+  });
+
+  it("422 에러를 그대로 throw 한다", async () => {
+    const err422 = Object.assign(new Error("Unprocessable"), {
+      isAxiosError: true,
+      response: {
+        status: 422,
+        data: {
+          detail: "1 rows have errors",
+          errors: [{ row: 2, field: "type", message: "invalid value" }],
+        },
+      },
+    });
+    mockedPost.mockRejectedValueOnce(err422);
+    const file = new File([""], "b.csv");
+    await expect(importTransactionsCsv(10, file)).rejects.toThrow("Unprocessable");
+  });
+
+  it("API 에러 시 에러를 그대로 throw 한다", async () => {
+    mockedPost.mockRejectedValueOnce(new Error("Network error"));
+    const file = new File([""], "c.csv");
+    await expect(importTransactionsCsv(10, file)).rejects.toThrow("Network error");
   });
 });
 

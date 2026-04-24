@@ -7,9 +7,10 @@ import {
   useCreateTransaction,
   useUpdateTransaction,
   useDeleteTransaction,
+  useImportTransactionsCsv,
 } from "@/hooks/use-transactions";
 import * as txApi from "@/lib/api/transaction";
-import type { TransactionResponse, UserAssetSummaryResponse } from "@/types/transaction";
+import type { TransactionResponse, UserAssetSummaryResponse, TransactionImportResponse } from "@/types/transaction";
 
 jest.mock("@/lib/api/transaction");
 jest.mock("sonner", () => ({
@@ -21,6 +22,7 @@ const mockedGetAssetSummary = jest.mocked(txApi.getAssetSummary);
 const mockedCreateTransaction = jest.mocked(txApi.createTransaction);
 const mockedUpdateTransaction = jest.mocked(txApi.updateTransaction); // ADDED
 const mockedDeleteTransaction = jest.mocked(txApi.deleteTransaction);
+const mockedImportTransactionsCsv = jest.mocked(txApi.importTransactionsCsv);
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const mockedToast = jest.mocked(require("sonner").toast) as {
@@ -231,6 +233,123 @@ describe("useUpdateTransaction", () => { // ADDED
           memo: null,
         },
       });
+    });
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(invalidateSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ queryKey: ["transactions", 10] }),
+    );
+    expect(invalidateSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ queryKey: ["assetSummary", 10] }),
+    );
+  });
+});
+
+describe("useImportTransactionsCsv", () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  const fakeImportResult: TransactionImportResponse = {
+    importedCount: 3,
+    preview: [fakeTx],
+  };
+
+  const fakeFile = new File(["content"], "test.csv", { type: "text/csv" });
+
+  it("성공 시 isSuccess 가 true 다", async () => {
+    mockedImportTransactionsCsv.mockResolvedValueOnce(fakeImportResult);
+    const { Wrapper } = makeWrapper();
+    const { result } = renderHook(() => useImportTransactionsCsv(), { wrapper: Wrapper });
+
+    act(() => {
+      result.current.mutate({ userAssetId: 10, file: fakeFile });
+    });
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(mockedImportTransactionsCsv).toHaveBeenCalledWith(10, fakeFile);
+  });
+
+  it("성공 시 importedCount 를 포함한 success toast 를 호출한다", async () => {
+    mockedImportTransactionsCsv.mockResolvedValueOnce(fakeImportResult);
+    const { Wrapper } = makeWrapper();
+    const { result } = renderHook(() => useImportTransactionsCsv(), { wrapper: Wrapper });
+
+    act(() => {
+      result.current.mutate({ userAssetId: 10, file: fakeFile });
+    });
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(mockedToast.success).toHaveBeenCalledWith("3건의 거래가 추가되었습니다.");
+  });
+
+  it("일반 에러 시 error toast 를 호출한다", async () => {
+    const axiosErr = Object.assign(new Error("Server error"), {
+      isAxiosError: true,
+      response: { status: 500, data: { detail: "Internal server error" } },
+      toJSON: () => ({}),
+    });
+    mockedImportTransactionsCsv.mockRejectedValueOnce(axiosErr);
+    const { Wrapper } = makeWrapper();
+    const { result } = renderHook(() => useImportTransactionsCsv(), { wrapper: Wrapper });
+
+    act(() => {
+      result.current.mutate({ userAssetId: 10, file: fakeFile });
+    });
+
+    await waitFor(() => expect(result.current.isError).toBe(true));
+    expect(mockedToast.error).toHaveBeenCalledWith("Internal server error");
+  });
+
+  it("400 에러 시 detail 메시지로 error toast 를 호출한다", async () => {
+    const axiosErr = Object.assign(new Error("Bad request"), {
+      isAxiosError: true,
+      response: { status: 400, data: { detail: "Invalid UTF-8 encoding" } },
+      toJSON: () => ({}),
+    });
+    mockedImportTransactionsCsv.mockRejectedValueOnce(axiosErr);
+    const { Wrapper } = makeWrapper();
+    const { result } = renderHook(() => useImportTransactionsCsv(), { wrapper: Wrapper });
+
+    act(() => {
+      result.current.mutate({ userAssetId: 10, file: fakeFile });
+    });
+
+    await waitFor(() => expect(result.current.isError).toBe(true));
+    expect(mockedToast.error).toHaveBeenCalledWith("Invalid UTF-8 encoding");
+  });
+
+  it("422 에러 시 toast 를 호출하지 않는다", async () => {
+    const axiosErr422 = Object.assign(new Error("Unprocessable"), {
+      isAxiosError: true,
+      response: {
+        status: 422,
+        data: {
+          detail: "2 rows have errors",
+          errors: [{ row: 2, field: "type", message: "invalid value" }],
+        },
+      },
+      toJSON: () => ({}),
+    });
+    mockedImportTransactionsCsv.mockRejectedValueOnce(axiosErr422);
+    const { Wrapper } = makeWrapper();
+    const { result } = renderHook(() => useImportTransactionsCsv(), { wrapper: Wrapper });
+
+    act(() => {
+      result.current.mutate({ userAssetId: 10, file: fakeFile });
+    });
+
+    await waitFor(() => expect(result.current.isError).toBe(true));
+    expect(mockedToast.error).not.toHaveBeenCalled();
+    expect(mockedToast.success).not.toHaveBeenCalled();
+  });
+
+  it("성공 시 transactions, assetSummary, portfolio 쿼리를 invalidate 한다", async () => {
+    mockedImportTransactionsCsv.mockResolvedValueOnce(fakeImportResult);
+    const { Wrapper, queryClient } = makeWrapper();
+    const invalidateSpy = jest.spyOn(queryClient, "invalidateQueries");
+    const { result } = renderHook(() => useImportTransactionsCsv(), { wrapper: Wrapper });
+
+    act(() => {
+      result.current.mutate({ userAssetId: 10, file: fakeFile });
     });
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
