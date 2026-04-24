@@ -2,12 +2,16 @@ import logging
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
+from apscheduler.schedulers.asyncio import (
+    AsyncIOScheduler,  # noqa: F401  # apscheduler has no stubs
+)
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
+from app.adapters import build_default_adapter_registry
 from app.core.config import settings
 from app.exceptions import (
     AppError,
@@ -21,6 +25,7 @@ from app.routers.portfolio import router as portfolio_router
 from app.routers.symbol import router as symbol_router
 from app.routers.transaction import router as transaction_router
 from app.routers.user_asset import router as user_asset_router
+from app.scheduler import build_scheduler
 
 logger = logging.getLogger(__name__)
 
@@ -33,7 +38,7 @@ def _make_session_factory(database_url: str) -> async_sessionmaker[AsyncSession]
 
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncGenerator[None, None]:
-    """Application lifespan — lightweight DB connectivity check on startup."""
+    """Application lifespan — DB connectivity check + scheduler startup."""
     logger.info("Starting up AssetLog API...")
     # Use the configured database_url at startup time.
     session_factory = _make_session_factory(settings.database_url)
@@ -45,8 +50,27 @@ async def lifespan(_: FastAPI) -> AsyncGenerator[None, None]:
         # Log the error but do NOT crash — allows the app to start even when
         # the DB is temporarily unavailable (e.g., during container cold start).
         logger.warning("Database health check failed at startup: %s", exc)
-    yield
-    logger.info("Shutting down AssetLog API.")
+
+    scheduler: AsyncIOScheduler | None = None
+    if settings.enable_scheduler:
+        adapters = build_default_adapter_registry()
+        scheduler = build_scheduler(session_factory, adapters)
+        scheduler.start()
+        logger.info(
+            "price_refresh scheduler started (Asia/Seoul, every hour :00)",
+            extra={"event": "scheduler_start"},
+        )
+
+    try:
+        yield
+    finally:
+        if scheduler is not None:
+            scheduler.shutdown(wait=False)
+            logger.info(
+                "price_refresh scheduler stopped",
+                extra={"event": "scheduler_stop"},
+            )
+        logger.info("Shutting down AssetLog API.")
 
 
 app = FastAPI(

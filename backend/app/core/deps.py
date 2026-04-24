@@ -7,16 +7,19 @@ from typing import Annotated
 from fastapi import Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.adapters import AdapterRegistry, build_default_adapter_registry
 from app.db.base import get_db_session
 from app.exceptions import UnauthorizedError
 from app.models.user import User
 from app.repositories.asset_symbol import AssetSymbolRepository
 from app.repositories.portfolio import PortfolioRepository
+from app.repositories.price_point import PricePointRepository
 from app.repositories.transaction import TransactionRepository
 from app.repositories.user import UserRepository
 from app.repositories.user_asset import UserAssetRepository
 from app.services.auth import AuthService
 from app.services.portfolio import PortfolioService
+from app.services.price_refresh import PriceRefreshService
 from app.services.symbol import SymbolService
 from app.services.transaction import TransactionService
 from app.services.user_asset import UserAssetService
@@ -117,6 +120,51 @@ def get_portfolio_service(repo: PortfolioRepositoryDep) -> PortfolioService:
 
 
 PortfolioServiceDep = Annotated[PortfolioService, Depends(get_portfolio_service)]
+
+# ---------------------------------------------------------------------------
+# Price refresh DI
+# ---------------------------------------------------------------------------
+
+_default_adapter_registry: AdapterRegistry | None = None
+
+
+def get_adapter_registry() -> AdapterRegistry:
+    """Return a singleton AdapterRegistry for use outside the lifespan context.
+
+    In production the lifespan creates the registry; this factory is provided
+    as a fallback for test overrides via ``app.dependency_overrides``.
+    """
+    global _default_adapter_registry  # noqa: PLW0603  # intentional module-level singleton
+    if _default_adapter_registry is None:
+        _default_adapter_registry = build_default_adapter_registry()
+    return _default_adapter_registry
+
+
+AdapterRegistryDep = Annotated[AdapterRegistry, Depends(get_adapter_registry)]
+
+
+def get_price_point_repository(session: DbSession) -> PricePointRepository:
+    """Inject a PricePointRepository bound to the current request session."""
+    return PricePointRepository(session)
+
+
+PricePointRepositoryDep = Annotated[PricePointRepository, Depends(get_price_point_repository)]
+
+
+def get_price_refresh_service(
+    asset_symbol_repo: AssetSymbolRepositoryDep,
+    price_point_repo: PricePointRepositoryDep,
+    adapters: AdapterRegistryDep,
+) -> PriceRefreshService:
+    """Inject a PriceRefreshService wired to current-request repositories."""
+    return PriceRefreshService(
+        asset_symbol_repo=asset_symbol_repo,
+        price_point_repo=price_point_repo,
+        adapters=adapters,
+    )
+
+
+PriceRefreshServiceDep = Annotated[PriceRefreshService, Depends(get_price_refresh_service)]
 
 # ---------------------------------------------------------------------------
 # Current-user guard

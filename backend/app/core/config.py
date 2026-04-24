@@ -33,6 +33,7 @@ class Settings(BaseSettings):
 
     # Scheduler
     refresh_interval_minutes: int = 60
+    enable_scheduler: bool = True
 
     # Timezone
     tz: str = "Asia/Seoul"

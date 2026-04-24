@@ -2,10 +2,15 @@
 
 from __future__ import annotations
 
-from sqlalchemy import select
+from collections.abc import Sequence
+from datetime import datetime
+from decimal import Decimal
+
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domain.asset_type import AssetType
+from app.domain.price_refresh import SymbolRef
 from app.models.asset_symbol import AssetSymbol
 
 
@@ -92,3 +97,56 @@ class AssetSymbolRepository:
         await self._session.flush()
         await self._session.refresh(asset)
         return asset
+
+    async def list_distinct_refresh_targets(self) -> list[SymbolRef]:
+        """Return all distinct (asset_type, exchange, symbol, id) for scheduling.
+
+        Returns every AssetSymbol row as a SymbolRef.  The scheduler fetches
+        prices for all known symbols regardless of whether any user currently
+        holds them — this keeps the cache warm for instant portfolio reads.
+
+        Returns:
+            List of SymbolRef, one per AssetSymbol row.
+        """
+        stmt = select(
+            AssetSymbol.id,
+            AssetSymbol.asset_type,
+            AssetSymbol.symbol,
+            AssetSymbol.exchange,
+        ).distinct()
+        rows = (await self._session.execute(stmt)).all()
+        return [
+            SymbolRef(
+                asset_symbol_id=row.id,
+                asset_type=row.asset_type,
+                symbol=row.symbol,
+                exchange=row.exchange,
+            )
+            for row in rows
+        ]
+
+    async def bulk_update_cache(
+        self,
+        rows: Sequence[tuple[int, Decimal, datetime]],
+    ) -> int:
+        """Update last_price and last_price_refreshed_at for multiple symbols.
+
+        Issues one UPDATE statement per row to keep the ORM expression
+        layer free from raw SQL.
+
+        Args:
+            rows: Sequence of (asset_symbol_id, last_price, refreshed_at).
+
+        Returns:
+            Number of rows updated.
+        """
+        updated = 0
+        for asset_symbol_id, price, refreshed_at in rows:
+            stmt = (
+                update(AssetSymbol)
+                .where(AssetSymbol.id == asset_symbol_id)
+                .values(last_price=price, last_price_refreshed_at=refreshed_at)
+            )
+            result = await self._session.execute(stmt)
+            updated += result.rowcount  # type: ignore[attr-defined]  # SQLAlchemy CursorResult
+        return updated
