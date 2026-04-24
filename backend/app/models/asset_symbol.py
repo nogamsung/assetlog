@@ -4,13 +4,17 @@ from __future__ import annotations
 
 from datetime import datetime
 from decimal import Decimal
+from typing import TYPE_CHECKING
 
 from sqlalchemy import DateTime, Index, Numeric, String, UniqueConstraint, func
 from sqlalchemy import Enum as SqlEnum
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
 from app.domain.asset_type import AssetType
+
+if TYPE_CHECKING:
+    from app.models.price_point import PricePoint
 
 
 class AssetSymbol(Base):
@@ -56,4 +60,12 @@ class AssetSymbol(Base):
         server_default=func.now(),
         onupdate=func.now(),
         nullable=False,
+    )
+
+    # Back-reference from PricePoint — only accessed for admin / debug.
+    price_points: Mapped[list[PricePoint]] = relationship(
+        "PricePoint",
+        back_populates="asset_symbol",
+        lazy="noload",
+        cascade="all, delete-orphan",
     )
