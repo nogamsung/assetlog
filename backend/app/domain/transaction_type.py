@@ -13,5 +13,5 @@ class TransactionType(enum.StrEnum):
     """
 
     BUY = "buy"
-    # SELL = "sell"       # future PR
+    SELL = "sell"  # ADDED
     # DIVIDEND = "div"    # future PR

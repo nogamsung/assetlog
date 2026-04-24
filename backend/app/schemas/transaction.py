@@ -89,31 +89,51 @@ class TransactionResponse(BaseModel):
 # ---------------------------------------------------------------------------
 
 
-class UserAssetSummaryResponse(BaseModel):
-    """Aggregated portfolio summary for a single UserAsset (BUY-only MVP)."""
+class UserAssetSummaryResponse(BaseModel):  # MODIFIED — SELL 지원 + realized P&L 추가
+    """Aggregated BUY/SELL summary with realized P&L for a single UserAsset."""
 
     model_config = ConfigDict(from_attributes=True)
 
     user_asset_id: int = Field(..., description="UserAsset ID", examples=[1])
-    total_quantity: Decimal = Field(
+    total_bought_quantity: Decimal = Field(  # ADDED (replaces total_quantity)
         ...,
-        description="Sum of all bought quantities",
-        examples=["3.5000000000"],
+        description="Sum of all BUY quantities",
+        examples=["5.0000000000"],
+    )
+    total_sold_quantity: Decimal = Field(  # ADDED
+        ...,
+        description="Sum of all SELL quantities",
+        examples=["2.0000000000"],
+    )
+    remaining_quantity: Decimal = Field(  # ADDED
+        ...,
+        description="bought_qty - sold_qty (current holding)",
+        examples=["3.0000000000"],
     )
     avg_buy_price: Decimal = Field(
         ...,
-        description="Weighted average buy price (0 when no transactions)",
+        description="Weighted average buy price across all BUYs (0 when no BUY)",
         examples=["48500.000000"],
     )
     total_invested: Decimal = Field(
         ...,
         description="Sum of (quantity × price) for all BUY transactions",
-        examples=["169750.000000"],
+        examples=["242500.000000"],
+    )
+    total_sold_value: Decimal = Field(  # ADDED
+        ...,
+        description="Sum of (quantity × price) for all SELL transactions",
+        examples=["100000.000000"],
+    )
+    realized_pnl: Decimal = Field(  # ADDED
+        ...,
+        description="Realized P&L = total_sold_value - sold_qty × avg_buy_price",
+        examples=["3000.000000"],
     )
     transaction_count: int = Field(
         ...,
-        description="Number of BUY transactions recorded",
-        examples=[2],
+        description="Total number of BUY + SELL transactions recorded",
+        examples=[3],
     )
     currency: str = Field(
         ...,

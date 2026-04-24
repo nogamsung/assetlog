@@ -19,10 +19,14 @@ router = APIRouter(prefix="/api/user-assets", tags=["transactions"])
     "/{user_asset_id}/transactions",
     response_model=TransactionResponse,
     status_code=status.HTTP_201_CREATED,
-    summary="Record a new transaction for an asset holding",
+    summary="Record a new BUY or SELL transaction for an asset holding",  # MODIFIED
     responses={
         401: {"model": ErrorResponse, "description": "Not authenticated"},
         404: {"model": ErrorResponse, "description": "UserAsset not found or not owned"},
+        409: {
+            "model": ErrorResponse,
+            "description": "Insufficient holding quantity for SELL",
+        },  # ADDED
         422: {"model": ErrorResponse, "description": "Validation error"},
     },
 )
@@ -32,10 +36,11 @@ async def add_transaction(
     transaction_service: TransactionServiceDep,
     user_asset_id: int = Path(..., ge=1, description="UserAsset ID to record a transaction for"),
 ) -> TransactionResponse:
-    """Record a BUY transaction for the authenticated user's asset holding.
+    """Record a BUY or SELL transaction for the authenticated user's asset holding.
 
     Returns 404 if the user_asset_id does not exist or is not owned by the caller.
-    """
+    Returns 409 if a SELL transaction exceeds the current remaining quantity.
+    """  # MODIFIED
     tx = await transaction_service.add(current_user.id, user_asset_id, data)
     return TransactionResponse.model_validate(tx)
 

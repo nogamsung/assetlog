@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import logging
+from decimal import Decimal
 
-from app.exceptions import NotFoundError
+from app.domain.transaction_type import TransactionType  # ADDED
+from app.exceptions import InsufficientHoldingError, NotFoundError  # MODIFIED
 from app.models.transaction import Transaction
 from app.repositories.transaction import TransactionRepository
 from app.repositories.user_asset import UserAssetRepository
@@ -46,6 +48,13 @@ class TransactionService:
         ua = await self._ua_repo.get_by_id_for_user(user_asset_id, user_id)
         if ua is None:
             raise NotFoundError(f"UserAsset with id={user_asset_id} not found or not owned by you.")
+
+        if data.type == TransactionType.SELL:  # ADDED — SELL 유효성 검사
+            remaining = await self._tx_repo.get_remaining_quantity(user_asset_id)
+            if data.quantity > remaining:
+                raise InsufficientHoldingError(
+                    f"Cannot sell {data.quantity} units: only {remaining} units held."
+                )
 
         tx = await self._tx_repo.create(user_asset_id=user_asset_id, data=data)
         logger.info(
@@ -105,14 +114,26 @@ class TransactionService:
         if ua is None:
             raise NotFoundError(f"UserAsset with id={user_asset_id} not found or not owned by you.")
 
-        total_qty, avg_price, total_invested, count = await self._tx_repo.get_summary(user_asset_id)
+        agg = await self._tx_repo.get_summary(user_asset_id)  # MODIFIED — SummaryAggregates
+
+        # Derived fields
+        zero = Decimal("0")
+        avg_buy_price = (
+            agg.total_bought_cost / agg.total_bought_qty if agg.total_bought_qty != zero else zero
+        )
+        remaining_quantity = agg.total_bought_qty - agg.total_sold_qty
+        realized_pnl = agg.total_sold_value - agg.total_sold_qty * avg_buy_price  # ADDED
 
         return UserAssetSummaryResponse(
             user_asset_id=user_asset_id,
-            total_quantity=total_qty,
-            avg_buy_price=avg_price,
-            total_invested=total_invested,
-            transaction_count=count,
+            total_bought_quantity=agg.total_bought_qty,  # MODIFIED
+            total_sold_quantity=agg.total_sold_qty,  # ADDED
+            remaining_quantity=remaining_quantity,  # ADDED
+            avg_buy_price=avg_buy_price,
+            total_invested=agg.total_bought_cost,
+            total_sold_value=agg.total_sold_value,  # ADDED
+            realized_pnl=realized_pnl,  # ADDED
+            transaction_count=agg.tx_count,
             currency=ua.asset_symbol.currency,
         )
 

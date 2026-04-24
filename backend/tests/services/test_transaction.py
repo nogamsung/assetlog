@@ -11,11 +11,11 @@ import pytest
 
 from app.domain.asset_type import AssetType
 from app.domain.transaction_type import TransactionType
-from app.exceptions import NotFoundError
+from app.exceptions import InsufficientHoldingError, NotFoundError  # MODIFIED
 from app.models.asset_symbol import AssetSymbol
 from app.models.transaction import Transaction
 from app.models.user_asset import UserAsset
-from app.repositories.transaction import TransactionRepository
+from app.repositories.transaction import SummaryAggregates, TransactionRepository  # MODIFIED
 from app.repositories.user_asset import UserAssetRepository
 from app.schemas.transaction import TransactionCreate
 from app.services.transaction import TransactionService
@@ -72,10 +72,39 @@ def _buy_data(
     )
 
 
+def _sell_data(  # ADDED
+    quantity: str = "1.0",
+    price: str = "55000.0",
+) -> TransactionCreate:
+    return TransactionCreate(
+        type=TransactionType.SELL,
+        quantity=Decimal(quantity),
+        price=Decimal(price),
+        traded_at=datetime.now(UTC),
+    )
+
+
+def _make_aggregates(  # ADDED — helper to build SummaryAggregates
+    bought_qty: str = "0",
+    bought_cost: str = "0",
+    sold_qty: str = "0",
+    sold_value: str = "0",
+    tx_count: int = 0,
+) -> SummaryAggregates:
+    return SummaryAggregates(
+        total_bought_qty=Decimal(bought_qty),
+        total_bought_cost=Decimal(bought_cost),
+        total_sold_qty=Decimal(sold_qty),
+        total_sold_value=Decimal(sold_value),
+        tx_count=tx_count,
+    )
+
+
 def _make_service(
     ua: UserAsset | None = None,
     tx: Transaction | None = None,
-    summary: tuple[Decimal, Decimal, Decimal, int] | None = None,
+    summary: SummaryAggregates | None = None,  # MODIFIED — SummaryAggregates
+    remaining_quantity: Decimal | None = None,  # ADDED
     transactions: list[Transaction] | None = None,
     delete_result: bool = True,
 ) -> TransactionService:
@@ -87,11 +116,29 @@ def _make_service(
         tx_repo.create.return_value = tx
     if summary is not None:
         tx_repo.get_summary.return_value = summary
+    if remaining_quantity is not None:  # ADDED
+        tx_repo.get_remaining_quantity.return_value = remaining_quantity
     if transactions is not None:
         tx_repo.list_for_user_asset.return_value = transactions
     tx_repo.delete_by_id_for_user_asset.return_value = delete_result
 
     return TransactionService(transaction_repo=tx_repo, user_asset_repo=ua_repo)
+
+
+class TestTransactionServiceList:
+    async def test_정상_조회(self) -> None:
+        ua = _make_user_asset()
+        txs = [_make_transaction(tx_id=1), _make_transaction(tx_id=2)]
+        svc = _make_service(ua=ua, transactions=txs)
+
+        result = await svc.list(user_id=1, user_asset_id=1)
+        assert len(result) == 2
+
+    async def test_소유하지_않은_user_asset이면_NotFoundError(self) -> None:
+        svc = _make_service(ua=None)
+
+        with pytest.raises(NotFoundError):
+            await svc.list(user_id=1, user_asset_id=999)
 
 
 class TestTransactionServiceAdd:
@@ -116,40 +163,58 @@ class TestTransactionServiceAdd:
         with pytest.raises(NotFoundError):
             await svc.add(user_id=2, user_asset_id=1, data=_buy_data())
 
-
-class TestTransactionServiceList:
-    async def test_정상_조회(self) -> None:
+    async def test_매도_성공_잔여수량_충분(self) -> None:  # ADDED
         ua = _make_user_asset()
-        txs = [_make_transaction(tx_id=1), _make_transaction(tx_id=2)]
-        svc = _make_service(ua=ua, transactions=txs)
+        tx = _make_transaction()
+        svc = _make_service(ua=ua, tx=tx, remaining_quantity=Decimal("5.0"))
 
-        result = await svc.list(user_id=1, user_asset_id=1)
-        assert len(result) == 2
+        result = await svc.add(user_id=1, user_asset_id=1, data=_sell_data(quantity="3.0"))
+        assert result.id == tx.id
 
-    async def test_소유하지_않은_user_asset이면_NotFoundError(self) -> None:
-        svc = _make_service(ua=None)
+    async def test_매도_잔여수량_초과시_InsufficientHoldingError(self) -> None:  # ADDED
+        ua = _make_user_asset()
+        svc = _make_service(ua=ua, remaining_quantity=Decimal("2.0"))
 
-        with pytest.raises(NotFoundError):
-            await svc.list(user_id=1, user_asset_id=999)
+        with pytest.raises(InsufficientHoldingError):
+            await svc.add(user_id=1, user_asset_id=1, data=_sell_data(quantity="5.0"))
+
+    async def test_매도_잔여수량이_0일때_InsufficientHoldingError(self) -> None:  # ADDED
+        ua = _make_user_asset()
+        svc = _make_service(ua=ua, remaining_quantity=Decimal("0"))
+
+        with pytest.raises(InsufficientHoldingError):
+            await svc.add(user_id=1, user_asset_id=1, data=_sell_data(quantity="1.0"))
 
 
 class TestTransactionServiceSummary:
-    async def test_요약이_올바르게_반환된다(self) -> None:
+    async def test_요약이_올바르게_반환된다(self) -> None:  # MODIFIED — SummaryAggregates
         ua = _make_user_asset(currency="KRW")
-        summary_data = (Decimal("3.0"), Decimal("1750.0"), Decimal("5250.0"), 2)
-        svc = _make_service(ua=ua, summary=summary_data)
+        # BUY 3 at 1750 avg, SELL 1 at 2000
+        agg = _make_aggregates(
+            bought_qty="3.0",
+            bought_cost="5250.0",
+            sold_qty="1.0",
+            sold_value="2000.0",
+            tx_count=3,
+        )
+        svc = _make_service(ua=ua, summary=agg)
 
         result = await svc.summary(user_id=1, user_asset_id=1)
-        assert result.total_quantity == Decimal("3.0")
+        assert result.total_bought_quantity == Decimal("3.0")
+        assert result.total_sold_quantity == Decimal("1.0")
+        assert result.remaining_quantity == Decimal("2.0")
         assert result.avg_buy_price == Decimal("1750.0")
         assert result.total_invested == Decimal("5250.0")
-        assert result.transaction_count == 2
+        assert result.total_sold_value == Decimal("2000.0")
+        # realized_pnl = 2000 - 1 * 1750 = 250
+        assert result.realized_pnl == Decimal("250.0")
+        assert result.transaction_count == 3
         assert result.currency == "KRW"
 
     async def test_currency가_AssetSymbol에서_정확히_매핑된다(self) -> None:
         ua = _make_user_asset(currency="USD")
-        summary_data = (Decimal("1.0"), Decimal("50000.0"), Decimal("50000.0"), 1)
-        svc = _make_service(ua=ua, summary=summary_data)
+        agg = _make_aggregates(bought_qty="1.0", bought_cost="50000.0", tx_count=1)
+        svc = _make_service(ua=ua, summary=agg)
 
         result = await svc.summary(user_id=1, user_asset_id=1)
         assert result.currency == "USD"
@@ -162,13 +227,33 @@ class TestTransactionServiceSummary:
 
     async def test_거래_없을때_0값_반환(self) -> None:
         ua = _make_user_asset(currency="KRW")
-        summary_data = (Decimal("0"), Decimal("0"), Decimal("0"), 0)
-        svc = _make_service(ua=ua, summary=summary_data)
+        agg = _make_aggregates()  # all zeros
+        svc = _make_service(ua=ua, summary=agg)
 
         result = await svc.summary(user_id=1, user_asset_id=1)
-        assert result.total_quantity == Decimal("0")
+        assert result.total_bought_quantity == Decimal("0")
+        assert result.remaining_quantity == Decimal("0")
         assert result.avg_buy_price == Decimal("0")
+        assert result.realized_pnl == Decimal("0")
         assert result.transaction_count == 0
+
+    async def test_sell만_있을때_realized_pnl_정확(self) -> None:  # ADDED — edge case
+        # theoretically impossible via valid flow, but test aggregates math
+        ua = _make_user_asset(currency="KRW")
+        agg = _make_aggregates(
+            bought_qty="5.0",
+            bought_cost="10000.0",
+            sold_qty="2.0",
+            sold_value="4500.0",
+            tx_count=2,
+        )
+        svc = _make_service(ua=ua, summary=agg)
+
+        result = await svc.summary(user_id=1, user_asset_id=1)
+        # avg_buy = 10000/5 = 2000, realized = 4500 - 2*2000 = 500
+        assert result.avg_buy_price == Decimal("2000.0")
+        assert result.realized_pnl == Decimal("500.0")
+        assert result.remaining_quantity == Decimal("3.0")
 
 
 class TestTransactionServiceRemove:

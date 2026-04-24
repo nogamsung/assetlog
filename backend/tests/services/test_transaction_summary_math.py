@@ -48,13 +48,16 @@ class TestSummaryDecimalPrecision:
         await repo.create(ua.id, _buy(quantity="1000.1234567890", price="1.0"))
         await repo.create(ua.id, _buy(quantity="2000.9876543210", price="1.0"))
 
-        total_qty, avg_price, total_cost, count = await repo.get_summary(ua.id)
+        agg = await repo.get_summary(ua.id)  # MODIFIED — SummaryAggregates
 
         expected_qty = Decimal("1000.1234567890") + Decimal("2000.9876543210")
-        assert total_qty == expected_qty
-        assert count == 2
+        assert agg.total_bought_qty == expected_qty
+        assert agg.tx_count == 2
         # price is 1.0 for both, so avg = total_cost / total_qty = 1.0
         # allow tiny floating drift when SQLite returns REAL
+        avg_price = (
+            agg.total_bought_cost / agg.total_bought_qty if agg.total_bought_qty else Decimal("0")
+        )
         assert abs(avg_price - Decimal("1.0")) < Decimal("0.000001")
 
     async def test_두_거래_가중평균_정밀도(
@@ -75,12 +78,13 @@ class TestSummaryDecimalPrecision:
         await repo.create(ua.id, _buy(quantity="1.0", price="60000.0"))
         await repo.create(ua.id, _buy(quantity="2.0", price="30000.0"))
 
-        total_qty, avg_price, total_cost, count = await repo.get_summary(ua.id)
+        agg = await repo.get_summary(ua.id)  # MODIFIED — SummaryAggregates
 
-        assert total_qty == Decimal("3.0")
-        assert total_cost == Decimal("120000.0")
+        assert agg.total_bought_qty == Decimal("3.0")
+        assert agg.total_bought_cost == Decimal("120000.0")
+        avg_price = agg.total_bought_cost / agg.total_bought_qty
         assert abs(avg_price - Decimal("40000.0")) < Decimal("0.000001")
-        assert count == 2
+        assert agg.tx_count == 2
 
     async def test_큰_금액의_합계가_정확하다(
         self,
@@ -98,8 +102,8 @@ class TestSummaryDecimalPrecision:
         # 10 BTC at 99999999.999999 KRW each
         await repo.create(ua.id, _buy(quantity="10.0", price="99999999.999999"))
 
-        total_qty, avg_price, total_cost, count = await repo.get_summary(ua.id)
+        agg = await repo.get_summary(ua.id)  # MODIFIED — SummaryAggregates
 
-        assert total_qty == Decimal("10.0")
+        assert agg.total_bought_qty == Decimal("10.0")
         expected_cost = Decimal("10.0") * Decimal("99999999.999999")
-        assert abs(total_cost - expected_cost) < Decimal("0.001")
+        assert abs(agg.total_bought_cost - expected_cost) < Decimal("0.001")

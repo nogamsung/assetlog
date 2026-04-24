@@ -11,7 +11,7 @@ from httpx import AsyncClient
 
 from app.core.deps import get_current_user, get_transaction_service
 from app.domain.transaction_type import TransactionType
-from app.exceptions import NotFoundError
+from app.exceptions import InsufficientHoldingError, NotFoundError  # MODIFIED
 from app.main import app
 from app.models.transaction import Transaction
 from app.models.user import User
@@ -43,11 +43,15 @@ def _make_transaction(tx_id: int = 1, user_asset_id: int = 1) -> Transaction:
 
 
 def _make_summary(user_asset_id: int = 1, currency: str = "KRW") -> UserAssetSummaryResponse:
-    return UserAssetSummaryResponse(
+    return UserAssetSummaryResponse(  # MODIFIED — new schema fields
         user_asset_id=user_asset_id,
-        total_quantity=Decimal("3.0"),
+        total_bought_quantity=Decimal("3.0"),
+        total_sold_quantity=Decimal("0.0"),
+        remaining_quantity=Decimal("3.0"),
         avg_buy_price=Decimal("50000.0"),
         total_invested=Decimal("150000.0"),
+        total_sold_value=Decimal("0.0"),
+        realized_pnl=Decimal("0.0"),
         transaction_count=2,
         currency=currency,
     )
@@ -98,6 +102,31 @@ class TestAddTransaction:
                 "/api/user-assets/999/transactions", json=_BUY_PAYLOAD
             )
             assert response.status_code == 404
+        finally:
+            app.dependency_overrides.pop(get_current_user, None)
+            app.dependency_overrides.pop(get_transaction_service, None)
+
+    async def test_잔여수량_초과_매도시_409(self, async_client: AsyncClient) -> None:  # ADDED
+        user = _make_user()
+        mock_service = AsyncMock(spec=TransactionService)
+        mock_service.add.side_effect = InsufficientHoldingError(
+            "Cannot sell 5 units: only 2 units held."
+        )
+
+        app.dependency_overrides[get_current_user] = lambda: user
+        app.dependency_overrides[get_transaction_service] = lambda: mock_service
+
+        sell_payload = {
+            "type": "sell",
+            "quantity": "5.0",
+            "price": "55000.0",
+            "traded_at": "2026-04-23T10:00:00+00:00",
+        }
+        try:
+            response = await async_client.post("/api/user-assets/1/transactions", json=sell_payload)
+            assert response.status_code == 409
+            body = response.json()
+            assert "detail" in body
         finally:
             app.dependency_overrides.pop(get_current_user, None)
             app.dependency_overrides.pop(get_transaction_service, None)

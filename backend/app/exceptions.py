@@ -38,3 +38,14 @@ class ValidationError(AppError):
 
     status_code: int = HTTPStatus.UNPROCESSABLE_ENTITY.value
     detail: str = "The provided input is invalid."
+
+
+class InsufficientHoldingError(ValueError):  # ADDED
+    """Raised when a SELL exceeds current remaining quantity."""
+
+    status_code: int = HTTPStatus.CONFLICT.value
+    detail: str = "Insufficient holding quantity for this SELL transaction."
+
+    def __init__(self, detail: str | None = None) -> None:
+        self.detail = detail if detail is not None else self.__class__.detail
+        super().__init__(self.detail)

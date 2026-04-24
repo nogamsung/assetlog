@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from decimal import Decimal
 
-from sqlalchemy import func, select
+from sqlalchemy import case, func, select  # MODIFIED — added case
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -43,17 +43,53 @@ class PortfolioRepository:
         A UserAsset with zero transactions is **included** with zeroed aggregates
         so the service layer can expose it as a pending / zero-cost holding.
         """
-        # Correlated subquery: BUY aggregates per user_asset
-        buy_agg = (
+        # Correlated subquery: BUY/SELL aggregates per user_asset via conditional SUM  # MODIFIED
+        tx_agg = (
             select(
                 Transaction.user_asset_id.label("ua_id"),
-                func.coalesce(func.sum(Transaction.quantity), Decimal("0")).label("total_qty"),
                 func.coalesce(
-                    func.sum(Transaction.quantity * Transaction.price),
+                    func.sum(
+                        case(
+                            (Transaction.type == TransactionType.BUY, Transaction.quantity),
+                            else_=Decimal("0"),
+                        )
+                    ),
                     Decimal("0"),
-                ).label("total_cost"),
+                ).label("total_bought_qty"),
+                func.coalesce(
+                    func.sum(
+                        case(
+                            (
+                                Transaction.type == TransactionType.BUY,
+                                Transaction.quantity * Transaction.price,
+                            ),
+                            else_=Decimal("0"),
+                        )
+                    ),
+                    Decimal("0"),
+                ).label("total_bought_cost"),
+                func.coalesce(
+                    func.sum(
+                        case(
+                            (Transaction.type == TransactionType.SELL, Transaction.quantity),
+                            else_=Decimal("0"),
+                        )
+                    ),
+                    Decimal("0"),
+                ).label("total_sold_qty"),
+                func.coalesce(
+                    func.sum(
+                        case(
+                            (
+                                Transaction.type == TransactionType.SELL,
+                                Transaction.quantity * Transaction.price,
+                            ),
+                            else_=Decimal("0"),
+                        )
+                    ),
+                    Decimal("0"),
+                ).label("total_sold_value"),
             )
-            .where(Transaction.type == TransactionType.BUY)
             .group_by(Transaction.user_asset_id)
             .subquery()
         )
@@ -61,11 +97,13 @@ class PortfolioRepository:
         stmt = (
             select(
                 UserAsset,
-                func.coalesce(buy_agg.c.total_qty, Decimal("0")).label("total_qty"),
-                func.coalesce(buy_agg.c.total_cost, Decimal("0")).label("total_cost"),
+                func.coalesce(tx_agg.c.total_bought_qty, Decimal("0")).label("total_bought_qty"),
+                func.coalesce(tx_agg.c.total_bought_cost, Decimal("0")).label("total_bought_cost"),
+                func.coalesce(tx_agg.c.total_sold_qty, Decimal("0")).label("total_sold_qty"),
+                func.coalesce(tx_agg.c.total_sold_value, Decimal("0")).label("total_sold_value"),
             )
             .options(selectinload(UserAsset.asset_symbol))
-            .outerjoin(buy_agg, UserAsset.id == buy_agg.c.ua_id)
+            .outerjoin(tx_agg, UserAsset.id == tx_agg.c.ua_id)
             .where(UserAsset.user_id == user_id)
             .order_by(UserAsset.created_at)
         )
@@ -75,14 +113,27 @@ class PortfolioRepository:
         result: list[HoldingRow] = []
         for row in rows:
             user_asset: UserAsset = row[0]
-            total_qty = Decimal(str(row.total_qty))
-            total_cost = Decimal(str(row.total_cost))
+            zero = Decimal("0")
+            total_bought_qty = Decimal(str(row.total_bought_qty))
+            total_bought_cost = Decimal(str(row.total_bought_cost))
+            total_sold_qty = Decimal(str(row.total_sold_qty))
+            total_sold_value = Decimal(str(row.total_sold_value))
+
+            # Derived: remaining qty and cost basis of remaining shares  # ADDED
+            remaining_qty = total_bought_qty - total_sold_qty
+            avg_buy_price = (
+                total_bought_cost / total_bought_qty if total_bought_qty != zero else zero
+            )
+            cost_basis_remaining = avg_buy_price * remaining_qty
+            realized_pnl = total_sold_value - total_sold_qty * avg_buy_price  # ADDED
+
             result.append(
                 HoldingRow(
                     user_asset_id=user_asset.id,
                     asset_symbol=user_asset.asset_symbol,
-                    total_qty=total_qty,
-                    total_cost=total_cost,
+                    total_qty=remaining_qty,  # MODIFIED — remaining, not total bought
+                    total_cost=cost_basis_remaining,  # MODIFIED — cost of remaining shares
+                    realized_pnl=realized_pnl,  # ADDED
                 )
             )
 

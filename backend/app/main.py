@@ -16,6 +16,7 @@ from app.core.config import settings
 from app.exceptions import (
     AppError,
     ConflictError,
+    InsufficientHoldingError,  # ADDED
     NotFoundError,
     UnauthorizedError,
     ValidationError,
@@ -125,6 +126,15 @@ async def validation_error_handler(request: Request, exc: ValidationError) -> JS
     """Map ValidationError → 422."""
     logger.debug("ValidationError: %s", exc.detail)
     return JSONResponse(status_code=422, content={"detail": exc.detail})
+
+
+@app.exception_handler(InsufficientHoldingError)  # ADDED
+async def insufficient_holding_handler(
+    request: Request, exc: InsufficientHoldingError
+) -> JSONResponse:
+    """Map InsufficientHoldingError → 409."""
+    logger.debug("InsufficientHoldingError: %s", exc.detail)
+    return JSONResponse(status_code=409, content={"detail": exc.detail})
 
 
 app.include_router(auth_router)

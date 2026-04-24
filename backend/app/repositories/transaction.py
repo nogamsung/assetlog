@@ -3,13 +3,24 @@
 from __future__ import annotations
 
 from decimal import Decimal
+from typing import NamedTuple  # ADDED
 
-from sqlalchemy import func, select
+from sqlalchemy import case, func, select  # MODIFIED
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domain.transaction_type import TransactionType
 from app.models.transaction import Transaction
 from app.schemas.transaction import TransactionCreate
+
+
+class SummaryAggregates(NamedTuple):  # ADDED
+    """BUY/SELL aggregates for a single user_asset."""
+
+    total_bought_qty: Decimal
+    total_bought_cost: Decimal
+    total_sold_qty: Decimal
+    total_sold_value: Decimal
+    tx_count: int
 
 
 class TransactionRepository:
@@ -59,33 +70,75 @@ class TransactionRepository:
         result = await self._session.execute(stmt)
         return list(result.scalars().all())
 
-    async def get_summary(
+    async def get_summary(  # MODIFIED — BUY/SELL 분리 집계
         self,
         user_asset_id: int,
-    ) -> tuple[Decimal, Decimal, Decimal, int]:
-        """Return (total_quantity, avg_buy_price, total_invested, count) for BUY rows.
+    ) -> SummaryAggregates:
+        """Return BUY/SELL aggregates for a single user_asset in one SQL round-trip.
 
-        Uses a single SQL aggregation query to avoid Python-level iteration.
-        Returns zeroed-out tuple when there are no transactions.
+        Uses conditional aggregation to split BUY vs SELL without a subquery.
+        Returns zeroed-out SummaryAggregates when there are no transactions.
         """
         stmt = select(
-            func.coalesce(func.sum(Transaction.quantity), Decimal("0")).label("total_qty"),
-            func.coalesce(func.sum(Transaction.quantity * Transaction.price), Decimal("0")).label(
-                "total_cost"
-            ),
+            func.coalesce(
+                func.sum(
+                    case(
+                        (Transaction.type == TransactionType.BUY, Transaction.quantity),
+                        else_=Decimal("0"),
+                    )
+                ),
+                Decimal("0"),
+            ).label("total_bought_qty"),
+            func.coalesce(
+                func.sum(
+                    case(
+                        (
+                            Transaction.type == TransactionType.BUY,
+                            Transaction.quantity * Transaction.price,
+                        ),
+                        else_=Decimal("0"),
+                    )
+                ),
+                Decimal("0"),
+            ).label("total_bought_cost"),
+            func.coalesce(
+                func.sum(
+                    case(
+                        (Transaction.type == TransactionType.SELL, Transaction.quantity),
+                        else_=Decimal("0"),
+                    )
+                ),
+                Decimal("0"),
+            ).label("total_sold_qty"),
+            func.coalesce(
+                func.sum(
+                    case(
+                        (
+                            Transaction.type == TransactionType.SELL,
+                            Transaction.quantity * Transaction.price,
+                        ),
+                        else_=Decimal("0"),
+                    )
+                ),
+                Decimal("0"),
+            ).label("total_sold_value"),
             func.count(Transaction.id).label("tx_count"),
-        ).where(
-            Transaction.user_asset_id == user_asset_id,
-            Transaction.type == TransactionType.BUY,
-        )
+        ).where(Transaction.user_asset_id == user_asset_id)
+
         row = (await self._session.execute(stmt)).one()
 
-        total_qty: Decimal = Decimal(str(row.total_qty))
-        total_cost: Decimal = Decimal(str(row.total_cost))
-        count: int = int(row.tx_count)
+        return SummaryAggregates(
+            total_bought_qty=Decimal(str(row.total_bought_qty)),
+            total_bought_cost=Decimal(str(row.total_bought_cost)),
+            total_sold_qty=Decimal(str(row.total_sold_qty)),
+            total_sold_value=Decimal(str(row.total_sold_value)),
+            tx_count=int(row.tx_count),
+        )
 
-        avg_price = total_cost / total_qty if total_qty != Decimal("0") else Decimal("0")
-        return total_qty, avg_price, total_cost, count
+    async def get_remaining_quantity(self, user_asset_id: int) -> Decimal:  # ADDED
+        """Return current remaining quantity (Σbuy_qty - Σsell_qty) for a user_asset."""
+        agg = await self.get_summary(user_asset_id)
+        return agg.total_bought_qty - agg.total_sold_qty
 
     async def get_by_id_for_user_asset(
         self,
