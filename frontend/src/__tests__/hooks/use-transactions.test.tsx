@@ -44,10 +44,15 @@ const fakeTx: TransactionResponse = {
 
 const fakeSummary: UserAssetSummaryResponse = {
   userAssetId: 10,
-  totalQuantity: "1.5000000000",
-  avgCost: "50000.000000",
-  costBasis: "75000.00",
+  totalBoughtQuantity: "1.5000000000",
+  totalSoldQuantity: "0.0000000000",
+  remainingQuantity: "1.5000000000",
+  avgBuyPrice: "50000.000000",
+  totalInvested: "75000.000000",
+  totalSoldValue: "0.000000",
+  realizedPnl: "0.000000",
   transactionCount: 1,
+  currency: "KRW",
 };
 
 describe("useTransactions", () => {

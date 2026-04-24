@@ -65,17 +65,17 @@ export function TransactionList({ userAssetId }: TransactionListProps) {
           >
             <div className="flex items-center gap-4">
               <span
-                className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
+                className={`text-xs font-semibold px-2 py-0.5 rounded-full ${ // MODIFIED
                   tx.type === "buy"
-                    ? "bg-green-100 text-green-700"
-                    : "bg-red-100 text-red-700"
+                    ? "bg-emerald-100 text-emerald-700"
+                    : "bg-rose-100 text-rose-700"
                 }`}
               >
                 {tx.type === "buy" ? "매수" : "매도"}
               </span>
               <div>
                 <p className="text-sm font-medium">
-                  {tx.quantity}{" "}
+                  {tx.type === "buy" ? "+" : "-"}{tx.quantity}{/* ADDED sign */}{" "}
                   <span className="text-muted-foreground">@ {tx.price}</span>
                 </p>
                 <p className="text-xs text-muted-foreground">{formattedDate}</p>

@@ -18,10 +18,15 @@ interface RawTransactionResponse {
 
 interface RawUserAssetSummaryResponse {
   user_asset_id: number;
-  total_quantity: string;
-  avg_cost: string;
-  cost_basis: string;
+  total_bought_quantity: string; // MODIFIED
+  total_sold_quantity: string;   // ADDED
+  remaining_quantity: string;    // ADDED
+  avg_buy_price: string;         // ADDED
+  total_invested: string;        // ADDED
+  total_sold_value: string;      // ADDED
+  realized_pnl: string;          // ADDED
   transaction_count: number;
+  currency: string;              // ADDED
 }
 
 // ── Converters ─────────────────────────────────────────────────────────────────

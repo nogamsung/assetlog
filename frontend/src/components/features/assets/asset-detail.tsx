@@ -121,7 +121,7 @@ export function AssetDetail({ userAssetId }: AssetDetailProps) {
             </CardContent>
           </Card>
 
-          {summaryQuery.data && (
+          {summaryQuery.data && ( // MODIFIED — realizedPnl + remaining_quantity 섹션
             <Card>
               <CardHeader>
                 <CardTitle className="text-base">투자 요약</CardTitle>
@@ -129,11 +129,56 @@ export function AssetDetail({ userAssetId }: AssetDetailProps) {
               <CardContent>
                 <dl className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm sm:grid-cols-3">
                   <div>
-                    <dt className="text-muted-foreground">총 매수금액</dt>
+                    <dt className="text-muted-foreground">총 매수 수량</dt>
+                    <dd className="font-semibold mt-0.5">
+                      {summaryQuery.data.totalBoughtQuantity}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-muted-foreground">총 매도 수량</dt>
+                    <dd className="font-semibold mt-0.5">
+                      {summaryQuery.data.totalSoldQuantity}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-muted-foreground">남은 수량</dt>
+                    <dd className="font-semibold mt-0.5">
+                      {summaryQuery.data.remainingQuantity}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-muted-foreground">총 투자금액</dt>
                     <dd className="font-semibold mt-0.5">
                       {formatCurrency(
-                        summaryQuery.data.costBasis,
-                        holding.assetSymbol.currency,
+                        summaryQuery.data.totalInvested,
+                        summaryQuery.data.currency,
+                      )}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-muted-foreground">매도 금액</dt>
+                    <dd className="font-semibold mt-0.5">
+                      {formatCurrency(
+                        summaryQuery.data.totalSoldValue,
+                        summaryQuery.data.currency,
+                      )}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-muted-foreground">실현 손익</dt>
+                    <dd
+                      className={`font-semibold mt-0.5 ${
+                        Number(summaryQuery.data.realizedPnl) > 0
+                          ? "text-emerald-600"
+                          : Number(summaryQuery.data.realizedPnl) < 0
+                            ? "text-rose-600"
+                            : "text-muted-foreground"
+                      }`}
+                    >
+                      {Number(summaryQuery.data.realizedPnl) > 0 ? "+" : ""}
+                      {formatCurrency(
+                        summaryQuery.data.realizedPnl,
+                        summaryQuery.data.currency,
                       )}
                     </dd>
                   </div>

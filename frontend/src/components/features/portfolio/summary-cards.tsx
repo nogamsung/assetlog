@@ -18,6 +18,7 @@ function PnlColorClass(abs: string): string {
 export function SummaryCards({ summary }: SummaryCardsProps) {
   const totalValueEntries = Object.entries(summary.totalValueByCurrency);
   const pnlEntries = Object.entries(summary.pnlByCurrency);
+  const realizedEntries = Object.entries(summary.realizedPnlByCurrency); // ADDED
 
   const totalValueText =
     totalValueEntries.length === 0
@@ -39,8 +40,22 @@ export function SummaryCards({ summary }: SummaryCardsProps) {
   const firstPnlAbs =
     pnlEntries.length > 0 ? pnlEntries[0][1].abs : "0";
 
+  // ADDED — 실현 손익 텍스트
+  const realizedText =
+    realizedEntries.length === 0
+      ? "—"
+      : realizedEntries
+          .map(([currency, amount]) => {
+            const sign = Number(amount) > 0 ? "+" : "";
+            return `${sign}${formatCurrency(amount, currency)}`;
+          })
+          .join(" · ");
+
+  const firstRealizedAbs =
+    realizedEntries.length > 0 ? realizedEntries[0][1] : "0";
+
   return (
-    <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4"> {/* MODIFIED — 4-column to fit realized card */}
       {/* 총평가액 카드 */}
       <Card>
         <CardHeader className="pb-2">
@@ -53,16 +68,30 @@ export function SummaryCards({ summary }: SummaryCardsProps) {
         </CardContent>
       </Card>
 
-      {/* 총손익 카드 */}
+      {/* 미실현 손익 카드 — MODIFIED 라벨 */}
       <Card>
         <CardHeader className="pb-2">
           <CardTitle className="text-sm font-medium text-muted-foreground">
-            총손익
+            미실현 손익
           </CardTitle>
         </CardHeader>
         <CardContent>
           <p className={`text-2xl font-bold ${PnlColorClass(firstPnlAbs)}`}>
             {pnlText}
+          </p>
+        </CardContent>
+      </Card>
+
+      {/* 실현 손익 카드 — ADDED */}
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm font-medium text-muted-foreground">
+            실현 손익
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p className={`text-2xl font-bold ${PnlColorClass(firstRealizedAbs)}`}>
+            {realizedText}
           </p>
         </CardContent>
       </Card>

@@ -42,6 +42,7 @@ const fakeSummary: PortfolioSummary = {
   totalValueByCurrency: { KRW: "12500000.00" },
   totalCostByCurrency: { KRW: "11000000.00" },
   pnlByCurrency: { KRW: { abs: "1500000.00", pct: 13.64 } },
+  realizedPnlByCurrency: { KRW: "0.000000" },
   allocation: [{ assetType: "kr_stock", pct: 100 }],
   lastPriceRefreshedAt: "2026-04-24T09:00:00+09:00",
   pendingCount: 0,
@@ -63,6 +64,7 @@ const fakeHolding: HoldingResponse = {
   quantity: "10.0000",
   avgCost: "70000.0000",
   costBasis: "700000.00",
+  realizedPnl: "0.000000",
   latestPrice: "75000.0000",
   latestValue: "750000.00",
   pnlAbs: "50000.00",
@@ -140,7 +142,8 @@ describe("DashboardView", () => {
     render(<DashboardView />);
     // 요약 카드
     expect(screen.getByText("총평가액")).toBeInTheDocument();
-    expect(screen.getByText("총손익")).toBeInTheDocument();
+    expect(screen.getByText("미실현 손익")).toBeInTheDocument();
+    expect(screen.getByText("실현 손익")).toBeInTheDocument();
     // 테이블
     expect(screen.getByText("005930")).toBeInTheDocument();
     // 차트 영역

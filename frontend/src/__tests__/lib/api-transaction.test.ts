@@ -43,18 +43,28 @@ const expectedTransaction: TransactionResponse = {
 
 const rawSummary = {
   user_asset_id: 10,
-  total_quantity: "3.0000000000",
-  avg_cost: "49000.000000",
-  cost_basis: "147000.00",
+  total_bought_quantity: "3.0000000000",
+  total_sold_quantity: "0.0000000000",
+  remaining_quantity: "3.0000000000",
+  avg_buy_price: "49000.000000",
+  total_invested: "147000.000000",
+  total_sold_value: "0.000000",
+  realized_pnl: "0.000000",
   transaction_count: 2,
+  currency: "KRW",
 };
 
 const expectedSummary: UserAssetSummaryResponse = {
   userAssetId: 10,
-  totalQuantity: "3.0000000000",
-  avgCost: "49000.000000",
-  costBasis: "147000.00",
+  totalBoughtQuantity: "3.0000000000",
+  totalSoldQuantity: "0.0000000000",
+  remainingQuantity: "3.0000000000",
+  avgBuyPrice: "49000.000000",
+  totalInvested: "147000.000000",
+  totalSoldValue: "0.000000",
+  realizedPnl: "0.000000",
   transactionCount: 2,
+  currency: "KRW",
 };
 
 describe("createTransaction", () => {

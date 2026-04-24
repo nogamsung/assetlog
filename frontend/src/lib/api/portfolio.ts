@@ -25,6 +25,7 @@ interface RawPortfolioSummary {
   total_value_by_currency: CurrencyAmountMap;
   total_cost_by_currency: CurrencyAmountMap;
   pnl_by_currency: Record<string, RawPnlEntry>;
+  realized_pnl_by_currency: CurrencyAmountMap; // ADDED
   allocation: RawAllocationEntry[];
   last_price_refreshed_at: string | null;
   pending_count: number;
@@ -48,6 +49,7 @@ interface RawHolding {
   quantity: string;
   avg_cost: string;
   cost_basis: string;
+  realized_pnl: string; // ADDED
   latest_price: string | null;
   latest_value: string | null;
   pnl_abs: string | null;
@@ -75,6 +77,7 @@ function toPortfolioSummary(raw: RawPortfolioSummary): PortfolioSummary {
     totalValueByCurrency: raw.total_value_by_currency,
     totalCostByCurrency: raw.total_cost_by_currency,
     pnlByCurrency,
+    realizedPnlByCurrency: raw.realized_pnl_by_currency, // ADDED
     allocation,
     lastPriceRefreshedAt: raw.last_price_refreshed_at,
     pendingCount: raw.pending_count,

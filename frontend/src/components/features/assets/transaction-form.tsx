@@ -1,7 +1,9 @@
 "use client";
 
+import { useState } from "react"; // ADDED
 import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
+import { isAxiosError } from "axios"; // ADDED
 import { transactionCreateSchema, type TransactionCreateInput } from "@/lib/schemas/transaction";
 import { useCreateTransaction } from "@/hooks/use-transactions";
 import { Button } from "@/components/ui/button";
@@ -15,6 +17,7 @@ interface TransactionFormProps {
 
 export function TransactionForm({ userAssetId, onSuccess }: TransactionFormProps) {
   const createMutation = useCreateTransaction();
+  const [conflictError, setConflictError] = useState<string | null>(null); // ADDED
 
   const today = new Date();
   const todayLocal = new Date(
@@ -41,12 +44,19 @@ export function TransactionForm({ userAssetId, onSuccess }: TransactionFormProps
   });
 
   function onSubmit(data: TransactionCreateInput) {
+    setConflictError(null); // ADDED
     createMutation.mutate(
       { userAssetId, data },
       {
         onSuccess: () => {
           reset();
           onSuccess?.();
+        },
+        onError: (err) => { // ADDED
+          if (isAxiosError(err) && err.response?.status === 409) {
+            const detail = (err.response.data as { detail?: string }).detail;
+            setConflictError(detail ?? "보유 수량을 초과하여 매도할 수 없습니다.");
+          }
         },
       },
     );
@@ -59,7 +69,12 @@ export function TransactionForm({ userAssetId, onSuccess }: TransactionFormProps
       noValidate
       aria-label="거래 추가 폼"
     >
-      {createMutation.isError && (
+      {conflictError && ( // ADDED
+        <p role="alert" className="text-sm font-medium text-destructive">
+          {conflictError}
+        </p>
+      )}
+      {!conflictError && createMutation.isError && ( // MODIFIED
         <p role="alert" className="text-sm font-medium text-destructive">
           {createMutation.error?.message ?? "거래 등록에 실패했습니다."}
         </p>
