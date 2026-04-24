@@ -32,6 +32,11 @@ const fakeSummary: PortfolioSummary = {
   lastPriceRefreshedAt: "2026-04-24T09:00:00+09:00",
   pendingCount: 0,
   staleCount: 0,
+  convertedTotalValue: null,
+  convertedTotalCost: null,
+  convertedPnlAbs: null,
+  convertedRealizedPnl: null,
+  displayCurrency: null,
 };
 
 const fakeHolding: HoldingResponse = {
@@ -86,8 +91,28 @@ describe("usePortfolioSummary", () => {
     const { result } = renderHook(() => usePortfolioSummary(), { wrapper: Wrapper });
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
-    const queryState = queryClient.getQueryState(["portfolio", "summary"]);
+    const queryState = queryClient.getQueryState(["portfolio", "summary", null]);
     expect(queryState?.isInvalidated).toBe(false);
+  });
+
+  it("convertTo 없으면 query key 의 세 번째 요소가 null 이다", async () => {
+    mockedGetSummary.mockResolvedValueOnce(fakeSummary);
+    const { Wrapper, queryClient } = makeWrapper();
+    const { result } = renderHook(() => usePortfolioSummary(), { wrapper: Wrapper });
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    const queryState = queryClient.getQueryState(["portfolio", "summary", null]);
+    expect(queryState).toBeDefined();
+  });
+
+  it("convertTo='KRW' 이면 query key 의 세 번째 요소가 'KRW' 이다", async () => {
+    mockedGetSummary.mockResolvedValueOnce(fakeSummary);
+    const { Wrapper, queryClient } = makeWrapper();
+    const { result } = renderHook(() => usePortfolioSummary("KRW"), { wrapper: Wrapper });
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    const queryState = queryClient.getQueryState(["portfolio", "summary", "KRW"]);
+    expect(queryState).toBeDefined();
   });
 });
 

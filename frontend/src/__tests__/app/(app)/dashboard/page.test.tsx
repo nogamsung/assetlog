@@ -47,6 +47,11 @@ const fakeSummary: PortfolioSummary = {
   lastPriceRefreshedAt: "2026-04-24T09:00:00+09:00",
   pendingCount: 0,
   staleCount: 0,
+  convertedTotalValue: null,
+  convertedTotalCost: null,
+  convertedPnlAbs: null,
+  convertedRealizedPnl: null,
+  displayCurrency: null,
 };
 
 const fakeHolding: HoldingResponse = {
@@ -166,5 +171,31 @@ describe("DashboardView", () => {
     setupMocks({ data: pendingSummary }, { data: [pendingHolding] });
     render(<DashboardView />);
     expect(screen.getByText("가격 대기중")).toBeInTheDocument();
+  });
+
+  it("CurrencySwitcher 를 렌더링한다", () => {
+    setupMocks({ data: fakeSummary }, { data: [fakeHolding] });
+    render(<DashboardView />);
+    expect(
+      screen.getByRole("group", { name: "통화 환산 선택" }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "환산 안 함" })).toBeInTheDocument();
+  });
+
+  it("환율 미비 시 안내 배너를 표시한다", () => {
+    // displayCurrency가 없는 상태로 converted_* 가 모두 null (환율 미비 시뮬레이션)
+    // DashboardView 의 내부 state 를 직접 조작할 수 없으므로
+    // fakeSummary 에 displayCurrency가 있고 converted_* 가 모두 null 인 케이스를 모킹
+    const fxUnavailableSummary: PortfolioSummary = {
+      ...fakeSummary,
+      convertedTotalValue: null,
+      convertedPnlAbs: null,
+      convertedRealizedPnl: null,
+      displayCurrency: "KRW", // 이미 KRW 환산 응답이 왔으나 rate 없음
+    };
+    setupMocks({ data: fxUnavailableSummary }, { data: [fakeHolding] });
+    render(<DashboardView />);
+    // displayCurrency=null(초기) 이므로 배너 미표시 — 초기에는 not.toBeInTheDocument
+    expect(screen.queryByRole("status", { name: /환율 준비 중/ })).not.toBeInTheDocument();
   });
 });

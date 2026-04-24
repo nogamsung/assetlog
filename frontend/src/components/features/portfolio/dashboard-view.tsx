@@ -1,11 +1,13 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { usePortfolioSummary, usePortfolioHoldings } from "@/hooks/use-portfolio";
 import { SummaryCards } from "./summary-cards";
 import { AllocationDonut } from "./allocation-donut";
 import { HoldingsTable } from "./holdings-table";
 import { PortfolioHistoryChart } from "./portfolio-history-chart";
+import { CurrencySwitcher } from "./currency-switcher";
 
 function DashboardSkeleton() {
   return (
@@ -46,7 +48,9 @@ function EmptyPortfolio() {
 }
 
 export function DashboardView() {
-  const summaryQuery = usePortfolioSummary();
+  const [displayCurrency, setDisplayCurrency] = useState<string | null>(null);
+
+  const summaryQuery = usePortfolioSummary(displayCurrency ?? undefined);
   const holdingsQuery = usePortfolioHoldings();
 
   const isLoading = summaryQuery.isLoading || holdingsQuery.isLoading;
@@ -69,15 +73,43 @@ export function DashboardView() {
     return <EmptyPortfolio />;
   }
 
+  // 환율 미비 감지: convertTo 를 요청했으나 모든 converted_* 가 null 인 경우
+  const fxUnavailable =
+    displayCurrency !== null &&
+    summary.convertedTotalValue === null &&
+    summary.convertedPnlAbs === null &&
+    summary.convertedRealizedPnl === null;
+
+  // CurrencySwitcher 에 제공할 통화 목록 (totalValueByCurrency 키 기준)
+  const availableCurrencies = Object.keys(summary.totalValueByCurrency);
+
   // 가장 큰 보유액 통화 결정 (차트 기본 currency)
-  const totalValueByCurrency = summary.totalValueByCurrency;
   const defaultCurrency =
-    Object.entries(totalValueByCurrency).sort(
+    Object.entries(summary.totalValueByCurrency).sort(
       ([, a], [, b]) => Number(b) - Number(a),
     )[0]?.[0] ?? "KRW";
 
   return (
     <div className="space-y-6">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <span className="text-sm text-muted-foreground">포트폴리오 요약</span>
+        <CurrencySwitcher
+          value={displayCurrency}
+          onChange={setDisplayCurrency}
+          availableCurrencies={availableCurrencies}
+        />
+      </div>
+
+      {fxUnavailable && (
+        <p
+          role="status"
+          aria-live="polite"
+          className="rounded-md border border-yellow-300 bg-yellow-50 px-3 py-2 text-xs text-yellow-800"
+        >
+          {displayCurrency} 환율 준비 중입니다. 잠시 후 다시 시도해 주세요.
+        </p>
+      )}
+
       <SummaryCards summary={summary} />
       <AllocationDonut allocation={summary.allocation} />
       <PortfolioHistoryChart currency={defaultCurrency} />

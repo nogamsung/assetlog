@@ -25,11 +25,16 @@ interface RawPortfolioSummary {
   total_value_by_currency: CurrencyAmountMap;
   total_cost_by_currency: CurrencyAmountMap;
   pnl_by_currency: Record<string, RawPnlEntry>;
-  realized_pnl_by_currency: CurrencyAmountMap; // ADDED
+  realized_pnl_by_currency: CurrencyAmountMap;
   allocation: RawAllocationEntry[];
   last_price_refreshed_at: string | null;
   pending_count: number;
   stale_count: number;
+  converted_total_value: string | null;
+  converted_total_cost: string | null;
+  converted_pnl_abs: string | null;
+  converted_realized_pnl: string | null;
+  display_currency: string | null;
 }
 
 interface RawAssetSymbol {
@@ -77,11 +82,16 @@ function toPortfolioSummary(raw: RawPortfolioSummary): PortfolioSummary {
     totalValueByCurrency: raw.total_value_by_currency,
     totalCostByCurrency: raw.total_cost_by_currency,
     pnlByCurrency,
-    realizedPnlByCurrency: raw.realized_pnl_by_currency, // ADDED
+    realizedPnlByCurrency: raw.realized_pnl_by_currency,
     allocation,
     lastPriceRefreshedAt: raw.last_price_refreshed_at,
     pendingCount: raw.pending_count,
     staleCount: raw.stale_count,
+    convertedTotalValue: raw.converted_total_value ?? null,
+    convertedTotalCost: raw.converted_total_cost ?? null,
+    convertedPnlAbs: raw.converted_pnl_abs ?? null,
+    convertedRealizedPnl: raw.converted_realized_pnl ?? null,
+    displayCurrency: raw.display_currency ?? null,
   };
 }
 
@@ -91,10 +101,14 @@ function toHolding(raw: RawHolding): HoldingResponse {
 
 // ── Public API helpers ─────────────────────────────────────────────────────────
 
-export async function getPortfolioSummary(): Promise<PortfolioSummary> {
-  const response = await apiClient.get<RawPortfolioSummary>(
-    "/api/portfolio/summary",
-  );
+export async function getPortfolioSummary(
+  options: { convertTo?: string } = {},
+): Promise<PortfolioSummary> {
+  const url =
+    options.convertTo != null
+      ? `/api/portfolio/summary?convert_to=${encodeURIComponent(options.convertTo)}`
+      : "/api/portfolio/summary";
+  const response = await apiClient.get<RawPortfolioSummary>(url);
   return toPortfolioSummary(response.data);
 }
 
