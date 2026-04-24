@@ -1,9 +1,12 @@
 "use client";
 
+import { Pencil } from "lucide-react"; // ADDED
 import { useTransactions, useDeleteTransaction } from "@/hooks/use-transactions";
+import type { TransactionResponse } from "@/types/transaction"; // ADDED
 
 interface TransactionListProps {
   userAssetId: number;
+  onEdit?: (transaction: TransactionResponse) => void; // ADDED
 }
 
 function TransactionListSkeleton() {
@@ -24,7 +27,7 @@ function EmptyState() {
   );
 }
 
-export function TransactionList({ userAssetId }: TransactionListProps) {
+export function TransactionList({ userAssetId, onEdit }: TransactionListProps) { // MODIFIED
   const { data: transactions, isLoading, isError, error } = useTransactions(userAssetId);
   const deleteMutation = useDeleteTransaction();
 
@@ -86,6 +89,17 @@ export function TransactionList({ userAssetId }: TransactionListProps) {
                 </p>
               )}
             </div>
+            <div className="flex items-center gap-1"> {/* ADDED */}
+            {onEdit && ( // ADDED
+              <button
+                type="button"
+                onClick={() => onEdit(tx)}
+                aria-label={`거래 #${tx.id} 편집`}
+                className="rounded p-1 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+              >
+                <Pencil className="h-4 w-4" aria-hidden="true" />
+              </button>
+            )}
             <button
               type="button"
               onClick={() => handleDelete(tx.id)}
@@ -110,6 +124,7 @@ export function TransactionList({ userAssetId }: TransactionListProps) {
                 <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" />
               </svg>
             </button>
+            </div> {/* ADDED */}
           </div>
         );
       })}

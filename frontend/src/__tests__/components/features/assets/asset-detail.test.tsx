@@ -6,6 +6,7 @@ import { AssetDetail } from "@/components/features/assets/asset-detail";
 import * as usePortfolioHook from "@/hooks/use-portfolio";
 import * as useTransactionsHook from "@/hooks/use-transactions";
 import type { HoldingResponse } from "@/types/portfolio";
+import type { TransactionResponse } from "@/types/transaction"; // ADDED
 
 jest.mock("next/navigation", () => ({
   useRouter: () => ({ push: jest.fn() }),
@@ -20,6 +21,7 @@ jest.mock("@/hooks/use-transactions", () => ({
   ...jest.requireActual("@/hooks/use-transactions"),
   useAssetSummary: jest.fn(),
   useCreateTransaction: jest.fn(),
+  useUpdateTransaction: jest.fn(), // ADDED
   useDeleteTransaction: jest.fn(),
   useTransactions: jest.fn(),
 }));
@@ -27,6 +29,7 @@ jest.mock("@/hooks/use-transactions", () => ({
 const mockedUsePortfolioHoldings = jest.mocked(usePortfolioHook.usePortfolioHoldings);
 const mockedUseAssetSummary = jest.mocked(useTransactionsHook.useAssetSummary);
 const mockedUseCreateTransaction = jest.mocked(useTransactionsHook.useCreateTransaction);
+const mockedUseUpdateTransaction = jest.mocked(useTransactionsHook.useUpdateTransaction); // ADDED
 const mockedUseDeleteTransaction = jest.mocked(useTransactionsHook.useDeleteTransaction);
 const mockedUseTransactions = jest.mocked(useTransactionsHook.useTransactions);
 
@@ -110,6 +113,14 @@ function setupAllMocks(opts: {
     isError: false,
     error: null,
   } as unknown as ReturnType<typeof useTransactionsHook.useCreateTransaction>);
+
+  mockedUseUpdateTransaction.mockReturnValue({ // ADDED
+    mutate: jest.fn(),
+    isPending: false,
+    isSuccess: false,
+    isError: false,
+    error: null,
+  } as unknown as ReturnType<typeof useTransactionsHook.useUpdateTransaction>);
 
   mockedUseDeleteTransaction.mockReturnValue({
     mutate: jest.fn(),
@@ -204,5 +215,69 @@ describe("AssetDetail", () => {
     expect(
       screen.getByRole("link", { name: "보유 자산 목록으로 돌아가기" }),
     ).toHaveAttribute("href", "/assets");
+  });
+
+  it("편집 버튼 클릭 시 거래 수정 폼이 열린다", async () => { // ADDED
+    const fakeTx: TransactionResponse = {
+      id: 1,
+      userAssetId: 10,
+      type: "buy",
+      quantity: "1.5000000000",
+      price: "50000.000000",
+      tradedAt: "2026-04-23T10:00:00Z",
+      memo: null,
+      createdAt: "2026-04-23T10:01:00Z",
+    };
+    mockedUseTransactions.mockReturnValue({
+      data: [fakeTx],
+      isLoading: false,
+      isError: false,
+      error: null,
+      isSuccess: true,
+    } as unknown as ReturnType<typeof useTransactionsHook.useTransactions>);
+
+    const user = userEvent.setup();
+    const { Wrapper } = makeWrapper();
+    render(<AssetDetail userAssetId={10} />, { wrapper: Wrapper });
+
+    await user.click(screen.getByLabelText("거래 #1 편집"));
+
+    await waitFor(() => {
+      expect(screen.getByRole("form", { name: "거래 수정 폼" })).toBeInTheDocument();
+    });
+  });
+
+  it("거래 수정 폼 닫기 버튼 클릭 시 폼이 닫힌다", async () => { // ADDED
+    const fakeTx: TransactionResponse = {
+      id: 1,
+      userAssetId: 10,
+      type: "buy",
+      quantity: "1.5000000000",
+      price: "50000.000000",
+      tradedAt: "2026-04-23T10:00:00Z",
+      memo: null,
+      createdAt: "2026-04-23T10:01:00Z",
+    };
+    mockedUseTransactions.mockReturnValue({
+      data: [fakeTx],
+      isLoading: false,
+      isError: false,
+      error: null,
+      isSuccess: true,
+    } as unknown as ReturnType<typeof useTransactionsHook.useTransactions>);
+
+    const user = userEvent.setup();
+    const { Wrapper } = makeWrapper();
+    render(<AssetDetail userAssetId={10} />, { wrapper: Wrapper });
+
+    await user.click(screen.getByLabelText("거래 #1 편집"));
+    await waitFor(() => {
+      expect(screen.getByRole("form", { name: "거래 수정 폼" })).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByLabelText("거래 수정 폼 닫기"));
+    await waitFor(() => {
+      expect(screen.queryByRole("form", { name: "거래 수정 폼" })).not.toBeInTheDocument();
+    });
   });
 });

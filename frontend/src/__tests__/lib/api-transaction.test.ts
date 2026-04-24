@@ -1,5 +1,6 @@
 import {
   createTransaction,
+  updateTransaction,
   listTransactions,
   deleteTransaction,
   getAssetSummary,
@@ -11,12 +12,14 @@ jest.mock("@/lib/api-client", () => ({
   apiClient: {
     get: jest.fn(),
     post: jest.fn(),
+    put: jest.fn(),
     delete: jest.fn(),
   },
 }));
 
 const mockedGet = jest.mocked(apiClient.get);
 const mockedPost = jest.mocked(apiClient.post);
+const mockedPut = jest.mocked(apiClient.put); // ADDED
 const mockedDelete = jest.mocked(apiClient.delete);
 
 const rawTransaction = {
@@ -114,6 +117,63 @@ describe("createTransaction", () => {
     mockedPost.mockRejectedValueOnce(new Error("Network error"));
     await expect(
       createTransaction(10, {
+        type: "buy",
+        quantity: "1.5",
+        price: "50000",
+        tradedAt: new Date(),
+        memo: null,
+      }),
+    ).rejects.toThrow("Network error");
+  });
+});
+
+describe("updateTransaction", () => { // ADDED
+  beforeEach(() => jest.clearAllMocks());
+
+  it("PUT /api/user-assets/:id/transactions/:txId 를 호출하고 camelCase 변환된 객체를 반환한다", async () => {
+    mockedPut.mockResolvedValueOnce({ data: rawTransaction });
+    const tradedAt = new Date("2026-04-23T10:00:00Z");
+    const result = await updateTransaction(10, 1, {
+      type: "buy",
+      quantity: "1.5",
+      price: "50000",
+      tradedAt,
+      memo: "테스트 메모",
+    });
+
+    expect(mockedPut).toHaveBeenCalledWith(
+      "/api/user-assets/10/transactions/1",
+      expect.objectContaining({
+        type: "buy",
+        quantity: "1.5",
+        price: "50000",
+        traded_at: tradedAt.toISOString(),
+        memo: "테스트 메모",
+      }),
+    );
+    expect(result).toEqual(expectedTransaction);
+  });
+
+  it("memo 가 null 이면 null 로 전달된다", async () => {
+    mockedPut.mockResolvedValueOnce({ data: { ...rawTransaction, memo: null } });
+    await updateTransaction(10, 1, {
+      type: "buy",
+      quantity: "1.5",
+      price: "50000",
+      tradedAt: new Date(),
+      memo: null,
+    });
+
+    expect(mockedPut).toHaveBeenCalledWith(
+      "/api/user-assets/10/transactions/1",
+      expect.objectContaining({ memo: null }),
+    );
+  });
+
+  it("API 에러 시 에러를 그대로 throw 한다", async () => {
+    mockedPut.mockRejectedValueOnce(new Error("Network error"));
+    await expect(
+      updateTransaction(10, 1, {
         type: "buy",
         quantity: "1.5",
         price: "50000",

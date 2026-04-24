@@ -153,4 +153,33 @@ describe("TransactionList", () => {
 
     expect(screen.getByText("매도")).toBeInTheDocument();
   });
+
+  it("onEdit prop 이 있으면 편집 버튼이 렌더링된다", () => { // ADDED
+    setupMocks([fakeTx]);
+    const mockOnEdit = jest.fn();
+    const { Wrapper } = makeWrapper();
+    render(<TransactionList userAssetId={10} onEdit={mockOnEdit} />, { wrapper: Wrapper });
+
+    expect(screen.getByLabelText("거래 #1 편집")).toBeInTheDocument();
+  });
+
+  it("onEdit prop 이 없으면 편집 버튼이 렌더링되지 않는다", () => { // ADDED
+    setupMocks([fakeTx]);
+    const { Wrapper } = makeWrapper();
+    render(<TransactionList userAssetId={10} />, { wrapper: Wrapper });
+
+    expect(screen.queryByLabelText("거래 #1 편집")).not.toBeInTheDocument();
+  });
+
+  it("편집 버튼 클릭 시 onEdit 콜백이 해당 거래와 함께 호출된다", async () => { // ADDED
+    setupMocks([fakeTx]);
+    const mockOnEdit = jest.fn();
+    const user = userEvent.setup();
+    const { Wrapper } = makeWrapper();
+    render(<TransactionList userAssetId={10} onEdit={mockOnEdit} />, { wrapper: Wrapper });
+
+    await user.click(screen.getByLabelText("거래 #1 편집"));
+
+    expect(mockOnEdit).toHaveBeenCalledWith(fakeTx);
+  });
 });

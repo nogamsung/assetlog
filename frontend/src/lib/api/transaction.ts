@@ -79,6 +79,25 @@ export async function listTransactions(
   return response.data.map(toTransaction);
 }
 
+export async function updateTransaction( // ADDED
+  userAssetId: number,
+  transactionId: number,
+  data: TransactionCreateInput,
+): Promise<TransactionResponse> {
+  const payload = {
+    type: data.type,
+    quantity: data.quantity,
+    price: data.price,
+    traded_at: data.tradedAt.toISOString(),
+    memo: data.memo ?? null,
+  };
+  const response = await apiClient.put<RawTransactionResponse>(
+    `/api/user-assets/${userAssetId}/transactions/${transactionId}`,
+    payload,
+  );
+  return toTransaction(response.data);
+}
+
 export async function deleteTransaction(
   userAssetId: number,
   txId: number,

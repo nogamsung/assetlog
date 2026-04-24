@@ -5,6 +5,7 @@ import {
   useTransactions,
   useAssetSummary,
   useCreateTransaction,
+  useUpdateTransaction,
   useDeleteTransaction,
 } from "@/hooks/use-transactions";
 import * as txApi from "@/lib/api/transaction";
@@ -14,6 +15,7 @@ jest.mock("@/lib/api/transaction");
 const mockedListTransactions = jest.mocked(txApi.listTransactions);
 const mockedGetAssetSummary = jest.mocked(txApi.getAssetSummary);
 const mockedCreateTransaction = jest.mocked(txApi.createTransaction);
+const mockedUpdateTransaction = jest.mocked(txApi.updateTransaction); // ADDED
 const mockedDeleteTransaction = jest.mocked(txApi.deleteTransaction);
 
 function makeWrapper() {
@@ -145,6 +147,89 @@ describe("useCreateTransaction", () => {
     });
 
     await waitFor(() => expect(result.current.isError).toBe(true));
+  });
+});
+
+describe("useUpdateTransaction", () => { // ADDED
+  beforeEach(() => jest.clearAllMocks());
+
+  it("성공 시 isSuccess 가 true 다", async () => {
+    mockedUpdateTransaction.mockResolvedValueOnce(fakeTx);
+    const { Wrapper, queryClient } = makeWrapper();
+    const { result } = renderHook(() => useUpdateTransaction(), { wrapper: Wrapper });
+
+    act(() => {
+      result.current.mutate({
+        userAssetId: 10,
+        transactionId: 1,
+        data: {
+          type: "buy",
+          quantity: "2.0",
+          price: "50000",
+          tradedAt: new Date("2026-04-23"),
+          memo: null,
+        },
+      });
+    });
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(mockedUpdateTransaction).toHaveBeenCalledWith(
+      10,
+      1,
+      expect.objectContaining({ type: "buy", quantity: "2.0" }),
+    );
+    void queryClient;
+  });
+
+  it("에러 시 isError 가 true 다", async () => {
+    mockedUpdateTransaction.mockRejectedValueOnce(new Error("Update failed"));
+    const { Wrapper } = makeWrapper();
+    const { result } = renderHook(() => useUpdateTransaction(), { wrapper: Wrapper });
+
+    act(() => {
+      result.current.mutate({
+        userAssetId: 10,
+        transactionId: 1,
+        data: {
+          type: "buy",
+          quantity: "2.0",
+          price: "50000",
+          tradedAt: new Date("2026-04-23"),
+          memo: null,
+        },
+      });
+    });
+
+    await waitFor(() => expect(result.current.isError).toBe(true));
+  });
+
+  it("성공 시 transactions, assetSummary, portfolio 쿼리를 invalidate 한다", async () => {
+    mockedUpdateTransaction.mockResolvedValueOnce(fakeTx);
+    const { Wrapper, queryClient } = makeWrapper();
+    const invalidateSpy = jest.spyOn(queryClient, "invalidateQueries");
+    const { result } = renderHook(() => useUpdateTransaction(), { wrapper: Wrapper });
+
+    act(() => {
+      result.current.mutate({
+        userAssetId: 10,
+        transactionId: 1,
+        data: {
+          type: "buy",
+          quantity: "2.0",
+          price: "50000",
+          tradedAt: new Date("2026-04-23"),
+          memo: null,
+        },
+      });
+    });
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(invalidateSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ queryKey: ["transactions", 10] }),
+    );
+    expect(invalidateSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ queryKey: ["assetSummary", 10] }),
+    );
   });
 });
 
