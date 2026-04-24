@@ -1,12 +1,17 @@
-"""Portfolio router — aggregated summary and per-holding endpoints."""
+"""Portfolio router — aggregated summary, per-holding, and history endpoints."""
 
 from __future__ import annotations
 
-from fastapi import APIRouter, status
+from fastapi import APIRouter, Query, status
 
-from app.core.deps import CurrentUser, PortfolioServiceDep
+from app.core.deps import CurrentUser, PortfolioHistoryServiceDep, PortfolioServiceDep
+from app.domain.portfolio_history import HistoryPeriod
 from app.schemas.auth import ErrorResponse
-from app.schemas.portfolio import HoldingResponse, PortfolioSummaryResponse
+from app.schemas.portfolio import (
+    HoldingResponse,
+    PortfolioHistoryResponse,
+    PortfolioSummaryResponse,
+)
 
 router = APIRouter(prefix="/api/portfolio", tags=["portfolio"])
 
@@ -53,3 +58,38 @@ async def get_portfolio_holdings(
 ) -> list[HoldingResponse]:
     """Return per-holding valuation rows for the authenticated user."""
     return await portfolio_service.get_holdings(current_user.id)
+
+
+@router.get(
+    "/history",
+    response_model=PortfolioHistoryResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Get portfolio value time series",
+    description=(
+        "Returns a bucketed time series of portfolio value and cost basis "
+        "for the authenticated user. "
+        "Bucket granularity is determined by the requested period: "
+        "1D → 5MIN, 1W → HOUR, 1M → DAY, 1Y → WEEK, ALL → MONTH. "
+        "Points where no price data is available contribute 0 to value."
+    ),
+    responses={
+        401: {"model": ErrorResponse, "description": "Not authenticated"},
+        422: {
+            "model": ErrorResponse,
+            "description": "Validation error (invalid period or missing currency)",
+        },
+    },
+)
+async def get_portfolio_history(
+    current_user: CurrentUser,
+    history_service: PortfolioHistoryServiceDep,
+    period: HistoryPeriod = Query(default=HistoryPeriod.ONE_MONTH, description="Time window"),
+    currency: str = Query(
+        ...,
+        min_length=1,
+        max_length=10,
+        description="Quote currency (e.g. KRW, USD)",
+    ),
+) -> PortfolioHistoryResponse:
+    """Return portfolio value time series for the authenticated user."""
+    return await history_service.get_history(current_user.id, period, currency.upper())
