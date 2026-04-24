@@ -16,11 +16,17 @@ export interface PortfolioSummary {
   totalValueByCurrency: CurrencyAmountMap;
   totalCostByCurrency: CurrencyAmountMap;
   pnlByCurrency: Record<string, PnlEntry>;
-  realizedPnlByCurrency: CurrencyAmountMap; // ADDED
+  realizedPnlByCurrency: CurrencyAmountMap;
   allocation: AllocationEntry[];
   lastPriceRefreshedAt: string | null;
   pendingCount: number;
   staleCount: number;
+  // 환산 필드 (convert_to 파라미터 사용 시)
+  convertedTotalValue: string | null;
+  convertedTotalCost: string | null;
+  convertedPnlAbs: string | null;
+  convertedRealizedPnl: string | null;
+  displayCurrency: string | null;
 }
 
 export interface HoldingResponse {

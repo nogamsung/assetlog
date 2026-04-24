@@ -7,16 +7,17 @@ import type { PortfolioSummary, HoldingResponse } from "@/types/portfolio";
 // ── Query keys (co-located) ───────────────────────────────────────────────────
 
 export const portfolioKeys = {
-  summary: ["portfolio", "summary"] as const,
+  summary: (convertTo?: string) =>
+    ["portfolio", "summary", convertTo ?? null] as const,
   holdings: ["portfolio", "holdings"] as const,
 } as const;
 
 // ── Hooks ─────────────────────────────────────────────────────────────────────
 
-export function usePortfolioSummary() {
+export function usePortfolioSummary(convertTo?: string) {
   return useQuery<PortfolioSummary>({
-    queryKey: portfolioKeys.summary,
-    queryFn: getPortfolioSummary,
+    queryKey: portfolioKeys.summary(convertTo),
+    queryFn: () => getPortfolioSummary({ convertTo }),
     staleTime: 60_000,
   });
 }

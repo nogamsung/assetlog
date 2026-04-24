@@ -25,6 +25,11 @@ const rawSummary = {
   last_price_refreshed_at: "2026-04-24T09:00:00+09:00",
   pending_count: 1,
   stale_count: 0,
+  converted_total_value: null,
+  converted_total_cost: null,
+  converted_pnl_abs: null,
+  converted_realized_pnl: null,
+  display_currency: null,
 };
 
 const expectedSummary: PortfolioSummary = {
@@ -42,6 +47,11 @@ const expectedSummary: PortfolioSummary = {
   lastPriceRefreshedAt: "2026-04-24T09:00:00+09:00",
   pendingCount: 1,
   staleCount: 0,
+  convertedTotalValue: null,
+  convertedTotalCost: null,
+  convertedPnlAbs: null,
+  convertedRealizedPnl: null,
+  displayCurrency: null,
 };
 
 const rawHolding = {
@@ -104,6 +114,38 @@ describe("getPortfolioSummary", () => {
     const result = await getPortfolioSummary();
     expect(mockedGet).toHaveBeenCalledWith("/api/portfolio/summary");
     expect(result).toEqual(expectedSummary);
+  });
+
+  it("convertTo 옵션이 있으면 query string 을 붙인다", async () => {
+    mockedGet.mockResolvedValueOnce({ data: rawSummary });
+    await getPortfolioSummary({ convertTo: "KRW" });
+    expect(mockedGet).toHaveBeenCalledWith(
+      "/api/portfolio/summary?convert_to=KRW",
+    );
+  });
+
+  it("convertTo 가 없으면 기본 URL 을 사용한다", async () => {
+    mockedGet.mockResolvedValueOnce({ data: rawSummary });
+    await getPortfolioSummary({});
+    expect(mockedGet).toHaveBeenCalledWith("/api/portfolio/summary");
+  });
+
+  it("converted_* 필드를 camelCase 로 매핑한다", async () => {
+    const rawWithConverted = {
+      ...rawSummary,
+      converted_total_value: "51380000.00",
+      converted_total_cost: "41104000.00",
+      converted_pnl_abs: "10276000.00",
+      converted_realized_pnl: "369000.00",
+      display_currency: "KRW",
+    };
+    mockedGet.mockResolvedValueOnce({ data: rawWithConverted });
+    const result = await getPortfolioSummary({ convertTo: "KRW" });
+    expect(result.convertedTotalValue).toBe("51380000.00");
+    expect(result.convertedTotalCost).toBe("41104000.00");
+    expect(result.convertedPnlAbs).toBe("10276000.00");
+    expect(result.convertedRealizedPnl).toBe("369000.00");
+    expect(result.displayCurrency).toBe("KRW");
   });
 
   it("allocation 의 asset_type 을 assetType 으로 변환한다", async () => {

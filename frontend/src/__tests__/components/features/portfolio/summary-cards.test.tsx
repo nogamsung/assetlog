@@ -11,6 +11,11 @@ const baseSummary: PortfolioSummary = {
   lastPriceRefreshedAt: "2026-04-24T00:00:00Z",
   pendingCount: 0,
   staleCount: 0,
+  convertedTotalValue: null,
+  convertedTotalCost: null,
+  convertedPnlAbs: null,
+  convertedRealizedPnl: null,
+  displayCurrency: null,
 };
 
 describe("SummaryCards", () => {
@@ -91,5 +96,55 @@ describe("SummaryCards", () => {
     };
     render(<SummaryCards summary={staleSummary} />);
     expect(screen.getByText("지연 2건")).toBeInTheDocument();
+  });
+
+  it("displayCurrency 있을 때 convertedTotalValue 를 메인으로 표시한다", () => {
+    const convertedSummary: PortfolioSummary = {
+      ...baseSummary,
+      convertedTotalValue: "51380000.00",
+      convertedTotalCost: "41104000.00",
+      convertedPnlAbs: "10276000.00",
+      convertedRealizedPnl: "369000.00",
+      displayCurrency: "KRW",
+    };
+    render(<SummaryCards summary={convertedSummary} />);
+    // 환산값이 메인으로 렌더링되어 있어야 함 (KRW 포맷)
+    expect(screen.getByText(/51,380,000/)).toBeInTheDocument();
+  });
+
+  it("displayCurrency 있을 때 per-currency 원본값을 서브텍스트로 표시한다", () => {
+    const convertedSummary: PortfolioSummary = {
+      ...baseSummary,
+      convertedTotalValue: "51380000.00",
+      convertedTotalCost: "41104000.00",
+      convertedPnlAbs: "10276000.00",
+      convertedRealizedPnl: "369000.00",
+      displayCurrency: "KRW",
+    };
+    const { container } = render(<SummaryCards summary={convertedSummary} />);
+    // 서브텍스트 요소가 존재해야 함
+    const subTexts = container.querySelectorAll(".text-xs.text-muted-foreground");
+    expect(subTexts.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("displayCurrency 없을 때 환산 서브텍스트가 없다", () => {
+    const { container } = render(<SummaryCards summary={baseSummary} />);
+    // text-xs.text-muted-foreground 는 없어야 함
+    const subTexts = container.querySelectorAll("p.text-xs.text-muted-foreground");
+    expect(subTexts).toHaveLength(0);
+  });
+
+  it("convertedPnlAbs 양수면 + 부호가 붙어 표시된다", () => {
+    const convertedSummary: PortfolioSummary = {
+      ...baseSummary,
+      convertedTotalValue: "51380000.00",
+      convertedTotalCost: "41104000.00",
+      convertedPnlAbs: "10276000.00",
+      convertedRealizedPnl: "369000.00",
+      displayCurrency: "KRW",
+    };
+    render(<SummaryCards summary={convertedSummary} />);
+    const plusElements = screen.getAllByText(/\+/);
+    expect(plusElements.length).toBeGreaterThanOrEqual(1);
   });
 });
