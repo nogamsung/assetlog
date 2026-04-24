@@ -80,6 +80,7 @@ class PortfolioService:
         total_value: dict[str, Decimal] = {}
         total_cost: dict[str, Decimal] = {}
         allocation_value: dict[str, Decimal] = {}  # asset_type → Decimal
+        realized_pnl_acc: dict[str, Decimal] = {}  # ADDED — currency → realized_pnl
 
         pending_count = 0
         stale_count = 0
@@ -98,6 +99,9 @@ class PortfolioService:
                 if refreshed_at.tzinfo is None:
                     refreshed_at = refreshed_at.replace(tzinfo=UTC)
                 refreshed_times.append(refreshed_at)
+
+            # Accumulate realized P&L regardless of price status  # ADDED
+            realized_pnl_acc[cur] = realized_pnl_acc.get(cur, Decimal("0")) + row.realized_pnl
 
             # Pending check.
             if latest_price is None:
@@ -146,6 +150,7 @@ class PortfolioService:
         # Serialise Decimal totals to str for schema.
         total_value_str: dict[str, str] = {k: str(v) for k, v in total_value.items()}
         total_cost_str: dict[str, str] = {k: str(v) for k, v in total_cost.items()}
+        realized_pnl_str: dict[str, str] = {k: str(v) for k, v in realized_pnl_acc.items()}  # ADDED
 
         logger.debug(
             "get_summary: user_id=%s currencies=%s pending=%d stale=%d",
@@ -159,6 +164,7 @@ class PortfolioService:
             total_value_by_currency=total_value_str,
             total_cost_by_currency=total_cost_str,
             pnl_by_currency=pnl_by_currency,
+            realized_pnl_by_currency=realized_pnl_str,  # ADDED
             allocation=allocation,
             last_price_refreshed_at=last_refreshed,
             pending_count=pending_count,
@@ -181,6 +187,7 @@ class PortfolioService:
         refreshed_at = sym.last_price_refreshed_at
         total_qty = row.total_qty
         total_cost = row.total_cost
+        realized_pnl = row.realized_pnl  # ADDED
 
         avg_cost = total_cost / total_qty if total_qty > Decimal("0") else Decimal("0")
 
@@ -211,6 +218,7 @@ class PortfolioService:
             quantity=total_qty,
             avg_cost=avg_cost,
             cost_basis=total_cost,
+            realized_pnl=realized_pnl,  # ADDED
             latest_price=latest_price,
             latest_value=latest_value,
             pnl_abs=pnl_abs,

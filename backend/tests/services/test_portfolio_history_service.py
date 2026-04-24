@@ -7,6 +7,7 @@ from decimal import Decimal
 from unittest.mock import AsyncMock, MagicMock
 
 from app.domain.portfolio_history import HistoryBucket, HistoryPeriod
+from app.domain.transaction_type import TransactionType  # ADDED
 from app.repositories.portfolio_history import PortfolioHistoryRepository, TransactionRow
 from app.services.portfolio_history import PortfolioHistoryService
 
@@ -26,12 +27,14 @@ def _make_tx(
     qty: str,
     price: str,
     traded_at: datetime,
+    tx_type: TransactionType = TransactionType.BUY,  # ADDED
 ) -> TransactionRow:
     tx = MagicMock(spec=TransactionRow)
     tx.symbol_id = symbol_id
     tx.traded_at = traded_at
     tx.quantity = Decimal(qty)
     tx.price = Decimal(price)
+    tx.tx_type = tx_type  # ADDED
     return tx
 
 
@@ -243,3 +246,62 @@ class TestPortfolioHistoryServiceCurrencyFilter:
 
         await svc.get_history(99, HistoryPeriod.ONE_MONTH, "USD")
         mock_repo.list_user_transactions.assert_called_once_with(99, "USD")
+
+
+# ---------------------------------------------------------------------------
+# SELL 반영 — ADDED
+# ---------------------------------------------------------------------------
+
+
+class TestPortfolioHistoryServiceSell:
+    async def test_BUY후_SELL하면_qty_감소(self) -> None:
+        now = _now()
+        buy_time = now - timedelta(hours=3)
+        sell_time = now - timedelta(hours=1)
+        price_ts = now - timedelta(minutes=10)
+
+        buy_tx = _make_tx(1, "5", "1000", buy_time, TransactionType.BUY)
+        sell_tx = _make_tx(1, "2", "1200", sell_time, TransactionType.SELL)
+        price_index = {1: [(price_ts, Decimal("1300"))]}
+
+        svc = _make_service([buy_tx, sell_tx], price_index)
+        result = await svc.get_history(1, HistoryPeriod.ONE_DAY, "KRW")
+
+        # Last point: qty=3, price=1300 → value=3900
+        last = result.points[-1]
+        assert last.value == Decimal("3900")
+
+    async def test_BUY후_SELL하면_cost_basis_재계산(self) -> None:
+        now = _now()
+        buy_time = now - timedelta(hours=3)
+        sell_time = now - timedelta(hours=1)
+        price_ts = now - timedelta(minutes=10)
+
+        # BUY 4 at 1000 → avg=1000, SELL 1 → remaining_cost = 1000 * 3 = 3000
+        buy_tx = _make_tx(1, "4", "1000", buy_time, TransactionType.BUY)
+        sell_tx = _make_tx(1, "1", "1200", sell_time, TransactionType.SELL)
+        price_index = {1: [(price_ts, Decimal("1100"))]}
+
+        svc = _make_service([buy_tx, sell_tx], price_index)
+        result = await svc.get_history(1, HistoryPeriod.ONE_DAY, "KRW")
+
+        last = result.points[-1]
+        # cost_basis = avg_buy(1000) × remaining_qty(3) = 3000
+        assert last.cost_basis == Decimal("3000")
+
+    async def test_전량_SELL후_value_0(self) -> None:
+        now = _now()
+        buy_time = now - timedelta(hours=4)
+        sell_time = now - timedelta(hours=2)
+        price_ts = now - timedelta(minutes=10)
+
+        buy_tx = _make_tx(1, "3", "1000", buy_time, TransactionType.BUY)
+        sell_tx = _make_tx(1, "3", "1200", sell_time, TransactionType.SELL)
+        price_index = {1: [(price_ts, Decimal("1300"))]}
+
+        svc = _make_service([buy_tx, sell_tx], price_index)
+        result = await svc.get_history(1, HistoryPeriod.ONE_DAY, "KRW")
+
+        # After full sell, value should be 0
+        after_sell = [p for p in result.points if p.timestamp >= sell_time]
+        assert all(p.value == Decimal("0") for p in after_sell)

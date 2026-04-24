@@ -16,12 +16,13 @@ STALE_THRESHOLD: timedelta = timedelta(hours=3)
 class HoldingRow:
     """Aggregated row returned by the portfolio repository.
 
-    Carries denormalised BUY-transaction aggregates alongside the loaded
+    Carries denormalised BUY/SELL-transaction aggregates alongside the loaded
     AssetSymbol so the service layer can compute derived values without
     additional DB round-trips.
     """
 
     user_asset_id: int
     asset_symbol: AssetSymbol
-    total_qty: Decimal
-    total_cost: Decimal
+    total_qty: Decimal  # remaining qty (buy - sell)
+    total_cost: Decimal  # cost basis of remaining qty (avg_buy_price × remaining_qty)
+    realized_pnl: Decimal  # ADDED — Σ(sell_value) - Σ(sell_qty) × avg_buy_price

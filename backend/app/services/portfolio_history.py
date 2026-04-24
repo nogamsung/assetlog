@@ -12,6 +12,7 @@ from app.domain.portfolio_history import (
     HistoryPoint,
     bucket_to_timedelta,
 )
+from app.domain.transaction_type import TransactionType  # ADDED
 from app.repositories.portfolio_history import PortfolioHistoryRepository, TransactionRow
 from app.schemas.portfolio import HistoryPointResponse, PortfolioHistoryResponse
 
@@ -213,10 +214,11 @@ class PortfolioHistoryService:
         txs must be sorted by traded_at ASC (guaranteed by the repository).
         price_index inner lists must be sorted by fetched_at DESC.
         """
-        # Per-symbol cumulative quantity accumulator
+        # Per-symbol cumulative quantity accumulator (remaining = buy - sell)
         qty_by_symbol: dict[int, Decimal] = {}
-        # Cumulative cost basis across all symbols
-        running_cost = _ZERO
+        # MODIFIED — track cumulative BUY qty and cost separately for avg_buy_price
+        cumulative_buy_qty: dict[int, Decimal] = {}
+        cumulative_buy_cost: dict[int, Decimal] = {}
 
         # Pointer into txs — advanced as bucket timestamps increase
         tx_ptr = 0
@@ -237,9 +239,31 @@ class PortfolioHistoryService:
                 tx_time = _ensure_utc(tx.traded_at)
                 if tx_time > ts_aware:
                     break
-                qty_by_symbol[tx.symbol_id] = qty_by_symbol.get(tx.symbol_id, _ZERO) + tx.quantity
-                running_cost += tx.quantity * tx.price
+                if tx.tx_type == TransactionType.BUY:  # MODIFIED — BUY/SELL branch
+                    qty_by_symbol[tx.symbol_id] = (
+                        qty_by_symbol.get(tx.symbol_id, _ZERO) + tx.quantity
+                    )
+                    cumulative_buy_qty[tx.symbol_id] = (
+                        cumulative_buy_qty.get(tx.symbol_id, _ZERO) + tx.quantity
+                    )
+                    cumulative_buy_cost[tx.symbol_id] = (
+                        cumulative_buy_cost.get(tx.symbol_id, _ZERO) + tx.quantity * tx.price
+                    )
+                else:  # SELL — ADDED
+                    qty_by_symbol[tx.symbol_id] = max(
+                        qty_by_symbol.get(tx.symbol_id, _ZERO) - tx.quantity, _ZERO
+                    )
                 tx_ptr += 1
+
+            # MODIFIED — cost_basis_at_T = avg_buy_price × remaining_qty (per symbol)
+            running_cost = _ZERO
+            for sym_id, qty in qty_by_symbol.items():
+                if qty <= _ZERO:
+                    continue
+                buy_qty = cumulative_buy_qty.get(sym_id, _ZERO)
+                buy_cost = cumulative_buy_cost.get(sym_id, _ZERO)
+                avg_price = buy_cost / buy_qty if buy_qty > _ZERO else _ZERO
+                running_cost += avg_price * qty
 
             # Compute portfolio value at ts
             value = _ZERO

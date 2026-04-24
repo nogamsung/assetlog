@@ -45,6 +45,7 @@ def _make_row(
     total_qty: str = "10",
     total_cost: str = "1000",
     symbol: AssetSymbol | None = None,
+    realized_pnl: str = "0",  # ADDED — kept last to preserve positional call compat
 ) -> HoldingRow:
     if symbol is None:
         symbol = _make_symbol()
@@ -53,6 +54,7 @@ def _make_row(
         asset_symbol=symbol,
         total_qty=Decimal(total_qty),
         total_cost=Decimal(total_cost),
+        realized_pnl=Decimal(realized_pnl),  # ADDED
     )
 
 
@@ -244,3 +246,28 @@ class TestPortfolioServiceGetSummary:
         krw_pnl = summary.pnl_by_currency["KRW"]
         assert krw_pnl.abs == Decimal("100")
         assert round(krw_pnl.pct, 2) == 10.0
+
+    async def test_realized_pnl_by_currency_집계(self) -> None:  # ADDED
+        sym_krw = _make_symbol(
+            1, "BTC", "KRW", last_price=Decimal("50000000"), refreshed_at=datetime.now(UTC)
+        )
+        sym_usd = _make_symbol(
+            2, "AAPL", "USD", AssetType.US_STOCK, Decimal("200"), datetime.now(UTC)
+        )
+        rows = [
+            _make_row(1, "1", "40000000", realized_pnl="300000", symbol=sym_krw),
+            _make_row(2, "5", "900", realized_pnl="50", symbol=sym_usd),
+        ]
+        svc = _make_service(rows)
+
+        summary = await svc.get_summary(user_id=1)
+        assert summary.realized_pnl_by_currency.get("KRW") == "300000"
+        assert summary.realized_pnl_by_currency.get("USD") == "50"
+
+    async def test_realized_pnl_pending_종목도_포함(self) -> None:  # ADDED
+        sym = _make_symbol(last_price=None)
+        row = _make_row(realized_pnl="1000", symbol=sym)
+        svc = _make_service([row])
+
+        summary = await svc.get_summary(user_id=1)
+        assert summary.realized_pnl_by_currency.get("KRW") == "1000"

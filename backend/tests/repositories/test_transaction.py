@@ -28,6 +28,21 @@ def _buy(
     )
 
 
+def _sell(  # ADDED
+    quantity: str = "1.0",
+    price: str = "55000.0",
+    hours_ago: int = 0,
+) -> TransactionCreate:
+    traded_at = datetime.now(tz=UTC) - timedelta(hours=hours_ago)
+    return TransactionCreate(
+        type=TransactionType.SELL,
+        quantity=Decimal(quantity),
+        price=Decimal(price),
+        traded_at=traded_at,
+        memo=None,
+    )
+
+
 class TestTransactionCreate:
     async def test_생성하면_id가_할당된다(
         self,
@@ -165,12 +180,13 @@ class TestTransactionGetSummary:
         ua = await user_asset_factory(user=user, asset_symbol=sym)
 
         repo = TransactionRepository(db_session)
-        total_qty, avg_price, total_cost, count = await repo.get_summary(ua.id)
+        agg = await repo.get_summary(ua.id)  # MODIFIED — SummaryAggregates
 
-        assert total_qty == Decimal("0")
-        assert avg_price == Decimal("0")
-        assert total_cost == Decimal("0")
-        assert count == 0
+        assert agg.total_bought_qty == Decimal("0")
+        assert agg.total_bought_cost == Decimal("0")
+        assert agg.total_sold_qty == Decimal("0")
+        assert agg.total_sold_value == Decimal("0")
+        assert agg.tx_count == 0
 
     async def test_단건_매수_집계가_올바르다(
         self,
@@ -186,12 +202,12 @@ class TestTransactionGetSummary:
         repo = TransactionRepository(db_session)
         await repo.create(ua.id, _buy(quantity="2.0", price="1000.0"))
 
-        total_qty, avg_price, total_cost, count = await repo.get_summary(ua.id)
+        agg = await repo.get_summary(ua.id)  # MODIFIED
 
-        assert total_qty == Decimal("2.0")
-        assert avg_price == Decimal("1000.0")
-        assert total_cost == Decimal("2000.0")
-        assert count == 1
+        assert agg.total_bought_qty == Decimal("2.0")
+        assert agg.total_bought_cost == Decimal("2000.0")
+        assert agg.total_sold_qty == Decimal("0")
+        assert agg.tx_count == 1
 
     async def test_다건_매수_가중평균이_올바르다(
         self,
@@ -208,15 +224,55 @@ class TestTransactionGetSummary:
         await repo.create(ua.id, _buy(quantity="1.0", price="1000.0"))
         await repo.create(ua.id, _buy(quantity="3.0", price="2000.0"))
 
-        total_qty, avg_price, total_cost, count = await repo.get_summary(ua.id)
+        agg = await repo.get_summary(ua.id)  # MODIFIED
 
-        # total_cost = 1*1000 + 3*2000 = 7000
-        # total_qty = 4
-        # avg = 7000/4 = 1750
-        assert total_qty == Decimal("4.0")
-        assert total_cost == Decimal("7000.0")
-        assert avg_price == Decimal("1750.0")
-        assert count == 2
+        # total_bought_cost = 1*1000 + 3*2000 = 7000
+        # total_bought_qty = 4
+        assert agg.total_bought_qty == Decimal("4.0")
+        assert agg.total_bought_cost == Decimal("7000.0")
+        assert agg.total_sold_qty == Decimal("0")
+        assert agg.tx_count == 2
+
+    async def test_매수_후_매도_집계가_올바르다(  # ADDED
+        self,
+        db_session: AsyncSession,
+        user_asset_factory: Any,
+        user_factory: Any,
+        asset_symbol_factory: Any,
+    ) -> None:
+        user = await user_factory(email="repo_sum_sell@example.com")
+        sym = await asset_symbol_factory(symbol="SELL_COIN")
+        ua = await user_asset_factory(user=user, asset_symbol=sym)
+
+        repo = TransactionRepository(db_session)
+        await repo.create(ua.id, _buy(quantity="5.0", price="1000.0"))
+        await repo.create(ua.id, _sell(quantity="2.0", price="1200.0"))
+
+        agg = await repo.get_summary(ua.id)
+
+        assert agg.total_bought_qty == Decimal("5.0")
+        assert agg.total_bought_cost == Decimal("5000.0")
+        assert agg.total_sold_qty == Decimal("2.0")
+        assert agg.total_sold_value == Decimal("2400.0")
+        assert agg.tx_count == 2
+
+    async def test_get_remaining_quantity가_올바르다(  # ADDED
+        self,
+        db_session: AsyncSession,
+        user_asset_factory: Any,
+        user_factory: Any,
+        asset_symbol_factory: Any,
+    ) -> None:
+        user = await user_factory(email="repo_remaining@example.com")
+        sym = await asset_symbol_factory(symbol="REMAIN_COIN")
+        ua = await user_asset_factory(user=user, asset_symbol=sym)
+
+        repo = TransactionRepository(db_session)
+        await repo.create(ua.id, _buy(quantity="5.0", price="1000.0"))
+        await repo.create(ua.id, _sell(quantity="2.0", price="1200.0"))
+
+        remaining = await repo.get_remaining_quantity(ua.id)
+        assert remaining == Decimal("3.0")
 
 
 class TestTransactionDelete:

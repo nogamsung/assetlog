@@ -37,13 +37,20 @@ class HoldingResponse(BaseModel):
     asset_symbol: SymbolEmbedded = Field(..., description="Master symbol data")
 
     quantity: Decimal = Field(
-        ..., description="Total held quantity (from BUY txs)", examples=["10.0000000000"]
+        ..., description="Remaining held quantity (buy - sell)", examples=["10.0000000000"]
     )
     avg_cost: Decimal = Field(
         ..., description="Weighted-average buy price", examples=["170.500000"]
     )
     cost_basis: Decimal = Field(
-        ..., description="Total invested cost (qty × avg_cost)", examples=["1705.00"]
+        ...,
+        description="Cost basis of remaining shares (remaining_qty × avg_cost)",
+        examples=["1705.00"],
+    )
+    realized_pnl: Decimal = Field(  # ADDED
+        default=Decimal("0"),
+        description="Realized P&L from SELL transactions",
+        examples=["50.00"],
     )
 
     latest_price: Decimal | None = Field(
@@ -85,7 +92,7 @@ class HoldingResponse(BaseModel):
         description="True if latest_price is null",
     )
 
-    @field_serializer("quantity", "avg_cost", "cost_basis")
+    @field_serializer("quantity", "avg_cost", "cost_basis", "realized_pnl")  # MODIFIED
     def _serialize_decimal_required(self, v: Decimal) -> str:
         return str(v)
 
@@ -132,6 +139,11 @@ class PortfolioSummaryResponse(BaseModel):
     pnl_by_currency: dict[str, PnlEntry] = Field(
         default_factory=dict,
         description="Absolute and percentage P&L per currency",
+    )
+    realized_pnl_by_currency: dict[str, str] = Field(  # ADDED
+        default_factory=dict,
+        description="Realized P&L from SELL transactions per currency (Decimal → string)",
+        examples=[{"KRW": "300000.00", "USD": "120.50"}],
     )
     allocation: list[AllocationEntry] = Field(
         default_factory=list,

@@ -26,9 +26,9 @@ def _to_utc(dt: datetime) -> datetime:
 
 
 class TransactionRow:
-    """Lightweight value object — one BUY transaction record."""
+    """Lightweight value object — one BUY or SELL transaction record."""
 
-    __slots__ = ("symbol_id", "traded_at", "quantity", "price")
+    __slots__ = ("symbol_id", "traded_at", "quantity", "price", "tx_type")  # MODIFIED
 
     def __init__(
         self,
@@ -36,11 +36,13 @@ class TransactionRow:
         traded_at: datetime,
         quantity: Decimal,
         price: Decimal,
+        tx_type: TransactionType,  # ADDED
     ) -> None:
         self.symbol_id = symbol_id
         self.traded_at = traded_at
         self.quantity = quantity
         self.price = price
+        self.tx_type = tx_type  # ADDED
 
 
 class PortfolioHistoryRepository:
@@ -57,7 +59,7 @@ class PortfolioHistoryRepository:
         user_id: int,
         currency: str,
     ) -> list[TransactionRow]:
-        """Return all BUY transactions for *user_id* in *currency*, ordered by traded_at ASC.
+        """Return all BUY and SELL transactions for *user_id* in *currency*, ordered by traded_at ASC.
 
         Joins transactions → user_assets → asset_symbols so the service layer
         can directly compute cumulative quantities and cost basis.
@@ -75,13 +77,14 @@ class PortfolioHistoryRepository:
                 Transaction.traded_at,
                 Transaction.quantity,
                 Transaction.price,
+                Transaction.type.label("tx_type"),  # ADDED
             )
             .join(UserAsset, Transaction.user_asset_id == UserAsset.id)
             .join(AssetSymbol, UserAsset.asset_symbol_id == AssetSymbol.id)
             .where(
                 UserAsset.user_id == user_id,
                 AssetSymbol.currency == currency,
-                Transaction.type == TransactionType.BUY,
+                # MODIFIED — removed BUY-only filter to include SELL transactions
             )
             .order_by(Transaction.traded_at.asc())
         )
@@ -96,6 +99,7 @@ class PortfolioHistoryRepository:
                     traded_at=_to_utc(row.traded_at),
                     quantity=Decimal(str(row.quantity)),
                     price=Decimal(str(row.price)),
+                    tx_type=row.tx_type,  # ADDED
                 )
             )
 
