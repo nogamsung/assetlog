@@ -1,9 +1,18 @@
 import { apiClient } from "@/lib/api-client";
 import { snakeToCamel } from "@/lib/case";
-import type { TransactionResponse, UserAssetSummaryResponse } from "@/types/transaction";
+import type {
+  TransactionResponse,
+  UserAssetSummaryResponse,
+  TransactionImportResponse,
+} from "@/types/transaction";
 import type { TransactionCreateInput } from "@/lib/schemas/transaction";
 
 // ── Raw shapes (snake_case from backend) ──────────────────────────────────────
+
+interface RawTransactionImportResponse {
+  imported_count: number;
+  preview: RawTransactionResponse[];
+}
 
 interface RawTransactionResponse {
   id: number;
@@ -103,6 +112,23 @@ export async function deleteTransaction(
   txId: number,
 ): Promise<void> {
   await apiClient.delete(`/api/user-assets/${userAssetId}/transactions/${txId}`);
+}
+
+export async function importTransactionsCsv(
+  userAssetId: number,
+  file: File,
+): Promise<TransactionImportResponse> {
+  const form = new FormData();
+  form.append("file", file);
+  const response = await apiClient.post<RawTransactionImportResponse>(
+    `/api/user-assets/${userAssetId}/transactions/import`,
+    form,
+    { headers: { "Content-Type": "multipart/form-data" } },
+  );
+  return {
+    importedCount: response.data.imported_count,
+    preview: response.data.preview.map(toTransaction),
+  };
 }
 
 export async function getAssetSummary(

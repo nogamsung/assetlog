@@ -24,6 +24,7 @@ jest.mock("@/hooks/use-transactions", () => ({
   useUpdateTransaction: jest.fn(), // ADDED
   useDeleteTransaction: jest.fn(),
   useTransactions: jest.fn(),
+  useImportTransactionsCsv: jest.fn(),
 }));
 
 const mockedUsePortfolioHoldings = jest.mocked(usePortfolioHook.usePortfolioHoldings);
@@ -32,6 +33,7 @@ const mockedUseCreateTransaction = jest.mocked(useTransactionsHook.useCreateTran
 const mockedUseUpdateTransaction = jest.mocked(useTransactionsHook.useUpdateTransaction); // ADDED
 const mockedUseDeleteTransaction = jest.mocked(useTransactionsHook.useDeleteTransaction);
 const mockedUseTransactions = jest.mocked(useTransactionsHook.useTransactions);
+const mockedUseImportTransactionsCsv = jest.mocked(useTransactionsHook.useImportTransactionsCsv);
 
 function makeWrapper() {
   const queryClient = new QueryClient({
@@ -136,6 +138,14 @@ function setupAllMocks(opts: {
     error: null,
     isSuccess: true,
   } as unknown as ReturnType<typeof useTransactionsHook.useTransactions>);
+
+  mockedUseImportTransactionsCsv.mockReturnValue({
+    mutate: jest.fn(),
+    isPending: false,
+    isSuccess: false,
+    isError: false,
+    error: null,
+  } as unknown as ReturnType<typeof useTransactionsHook.useImportTransactionsCsv>);
 }
 
 describe("AssetDetail", () => {
@@ -244,6 +254,60 @@ describe("AssetDetail", () => {
 
     await waitFor(() => {
       expect(screen.getByRole("form", { name: "거래 수정 폼" })).toBeInTheDocument();
+    });
+  });
+
+  it("'CSV 가져오기' 버튼이 렌더링된다", () => {
+    const { Wrapper } = makeWrapper();
+    render(<AssetDetail userAssetId={10} />, { wrapper: Wrapper });
+
+    expect(screen.getByLabelText("CSV 가져오기")).toBeInTheDocument();
+  });
+
+  it("'CSV 가져오기' 버튼 클릭 시 TransactionImport 패널이 표시된다", async () => {
+    const user = userEvent.setup();
+    const { Wrapper } = makeWrapper();
+    render(<AssetDetail userAssetId={10} />, { wrapper: Wrapper });
+
+    await user.click(screen.getByLabelText("CSV 가져오기"));
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("CSV 가져오기 폼")).toBeInTheDocument();
+    });
+  });
+
+  it("'CSV 가져오기 패널 닫기' 버튼 클릭 시 패널이 닫힌다", async () => {
+    const user = userEvent.setup();
+    const { Wrapper } = makeWrapper();
+    render(<AssetDetail userAssetId={10} />, { wrapper: Wrapper });
+
+    await user.click(screen.getByLabelText("CSV 가져오기"));
+    await waitFor(() => {
+      expect(screen.getByLabelText("CSV 가져오기 폼")).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByLabelText("CSV 가져오기 패널 닫기"));
+    await waitFor(() => {
+      expect(screen.queryByLabelText("CSV 가져오기 폼")).not.toBeInTheDocument();
+    });
+  });
+
+  it("'CSV 가져오기' 클릭 시 거래 추가 폼이 닫힌다", async () => {
+    const user = userEvent.setup();
+    const { Wrapper } = makeWrapper();
+    render(<AssetDetail userAssetId={10} />, { wrapper: Wrapper });
+
+    // 거래 추가 폼 먼저 열기
+    await user.click(screen.getByLabelText("거래 추가"));
+    await waitFor(() => {
+      expect(screen.getByRole("form", { name: "거래 추가 폼" })).toBeInTheDocument();
+    });
+
+    // CSV 가져오기 클릭 → 거래 추가 폼 닫힘
+    await user.click(screen.getByLabelText("CSV 가져오기"));
+    await waitFor(() => {
+      expect(screen.queryByRole("form", { name: "거래 추가 폼" })).not.toBeInTheDocument();
+      expect(screen.getByLabelText("CSV 가져오기 폼")).toBeInTheDocument();
     });
   });
 

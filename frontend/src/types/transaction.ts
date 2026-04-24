@@ -1,5 +1,21 @@
 export type TransactionType = "buy" | "sell";
 
+export interface CsvImportError {
+  row: number;
+  field: string | null;
+  message: string;
+}
+
+export interface TransactionImportResponse {
+  importedCount: number;
+  preview: TransactionResponse[];
+}
+
+export interface CsvImportValidationErrorBody {
+  detail: string;
+  errors: CsvImportError[];
+}
+
 export interface TransactionResponse {
   id: number;
   userAssetId: number;
