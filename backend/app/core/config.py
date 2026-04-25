@@ -38,6 +38,11 @@ class Settings(BaseSettings):
     # Timezone
     tz: str = "Asia/Seoul"
 
+    # Authentication — single-owner password (bcrypt hash stored in env, not DB)  # ADDED
+    app_password_hash: str | None = None  # ADDED
+    login_max_attempts: int = 5  # ADDED
+    login_lockout_seconds: int = 600  # 10 min  # ADDED
+
     @field_validator("cors_origins", mode="before")
     @classmethod
     def parse_cors_origins(cls, v: object) -> list[str]:

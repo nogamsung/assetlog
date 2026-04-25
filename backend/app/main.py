@@ -20,6 +20,8 @@ from app.exceptions import (
     FxRateNotAvailableError,
     InsufficientHoldingError,  # ADDED
     NotFoundError,
+    OwnerPasswordNotConfiguredError,  # ADDED
+    TooManyAttemptsError,  # ADDED
     UnauthorizedError,
     ValidationError,
 )
@@ -41,9 +43,34 @@ def _make_session_factory(database_url: str) -> async_sessionmaker[AsyncSession]
     return async_sessionmaker(bind=eng, class_=AsyncSession, expire_on_commit=False)
 
 
+_OWNER_EMAIL = "owner+local-1@assetlog.local"
+_OWNER_PASSWORD_HASH_PLACEHOLDER = "!disabled"  # not used for login — env hash only
+
+
+async def _ensure_owner_user(session_factory: async_sessionmaker[AsyncSession]) -> None:  # ADDED
+    """Ensure user id=1 (owner) exists; create a placeholder row if not."""
+    from app.repositories.user import (
+        UserRepository,  # noqa: PLC0415  # lazy to avoid circular import
+    )
+
+    async with session_factory() as session:
+        repo = UserRepository(session)
+        user = await repo.get_by_id(1)
+        if user is None:
+            try:
+                await repo.create(
+                    email=_OWNER_EMAIL,
+                    password_hash=_OWNER_PASSWORD_HASH_PLACEHOLDER,
+                )
+                await session.commit()
+                logger.info("Owner user created: email=%s", _OWNER_EMAIL)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("Could not create owner user: %s", exc)
+
+
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncGenerator[None, None]:
-    """Application lifespan — DB connectivity check + scheduler startup."""
+    """Application lifespan — DB connectivity check + owner ensure + scheduler startup."""
     logger.info("Starting up AssetLog API...")
     # Use the configured database_url at startup time.
     session_factory = _make_session_factory(settings.database_url)
@@ -51,6 +78,7 @@ async def lifespan(_: FastAPI) -> AsyncGenerator[None, None]:
         async with session_factory() as session:
             await session.execute(text("SELECT 1"))
         logger.info("Database connection verified.")
+        await _ensure_owner_user(session_factory)  # ADDED
     except Exception as exc:  # noqa: BLE001
         # Log the error but do NOT crash — allows the app to start even when
         # the DB is temporarily unavailable (e.g., during container cold start).
@@ -160,6 +188,29 @@ async def fx_rate_not_available_handler(
     """Map FxRateNotAvailableError → 503 Service Unavailable (temporary)."""
     logger.debug("FxRateNotAvailableError: %s", exc.detail)
     return JSONResponse(status_code=503, content={"detail": exc.detail})
+
+
+@app.exception_handler(TooManyAttemptsError)  # ADDED
+async def too_many_attempts_handler(request: Request, exc: TooManyAttemptsError) -> JSONResponse:
+    """Map TooManyAttemptsError → 429 with Retry-After header."""
+    logger.debug("TooManyAttemptsError: retry_after=%s", exc.retry_after_seconds)
+    return JSONResponse(
+        status_code=429,
+        content={"detail": str(exc)},
+        headers={"Retry-After": str(exc.retry_after_seconds)},
+    )
+
+
+@app.exception_handler(OwnerPasswordNotConfiguredError)  # ADDED
+async def owner_password_not_configured_handler(
+    request: Request, exc: OwnerPasswordNotConfiguredError
+) -> JSONResponse:
+    """Map OwnerPasswordNotConfiguredError → 503."""
+    logger.error("APP_PASSWORD_HASH is not configured")
+    return JSONResponse(
+        status_code=503,
+        content={"detail": "Owner password not configured"},
+    )
 
 
 app.include_router(auth_router)

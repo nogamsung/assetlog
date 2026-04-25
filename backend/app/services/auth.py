@@ -1,4 +1,4 @@
-"""Auth service — business logic for registration, authentication, and token validation."""
+"""Auth service — business logic for authentication and token validation."""
 
 from __future__ import annotations
 
@@ -6,59 +6,65 @@ import logging
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.security import decode_access_token, hash_password, verify_password
-from app.exceptions import ConflictError, UnauthorizedError
+from app.core.config import Settings
+from app.core.security import decode_access_token, verify_password
+from app.exceptions import OwnerPasswordNotConfiguredError, UnauthorizedError
 from app.models.user import User
 from app.repositories.user import UserRepository
-from app.schemas.auth import UserCreate, UserLogin
+from app.services.login_rate_limiter import LoginRateLimiter
 
 logger = logging.getLogger(__name__)
 
+_OWNER_USER_ID = 1
+
 
 class AuthService:
-    """Handles user auth lifecycle — no FastAPI/HTTP imports allowed."""
+    """Handles single-owner auth lifecycle — no FastAPI/HTTP imports allowed."""
 
-    def __init__(self, repository: UserRepository) -> None:
+    def __init__(
+        self,
+        repository: UserRepository,
+        rate_limiter: LoginRateLimiter,
+        settings: Settings,
+    ) -> None:
         self._repo = repository
+        self._limiter = rate_limiter
+        self._settings = settings
 
-    async def register(self, session: AsyncSession, data: UserCreate) -> User:
-        """Create a new user account.
-
-        Args:
-            session: Active async database session.
-            data: Validated registration payload.
-
-        Returns:
-            Newly created User ORM instance.
-
-        Raises:
-            ConflictError: If the email address is already registered.
-        """
-        existing = await self._repo.get_by_email(data.email)
-        if existing is not None:
-            raise ConflictError("An account with this email address already exists.")
-
-        pw_hash = hash_password(data.password)
-        user = await self._repo.create(email=data.email, password_hash=pw_hash)
-        logger.info("New user registered: id=%s", user.id)
-        return user
-
-    async def authenticate(self, session: AsyncSession, data: UserLogin) -> User:
-        """Verify credentials and return the authenticated User.
+    async def authenticate(
+        self, session: AsyncSession, password: str, client_ip: str
+    ) -> User:  # MODIFIED
+        """Verify the owner password and return the owner User.
 
         Args:
             session: Active async database session.
-            data: Validated login payload.
+            password: Raw password string submitted by the client.
+            client_ip: Client IP address for rate-limit tracking.
 
         Returns:
-            Authenticated User ORM instance.
+            Owner User ORM instance (id=1).
 
         Raises:
-            UnauthorizedError: If the email is not found or the password is wrong.
+            OwnerPasswordNotConfiguredError: If APP_PASSWORD_HASH is not set.
+            TooManyAttemptsError: If the IP is currently locked out.
+            UnauthorizedError: If the password does not match.
         """
-        user = await self._repo.get_by_email(data.email)
-        if user is None or not verify_password(data.password, user.password_hash):
-            raise UnauthorizedError("Invalid email or password.")
+        pw_hash = self._settings.app_password_hash
+        if not pw_hash:
+            raise OwnerPasswordNotConfiguredError()
+
+        await self._limiter.check(client_ip)
+
+        if not verify_password(password, pw_hash):
+            await self._limiter.record_failure(client_ip)
+            logger.warning("Failed login attempt from ip=%s", client_ip)
+            raise UnauthorizedError("Invalid password")
+
+        await self._limiter.record_success(client_ip)
+
+        user = await self._repo.get_by_id(_OWNER_USER_ID)
+        if user is None:
+            raise UnauthorizedError("Owner user not initialized")
         return user
 
     async def get_user_from_token(self, session: AsyncSession, token: str) -> User:
