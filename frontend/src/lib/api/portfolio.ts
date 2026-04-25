@@ -63,6 +63,12 @@ interface RawHolding {
   last_price_refreshed_at: string | null;
   is_stale: boolean;
   is_pending: boolean;
+  // 환산 필드 (convert_to 파라미터 사용 시) — ADDED
+  converted_latest_value: string | null;
+  converted_cost_basis: string | null;
+  converted_pnl_abs: string | null;
+  converted_realized_pnl: string | null;
+  display_currency: string | null;
 }
 
 // ── Converters ─────────────────────────────────────────────────────────────────
@@ -112,7 +118,13 @@ export async function getPortfolioSummary(
   return toPortfolioSummary(response.data);
 }
 
-export async function getPortfolioHoldings(): Promise<HoldingResponse[]> {
-  const response = await apiClient.get<RawHolding[]>("/api/portfolio/holdings");
+export async function getPortfolioHoldings( // MODIFIED
+  options: { convertTo?: string } = {},
+): Promise<HoldingResponse[]> {
+  const url =
+    options.convertTo != null
+      ? `/api/portfolio/holdings?convert_to=${encodeURIComponent(options.convertTo)}`
+      : "/api/portfolio/holdings";
+  const response = await apiClient.get<RawHolding[]>(url);
   return response.data.map(toHolding);
 }

@@ -32,6 +32,12 @@ const makeHolding = (overrides: Partial<HoldingResponse> = {}): HoldingResponse 
   lastPriceRefreshedAt: "2026-04-24T09:00:00+09:00",
   isStale: false,
   isPending: false,
+  // 환산 필드 — ADDED
+  convertedLatestValue: null,
+  convertedCostBasis: null,
+  convertedPnlAbs: null,
+  convertedRealizedPnl: null,
+  displayCurrency: null,
   ...overrides,
 });
 
@@ -166,5 +172,75 @@ describe("HoldingsTable", () => {
     const row = screen.getByText("005930").closest("tr");
     if (row) await user.click(row);
     expect(mockPush).toHaveBeenCalledWith("/assets");
+  });
+
+  // ADDED: 환산 모드 테스트
+  it("displayCurrency 있을 때 converted_latest_value 를 평가액으로 표시한다", () => {
+    const convertedHolding = makeHolding({
+      userAssetId: 10,
+      assetSymbol: {
+        id: 5,
+        assetType: "us_stock",
+        symbol: "AAPL",
+        exchange: "NASDAQ",
+        name: "Apple Inc.",
+        currency: "USD",
+        createdAt: "2024-01-01T00:00:00Z",
+        updatedAt: "2024-01-01T00:00:00Z",
+      },
+      latestValue: "1752.00",
+      convertedLatestValue: "2437280.00",
+      displayCurrency: "KRW",
+    });
+    render(<HoldingsTable holdings={[convertedHolding]} />);
+    // KRW 환산된 평가액이 표시되어야 함 (₩2,437,280)
+    expect(screen.getByText(/2,437,280/)).toBeInTheDocument();
+  });
+
+  it("displayCurrency 없을 때 native latestValue 를 평가액으로 표시한다", () => {
+    const nativeHolding = makeHolding({
+      userAssetId: 11,
+      latestValue: "750000.00",
+      convertedLatestValue: null,
+      displayCurrency: null,
+    });
+    render(<HoldingsTable holdings={[nativeHolding]} />);
+    // 원화 native 금액이 표시 (₩750,000)
+    expect(screen.getByText(/750,000/)).toBeInTheDocument();
+  });
+
+  it("converted_latest_value 가 null(rate 없음)인 행은 평가액을 — 로 표시한다", () => {
+    const partialHolding = makeHolding({
+      userAssetId: 12,
+      assetSymbol: {
+        id: 6,
+        assetType: "us_stock",
+        symbol: "TSLA",
+        exchange: "NASDAQ",
+        name: "Tesla",
+        currency: "USD",
+        createdAt: "2024-01-01T00:00:00Z",
+        updatedAt: "2024-01-01T00:00:00Z",
+      },
+      latestValue: "2000.00",
+      convertedLatestValue: null,  // rate 없어서 환산 불가
+      displayCurrency: "KRW",
+    });
+    render(<HoldingsTable holdings={[partialHolding]} />);
+    // 평가액 셀이 — 로 표시되어야 함
+    const dashes = screen.getAllByText("—");
+    expect(dashes.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("displayCurrency 있을 때 converted_pnl_abs 를 손익으로 표시한다", () => {
+    const convertedHolding = makeHolding({
+      userAssetId: 13,
+      pnlAbs: "50000.00",
+      convertedPnlAbs: "65450.00",
+      displayCurrency: "KRW",
+    });
+    render(<HoldingsTable holdings={[convertedHolding]} />);
+    // KRW 환산 손익이 표시 (₩65,450)
+    expect(screen.getByText(/65,450/)).toBeInTheDocument();
   });
 });

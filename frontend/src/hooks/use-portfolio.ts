@@ -9,7 +9,8 @@ import type { PortfolioSummary, HoldingResponse } from "@/types/portfolio";
 export const portfolioKeys = {
   summary: (convertTo?: string) =>
     ["portfolio", "summary", convertTo ?? null] as const,
-  holdings: ["portfolio", "holdings"] as const,
+  holdings: (convertTo?: string) => // MODIFIED
+    ["portfolio", "holdings", convertTo ?? null] as const,
 } as const;
 
 // ── Hooks ─────────────────────────────────────────────────────────────────────
@@ -22,10 +23,10 @@ export function usePortfolioSummary(convertTo?: string) {
   });
 }
 
-export function usePortfolioHoldings() {
+export function usePortfolioHoldings(convertTo?: string) { // MODIFIED
   return useQuery<HoldingResponse[]>({
-    queryKey: portfolioKeys.holdings,
-    queryFn: getPortfolioHoldings,
+    queryKey: portfolioKeys.holdings(convertTo), // MODIFIED
+    queryFn: () => getPortfolioHoldings({ convertTo }), // MODIFIED
     staleTime: 60_000,
   });
 }

@@ -15,16 +15,40 @@ interface HoldingsTableProps {
   holdings: HoldingResponse[];
 }
 
+// ADDED: 환산 모드 helper — displayCurrency 있으면 converted_*, 없으면 native 반환
+type DisplayKind = "latestValue" | "pnlAbs" | "costBasis" | "realizedPnl";
+
+function displayValue(h: HoldingResponse, kind: DisplayKind): string | null {
+  if (h.displayCurrency !== null) {
+    switch (kind) {
+      case "latestValue":   return h.convertedLatestValue;
+      case "pnlAbs":        return h.convertedPnlAbs;
+      case "costBasis":     return h.convertedCostBasis;
+      case "realizedPnl":   return h.convertedRealizedPnl;
+    }
+  }
+  switch (kind) {
+    case "latestValue":   return h.latestValue;
+    case "pnlAbs":        return h.pnlAbs;
+    case "costBasis":     return h.costBasis;
+    case "realizedPnl":   return h.realizedPnl;
+  }
+}
+
 function compareHoldings(a: HoldingResponse, b: HoldingResponse, key: SortKey, dir: SortDir): number {
   let aVal: number;
   let bVal: number;
 
   if (key === "latestValue") {
-    aVal = a.latestValue !== null ? Number(a.latestValue) : -Infinity;
-    bVal = b.latestValue !== null ? Number(b.latestValue) : -Infinity;
+    const aDisp = displayValue(a, "latestValue");
+    const bDisp = displayValue(b, "latestValue");
+    aVal = aDisp !== null ? Number(aDisp) : -Infinity;
+    bVal = bDisp !== null ? Number(bDisp) : -Infinity;
   } else if (key === "pnlAbs") {
-    aVal = a.pnlAbs !== null ? Number(a.pnlAbs) : -Infinity;
-    bVal = b.pnlAbs !== null ? Number(b.pnlAbs) : -Infinity;
+    const aDisp = displayValue(a, "pnlAbs");
+    const bDisp = displayValue(b, "pnlAbs");
+    aVal = aDisp !== null ? Number(aDisp) : -Infinity;
+    bVal = bDisp !== null ? Number(bDisp) : -Infinity;
   } else {
     aVal = a.weightPct;
     bVal = b.weightPct;
@@ -118,15 +142,21 @@ export function HoldingsTable({ holdings }: HoldingsTableProps) {
         </thead>
         <tbody>
           {sorted.map((holding) => {
-            const currency = holding.assetSymbol.currency;
+            const nativeCurrency = holding.assetSymbol.currency;
+            // ADDED: 환산 모드 시 displayCurrency 사용, 없으면 native
+            const displayCurr = holding.displayCurrency ?? nativeCurrency;
+
+            const dispPnl = displayValue(holding, "pnlAbs"); // ADDED
             const pnlColorClass =
-              holding.pnlAbs === null
+              dispPnl === null
                 ? ""
-                : Number(holding.pnlAbs) > 0
+                : Number(dispPnl) > 0
                   ? "text-green-600"
-                  : Number(holding.pnlAbs) < 0
+                  : Number(dispPnl) < 0
                     ? "text-destructive"
                     : "text-muted-foreground";
+
+            const dispLatestValue = displayValue(holding, "latestValue"); // ADDED
 
             return (
               <tr
@@ -144,39 +174,43 @@ export function HoldingsTable({ holdings }: HoldingsTableProps) {
                   {formatQuantity(holding.quantity, holding.assetSymbol.assetType)}
                 </td>
                 <td className="px-4 py-3 text-right">
-                  {formatCurrency(holding.avgCost, currency)}
+                  {/* 평균단가: native 통화 그대로 */}
+                  {formatCurrency(holding.avgCost, nativeCurrency)}
                 </td>
                 <td className="px-4 py-3 text-right">
+                  {/* 현재가: native 통화 그대로 */}
                   {holding.isPending ? (
                     <span className="text-muted-foreground">—</span>
                   ) : (
                     <span className="inline-flex items-center gap-1">
                       {holding.latestPrice !== null
-                        ? formatCurrency(holding.latestPrice, currency)
+                        ? formatCurrency(holding.latestPrice, nativeCurrency)
                         : "—"}
                       {holding.isStale && <StaleBadge />}
                     </span>
                   )}
                 </td>
                 <td className="px-4 py-3 text-right">
+                  {/* 평가액: 환산 모드 시 converted, 없으면 native — MODIFIED */}
                   {holding.isPending ? (
                     <span className="inline-flex items-center gap-1">
                       <span className="text-muted-foreground">—</span>
                       <PendingBadge />
                     </span>
                   ) : (
-                    holding.latestValue !== null
-                      ? formatCurrency(holding.latestValue, currency)
+                    dispLatestValue !== null
+                      ? formatCurrency(dispLatestValue, displayCurr)
                       : "—"
                   )}
                 </td>
                 <td className={`px-4 py-3 text-right ${pnlColorClass}`}>
+                  {/* 손익: 환산 모드 시 converted, 없으면 native — MODIFIED */}
                   {holding.isPending ? (
                     <span className="text-muted-foreground">—</span>
                   ) : (
                     <span>
-                      {holding.pnlAbs !== null
-                        ? `${Number(holding.pnlAbs) >= 0 ? "+" : ""}${formatCurrency(holding.pnlAbs, currency)}`
+                      {dispPnl !== null
+                        ? `${Number(dispPnl) >= 0 ? "+" : ""}${formatCurrency(dispPnl, displayCurr)}`
                         : "—"}
                       {holding.pnlPct !== null && (
                         <span className="ml-1 text-xs">

@@ -96,6 +96,12 @@ const fakeHolding: HoldingResponse = {
   lastPriceRefreshedAt: "2026-04-24T09:00:00Z",
   isStale: false,
   isPending: false,
+  // 환산 필드 — ADDED
+  convertedLatestValue: null,
+  convertedCostBasis: null,
+  convertedPnlAbs: null,
+  convertedRealizedPnl: null,
+  displayCurrency: null,
 };
 
 function renderDashboard() {
@@ -220,6 +226,14 @@ describe("DashboardView", () => {
       setupQueryMocks(fakeSummary, [fakeHolding]);
       renderDashboard();
       expect(screen.getByTestId("tag-breakdown-table")).toBeInTheDocument();
+    });
+
+    // ADDED: displayCurrency 전파 테스트
+    it("초기 렌더 시 usePortfolioHoldings 가 convertTo=undefined 로 호출된다", () => {
+      setupQueryMocks(fakeSummary, [fakeHolding]);
+      renderDashboard();
+      // 초기 displayCurrency=null → convertTo=undefined
+      expect(mockedUsePortfolioHoldings).toHaveBeenCalledWith(undefined);
     });
   });
 });

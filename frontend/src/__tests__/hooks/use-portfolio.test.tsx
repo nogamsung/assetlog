@@ -63,6 +63,12 @@ const fakeHolding: HoldingResponse = {
   lastPriceRefreshedAt: "2026-04-24T09:00:00+09:00",
   isStale: false,
   isPending: false,
+  // 환산 필드 — ADDED
+  convertedLatestValue: null,
+  convertedCostBasis: null,
+  convertedPnlAbs: null,
+  convertedRealizedPnl: null,
+  displayCurrency: null,
 };
 
 describe("usePortfolioSummary", () => {
@@ -143,5 +149,41 @@ describe("usePortfolioHoldings", () => {
     const { result } = renderHook(() => usePortfolioHoldings(), { wrapper: Wrapper });
 
     await waitFor(() => expect(result.current.isError).toBe(true));
+  });
+
+  it("convertTo 없으면 query key 의 세 번째 요소가 null 이다", async () => { // ADDED
+    mockedGetHoldings.mockResolvedValueOnce([fakeHolding]);
+    const { Wrapper, queryClient } = makeWrapper();
+    const { result } = renderHook(() => usePortfolioHoldings(), { wrapper: Wrapper });
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    const queryState = queryClient.getQueryState(["portfolio", "holdings", null]);
+    expect(queryState).toBeDefined();
+  });
+
+  it("convertTo='KRW' 이면 query key 의 세 번째 요소가 'KRW' 이다", async () => { // ADDED
+    mockedGetHoldings.mockResolvedValueOnce([fakeHolding]);
+    const { Wrapper, queryClient } = makeWrapper();
+    const { result } = renderHook(() => usePortfolioHoldings("KRW"), { wrapper: Wrapper });
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    const queryState = queryClient.getQueryState(["portfolio", "holdings", "KRW"]);
+    expect(queryState).toBeDefined();
+  });
+
+  it("다른 convertTo 는 다른 캐시 키를 사용한다", async () => { // ADDED
+    mockedGetHoldings.mockResolvedValue([fakeHolding]);
+    const { Wrapper, queryClient } = makeWrapper();
+
+    const { result: resultKrw } = renderHook(() => usePortfolioHoldings("KRW"), { wrapper: Wrapper });
+    await waitFor(() => expect(resultKrw.current.isSuccess).toBe(true));
+
+    const { result: resultUsd } = renderHook(() => usePortfolioHoldings("USD"), { wrapper: Wrapper });
+    await waitFor(() => expect(resultUsd.current.isSuccess).toBe(true));
+
+    const krwState = queryClient.getQueryState(["portfolio", "holdings", "KRW"]);
+    const usdState = queryClient.getQueryState(["portfolio", "holdings", "USD"]);
+    expect(krwState).toBeDefined();
+    expect(usdState).toBeDefined();
   });
 });
