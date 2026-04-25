@@ -42,6 +42,7 @@ const fakeTx: TransactionResponse = {
   price: "50000.000000",
   tradedAt: "2026-04-23T10:00:00Z",
   memo: "테스트 메모",
+  tag: null,
   createdAt: "2026-04-23T10:01:00Z",
 };
 
@@ -181,5 +182,53 @@ describe("TransactionList", () => {
     await user.click(screen.getByLabelText("거래 #1 편집"));
 
     expect(mockOnEdit).toHaveBeenCalledWith(fakeTx);
+  });
+});
+
+describe("TransactionList — tag 표시", () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it("tag 가 있는 거래에 태그 뱃지가 렌더링된다", () => {
+    const taggedTx: TransactionResponse = { ...fakeTx, tag: "DCA" };
+    setupMocks([taggedTx]);
+    const { Wrapper } = makeWrapper();
+    render(<TransactionList userAssetId={10} />, { wrapper: Wrapper });
+
+    const badge = screen.getByLabelText("태그 DCA 필터 적용");
+    expect(badge).toHaveTextContent("DCA");
+  });
+
+  it("tag 가 null 이면 뱃지가 렌더링되지 않는다", () => {
+    setupMocks([fakeTx]);
+    const { Wrapper } = makeWrapper();
+    render(<TransactionList userAssetId={10} />, { wrapper: Wrapper });
+
+    expect(screen.queryByLabelText(/태그.*필터 적용/)).not.toBeInTheDocument();
+  });
+
+  it("태그 뱃지 클릭 시 onTagClick 콜백이 호출된다", async () => {
+    const user = userEvent.setup();
+    const onTagClick = jest.fn();
+    const taggedTx: TransactionResponse = { ...fakeTx, tag: "스윙" };
+    setupMocks([taggedTx]);
+    const { Wrapper } = makeWrapper();
+    render(
+      <TransactionList userAssetId={10} onTagClick={onTagClick} />,
+      { wrapper: Wrapper },
+    );
+
+    await user.click(screen.getByLabelText("태그 스윙 필터 적용"));
+    expect(onTagClick).toHaveBeenCalledWith("스윙");
+  });
+
+  it("activeTag 가 주어지면 useTransactions 에 전달된다", () => {
+    setupMocks([]);
+    const { Wrapper } = makeWrapper();
+    render(
+      <TransactionList userAssetId={10} activeTag="DCA" />,
+      { wrapper: Wrapper },
+    );
+
+    expect(mockedUseTransactions).toHaveBeenCalledWith(10, "DCA");
   });
 });

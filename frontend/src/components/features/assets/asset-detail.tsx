@@ -2,9 +2,9 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, Plus, Upload, X, Pencil } from "lucide-react"; // MODIFIED
+import { ArrowLeft, Plus, Upload, X, Pencil, Tag } from "lucide-react"; // MODIFIED
 import { usePortfolioHoldings } from "@/hooks/use-portfolio";
-import { useAssetSummary } from "@/hooks/use-transactions";
+import { useAssetSummary, useUserTags } from "@/hooks/use-transactions"; // MODIFIED
 import { TransactionList } from "./transaction-list";
 import { TransactionForm } from "./transaction-form";
 import { TransactionImport } from "./transaction-import";
@@ -37,9 +37,11 @@ export function AssetDetail({ userAssetId }: AssetDetailProps) {
   const [showAddForm, setShowAddForm] = useState(false);
   const [editingTx, setEditingTx] = useState<TransactionResponse | null>(null); // ADDED
   const [showImportPanel, setShowImportPanel] = useState(false);
+  const [activeTag, setActiveTag] = useState<string | null>(null);  // ADDED
 
   const holdingsQuery = usePortfolioHoldings();
   const summaryQuery = useAssetSummary(userAssetId);
+  const { data: userTags = [] } = useUserTags();  // ADDED
 
   const isLoading = holdingsQuery.isLoading;
 
@@ -209,6 +211,7 @@ export function AssetDetail({ userAssetId }: AssetDetailProps) {
 
       <Card>
         <CardHeader>
+          <div className="flex flex-col gap-3">
           <div className="flex items-center justify-between">
             <CardTitle className="text-base">거래 내역</CardTitle>
             <div className="flex items-center gap-2">
@@ -261,6 +264,56 @@ export function AssetDetail({ userAssetId }: AssetDetailProps) {
                 )}
               </Button>
             </div>
+          </div>
+          {/* 태그 필터 행 — ADDED */}
+          {userTags.length > 0 && (
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                <Tag className="h-3 w-3" aria-hidden="true" />
+                필터:
+              </span>
+              <button
+                type="button"
+                onClick={() => setActiveTag(null)}
+                aria-label="모든 거래 보기"
+                aria-pressed={activeTag === null}
+                className={`rounded px-2 py-0.5 text-xs transition-colors ${
+                  activeTag === null
+                    ? "bg-primary text-primary-foreground"
+                    : "bg-muted text-foreground hover:bg-muted/70"
+                }`}
+              >
+                모든 거래
+              </button>
+              {userTags.map((tag) => (
+                <button
+                  key={tag}
+                  type="button"
+                  onClick={() => setActiveTag(tag)}
+                  aria-label={`태그 ${tag} 필터`}
+                  aria-pressed={activeTag === tag}
+                  className={`rounded px-2 py-0.5 text-xs transition-colors ${
+                    activeTag === tag
+                      ? "bg-primary text-primary-foreground"
+                      : "bg-muted text-foreground hover:bg-muted/70"
+                  }`}
+                >
+                  {tag}
+                </button>
+              ))}
+              {activeTag !== null && (
+                <button
+                  type="button"
+                  onClick={() => setActiveTag(null)}
+                  aria-label="태그 필터 초기화"
+                  className="flex items-center gap-0.5 rounded px-1.5 py-0.5 text-xs text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                >
+                  필터: {activeTag}
+                  <X className="h-3 w-3" aria-hidden="true" />
+                </button>
+              )}
+            </div>
+          )}
           </div>
         </CardHeader>
         <CardContent className="space-y-4">

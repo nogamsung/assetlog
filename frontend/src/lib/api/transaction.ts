@@ -22,6 +22,7 @@ interface RawTransactionResponse {
   price: string;
   traded_at: string;
   memo: string | null;
+  tag: string | null;     // ADDED
   created_at: string;
 }
 
@@ -53,6 +54,12 @@ function toUserAssetSummary(raw: RawUserAssetSummaryResponse): UserAssetSummaryR
 export interface ListTransactionsParams {
   limit?: number;
   offset?: number;
+  tag?: string;           // ADDED
+}
+
+export async function listUserTags(): Promise<string[]> {  // ADDED
+  const response = await apiClient.get<string[]>("/api/user-assets/transactions/tags");
+  return response.data;
 }
 
 export async function createTransaction(
@@ -65,6 +72,7 @@ export async function createTransaction(
     price: data.price,
     traded_at: data.tradedAt.toISOString(),
     memo: data.memo ?? null,
+    tag: data.tag?.trim() || null,  // ADDED — 빈 문자열 → null
   };
   const response = await apiClient.post<RawTransactionResponse>(
     `/api/user-assets/${userAssetId}/transactions`,
@@ -77,9 +85,10 @@ export async function listTransactions(
   userAssetId: number,
   params: ListTransactionsParams = {},
 ): Promise<TransactionResponse[]> {
-  const query: Record<string, number> = {};
+  const query: Record<string, number | string> = {};
   if (params.limit !== undefined) query["limit"] = params.limit;
   if (params.offset !== undefined) query["offset"] = params.offset;
+  if (params.tag !== undefined) query["tag"] = params.tag;  // ADDED
 
   const response = await apiClient.get<RawTransactionResponse[]>(
     `/api/user-assets/${userAssetId}/transactions`,
@@ -99,6 +108,7 @@ export async function updateTransaction( // ADDED
     price: data.price,
     traded_at: data.tradedAt.toISOString(),
     memo: data.memo ?? null,
+    tag: data.tag?.trim() || null,  // ADDED — 빈 문자열 → null
   };
   const response = await apiClient.put<RawTransactionResponse>(
     `/api/user-assets/${userAssetId}/transactions/${transactionId}`,

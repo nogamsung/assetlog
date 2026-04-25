@@ -7,6 +7,8 @@ import type { TransactionResponse } from "@/types/transaction"; // ADDED
 interface TransactionListProps {
   userAssetId: number;
   onEdit?: (transaction: TransactionResponse) => void; // ADDED
+  onTagClick?: (tag: string) => void;  // ADDED
+  activeTag?: string | null;            // ADDED
 }
 
 function TransactionListSkeleton() {
@@ -27,8 +29,8 @@ function EmptyState() {
   );
 }
 
-export function TransactionList({ userAssetId, onEdit }: TransactionListProps) { // MODIFIED
-  const { data: transactions, isLoading, isError, error } = useTransactions(userAssetId);
+export function TransactionList({ userAssetId, onEdit, onTagClick, activeTag }: TransactionListProps) { // MODIFIED
+  const { data: transactions, isLoading, isError, error } = useTransactions(userAssetId, activeTag ?? undefined);
   const deleteMutation = useDeleteTransaction();
 
   if (isLoading) return <TransactionListSkeleton />;
@@ -87,6 +89,16 @@ export function TransactionList({ userAssetId, onEdit }: TransactionListProps) {
                 <p className="hidden sm:block text-xs text-muted-foreground max-w-xs truncate">
                   {tx.memo}
                 </p>
+              )}
+              {tx.tag && (                // ADDED — tag badge
+                <button
+                  type="button"
+                  onClick={() => onTagClick?.(tx.tag!)}
+                  aria-label={`태그 ${tx.tag} 필터 적용`}
+                  className="hidden sm:inline-flex items-center rounded px-2 py-0.5 text-xs bg-muted text-foreground hover:bg-muted/70 transition-colors"
+                >
+                  {tx.tag}
+                </button>
               )}
             </div>
             <div className="flex items-center gap-1"> {/* ADDED */}

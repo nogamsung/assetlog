@@ -5,6 +5,7 @@ import {
   deleteTransaction,
   getAssetSummary,
   importTransactionsCsv,
+  listUserTags,
 } from "@/lib/api/transaction";
 import { apiClient } from "@/lib/api-client";
 import type { TransactionResponse, UserAssetSummaryResponse } from "@/types/transaction";
@@ -31,6 +32,7 @@ const rawTransaction = {
   price: "50000.000000",
   traded_at: "2026-04-23T10:00:00+00:00",
   memo: "테스트 메모",
+  tag: null,
   created_at: "2026-04-23T10:01:00Z",
 };
 
@@ -42,6 +44,7 @@ const expectedTransaction: TransactionResponse = {
   price: "50000.000000",
   tradedAt: "2026-04-23T10:00:00+00:00",
   memo: "테스트 메모",
+  tag: null,
   createdAt: "2026-04-23T10:01:00Z",
 };
 
@@ -321,5 +324,98 @@ describe("getAssetSummary", () => {
   it("API 에러 시 에러를 그대로 throw 한다", async () => {
     mockedGet.mockRejectedValueOnce(new Error("Network error"));
     await expect(getAssetSummary(10)).rejects.toThrow("Network error");
+  });
+});
+
+describe("listTransactions — tag query", () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it("tag 파라미터를 query string 으로 전달한다", async () => {
+    mockedGet.mockResolvedValueOnce({ data: [] });
+    await listTransactions(10, { limit: 100, offset: 0, tag: "DCA" });
+    expect(mockedGet).toHaveBeenCalledWith(
+      "/api/user-assets/10/transactions",
+      { params: { limit: 100, offset: 0, tag: "DCA" } },
+    );
+  });
+
+  it("tag 가 없으면 query 에 포함되지 않는다", async () => {
+    mockedGet.mockResolvedValueOnce({ data: [] });
+    await listTransactions(10, { limit: 100, offset: 0 });
+    expect(mockedGet).toHaveBeenCalledWith(
+      "/api/user-assets/10/transactions",
+      { params: { limit: 100, offset: 0 } },
+    );
+  });
+});
+
+describe("createTransaction / updateTransaction — tag payload", () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it("createTransaction 가 tag 를 trim 후 전송한다", async () => {
+    mockedPost.mockResolvedValueOnce({ data: rawTransaction });
+    await createTransaction(10, {
+      type: "buy",
+      quantity: "1.5",
+      price: "50000",
+      tradedAt: new Date("2026-04-23T10:00:00Z"),
+      memo: null,
+      tag: "  DCA  ",
+    });
+    expect(mockedPost).toHaveBeenCalledWith(
+      "/api/user-assets/10/transactions",
+      expect.objectContaining({ tag: "DCA" }),
+    );
+  });
+
+  it("createTransaction 가 빈 tag 를 null 로 변환해 전송한다", async () => {
+    mockedPost.mockResolvedValueOnce({ data: rawTransaction });
+    await createTransaction(10, {
+      type: "buy",
+      quantity: "1.5",
+      price: "50000",
+      tradedAt: new Date("2026-04-23T10:00:00Z"),
+      memo: null,
+      tag: "   ",
+    });
+    expect(mockedPost).toHaveBeenCalledWith(
+      "/api/user-assets/10/transactions",
+      expect.objectContaining({ tag: null }),
+    );
+  });
+
+  it("updateTransaction 가 tag 를 PUT body 에 포함한다", async () => {
+    mockedPut.mockResolvedValueOnce({ data: rawTransaction });
+    await updateTransaction(10, 1, {
+      type: "buy",
+      quantity: "1.5",
+      price: "50000",
+      tradedAt: new Date("2026-04-23T10:00:00Z"),
+      memo: null,
+      tag: "장기보유",
+    });
+    expect(mockedPut).toHaveBeenCalledWith(
+      "/api/user-assets/10/transactions/1",
+      expect.objectContaining({ tag: "장기보유" }),
+    );
+  });
+});
+
+describe("listUserTags", () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it("GET /api/user-assets/transactions/tags 를 호출하고 string 배열을 반환한다", async () => {
+    mockedGet.mockResolvedValueOnce({ data: ["DCA", "스윙", "장기보유"] });
+    const result = await listUserTags();
+    expect(mockedGet).toHaveBeenCalledWith(
+      "/api/user-assets/transactions/tags",
+    );
+    expect(result).toEqual(["DCA", "스윙", "장기보유"]);
+  });
+
+  it("빈 배열도 처리한다", async () => {
+    mockedGet.mockResolvedValueOnce({ data: [] });
+    const result = await listUserTags();
+    expect(result).toEqual([]);
   });
 });
