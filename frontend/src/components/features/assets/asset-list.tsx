@@ -4,6 +4,7 @@ import Link from "next/link";
 import { type AxiosError } from "axios";
 import { usePortfolioHoldings } from "@/hooks/use-portfolio";
 import { useDeleteUserAsset } from "@/hooks/use-assets";
+import { useSampleSeed } from "@/hooks/use-sample-seed";
 import { AssetTypeBadge } from "./asset-type-badge";
 import { Button } from "@/components/ui/button";
 import { Trash2, Plus } from "lucide-react";
@@ -23,16 +24,30 @@ function AssetListSkeleton() {
 }
 
 function EmptyState() {
+  const { mutate: seedSample, isPending: isSeeding } = useSampleSeed();
+
   return (
     <div className="flex flex-col items-center justify-center py-16 text-center">
       <p className="text-muted-foreground mb-4">보유 자산이 없습니다.</p>
-      <Link
-        href="/assets/new"
-        className="inline-flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow hover:bg-primary/90 transition-colors"
-      >
-        <Plus className="h-4 w-4" aria-hidden="true" />
-        자산 추가하기
-      </Link>
+      <div className="flex flex-wrap items-center justify-center gap-2">
+        <Link
+          href="/assets/new"
+          className="inline-flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow hover:bg-primary/90 transition-colors"
+        >
+          <Plus className="h-4 w-4" aria-hidden="true" />
+          자산 추가하기
+        </Link>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => seedSample()}
+          disabled={isSeeding}
+          aria-label="샘플 데이터로 시작"
+          className="text-muted-foreground"
+        >
+          {isSeeding ? "추가 중..." : "샘플 데이터로 시작"}
+        </Button>
+      </div>
     </div>
   );
 }

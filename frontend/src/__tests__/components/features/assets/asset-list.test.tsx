@@ -5,6 +5,7 @@ import React from "react";
 import { AssetList } from "@/components/features/assets/asset-list";
 import * as portfolioHook from "@/hooks/use-portfolio";
 import * as useAssetsHook from "@/hooks/use-assets";
+import * as useSampleSeedHook from "@/hooks/use-sample-seed";
 import type { HoldingResponse } from "@/types/portfolio";
 
 jest.mock("next/navigation", () => ({
@@ -21,10 +22,16 @@ jest.mock("@/hooks/use-assets", () => ({
   useDeleteUserAsset: jest.fn(),
 }));
 
+jest.mock("@/hooks/use-sample-seed", () => ({
+  useSampleSeed: jest.fn(),
+}));
+
 const mockedUsePortfolioHoldings = jest.mocked(portfolioHook.usePortfolioHoldings);
 const mockedUseDeleteUserAsset = jest.mocked(useAssetsHook.useDeleteUserAsset);
+const mockedUseSampleSeed = jest.mocked(useSampleSeedHook.useSampleSeed);
 
 const mockDeleteMutate = jest.fn();
+const mockSeedMutate = jest.fn();
 
 const fakeHolding: HoldingResponse = {
   userAssetId: 10,
@@ -99,6 +106,16 @@ function setupDeleteMock(isPending = false) {
   } as unknown as ReturnType<typeof useAssetsHook.useDeleteUserAsset>);
 }
 
+function setupSeedMock(isPending = false) {
+  mockedUseSampleSeed.mockReturnValue({
+    mutate: mockSeedMutate,
+    isPending,
+    isError: false,
+    isSuccess: false,
+    error: null,
+  } as unknown as ReturnType<typeof useSampleSeedHook.useSampleSeed>);
+}
+
 function setupHoldingsMock(
   data: HoldingResponse[] | undefined,
   isLoading = false,
@@ -118,6 +135,7 @@ describe("AssetList", () => {
   beforeEach(() => {
     jest.clearAllMocks();
     setupDeleteMock();
+    setupSeedMock();
     setupHoldingsMock([fakeHolding]);
   });
 
@@ -162,6 +180,32 @@ describe("AssetList", () => {
       setupHoldingsMock(undefined);
       renderAssetList();
       expect(screen.getByText("보유 자산이 없습니다.")).toBeInTheDocument();
+    });
+
+    it("샘플 데이터로 시작 버튼이 렌더링된다", () => {
+      setupHoldingsMock([]);
+      renderAssetList();
+      expect(
+        screen.getByRole("button", { name: "샘플 데이터로 시작" }),
+      ).toBeInTheDocument();
+    });
+
+    it("샘플 버튼 클릭 시 mutation 이 호출된다", async () => {
+      setupHoldingsMock([]);
+      const user = userEvent.setup();
+      renderAssetList();
+
+      await user.click(screen.getByRole("button", { name: "샘플 데이터로 시작" }));
+      expect(mockSeedMutate).toHaveBeenCalledTimes(1);
+    });
+
+    it("시드 pending 중 버튼이 disabled 되고 텍스트가 변경된다", () => {
+      setupHoldingsMock([]);
+      setupSeedMock(true);
+      renderAssetList();
+      const btn = screen.getByRole("button", { name: "샘플 데이터로 시작" });
+      expect(btn).toBeDisabled();
+      expect(btn).toHaveTextContent("추가 중...");
     });
   });
 
