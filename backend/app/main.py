@@ -26,6 +26,7 @@ from app.exceptions import (
 from app.routers.auth import router as auth_router
 from app.routers.fx import router as fx_router
 from app.routers.portfolio import router as portfolio_router
+from app.routers.sample import router as sample_router
 from app.routers.symbol import router as symbol_router
 from app.routers.transaction import router as transaction_router
 from app.routers.user_asset import router as user_asset_router
@@ -167,6 +168,7 @@ app.include_router(user_asset_router)
 app.include_router(transaction_router)
 app.include_router(portfolio_router)
 app.include_router(fx_router)
+app.include_router(sample_router)
 
 
 @app.get(
