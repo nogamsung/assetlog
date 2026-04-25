@@ -63,6 +63,18 @@ class CsvImportValidationError(ValueError):
         self.errors = errors
 
 
+class TooManyAttemptsError(Exception):  # ADDED
+    """Login rate limit exceeded."""
+
+    def __init__(self, retry_after_seconds: int) -> None:
+        self.retry_after_seconds = retry_after_seconds
+        super().__init__(f"Too many login attempts. Try again in {retry_after_seconds} seconds.")
+
+
+class OwnerPasswordNotConfiguredError(Exception):  # ADDED
+    """APP_PASSWORD_HASH env var is missing or empty."""
+
+
 class FxFetchError(AppError):
     """External FX rate fetch from Frankfurter API failed."""
 

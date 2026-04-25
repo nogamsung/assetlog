@@ -4,46 +4,20 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
-
-
-class UserCreate(BaseModel):
-    """Schema for user registration."""
-
-    model_config = ConfigDict(str_strip_whitespace=True)
-
-    email: EmailStr = Field(..., description="User email address", examples=["user@example.com"])
-    password: str = Field(
-        ...,
-        min_length=8,
-        max_length=128,
-        description="Password (min 8 chars, must contain at least one letter and one digit)",
-        examples=["Secur3Pass"],
-    )
-
-    @field_validator("password")
-    @classmethod
-    def password_complexity(cls, v: str) -> str:
-        """Require at least one letter and one digit."""
-        has_letter = any(c.isalpha() for c in v)
-        has_digit = any(c.isdigit() for c in v)
-        if not has_letter or not has_digit:
-            raise ValueError("Password must contain at least one letter and one digit.")
-        return v
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class UserLogin(BaseModel):
-    """Schema for user login."""
+    """Schema for single-owner password login."""  # MODIFIED
 
     model_config = ConfigDict(str_strip_whitespace=True)
 
-    email: EmailStr = Field(..., description="User email address", examples=["user@example.com"])
-    password: str = Field(
+    password: str = Field(  # MODIFIED — email removed
         ...,
         min_length=1,
         max_length=128,
-        description="User password",
-        examples=["Secur3Pass"],
+        description="Owner password",
+        examples=["your-secret-password"],
     )
 
 
@@ -56,7 +30,7 @@ class UserResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True, str_strip_whitespace=True)
 
     id: int = Field(..., description="User ID", examples=[1])
-    email: str = Field(..., description="User email address", examples=["user@example.com"])
+    email: str = Field(..., description="User email address", examples=["owner@assetlog.local"])
     created_at: datetime = Field(..., description="Account creation timestamp")
 
 

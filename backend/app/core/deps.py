@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.adapters import AdapterRegistry, build_default_adapter_registry
 from app.adapters.base import SymbolSearchAdapter  # ADDED
+from app.core.config import settings  # ADDED
 from app.db.base import get_db_session
 from app.domain.asset_type import AssetType  # ADDED
 from app.exceptions import UnauthorizedError
@@ -23,6 +24,7 @@ from app.repositories.user import UserRepository
 from app.repositories.user_asset import UserAssetRepository
 from app.services.auth import AuthService
 from app.services.fx_rate import FxRateService
+from app.services.login_rate_limiter import LoginRateLimiter  # ADDED
 from app.services.portfolio import PortfolioService
 from app.services.portfolio_history import PortfolioHistoryService
 from app.services.price_refresh import PriceRefreshService
@@ -71,9 +73,30 @@ UserAssetRepositoryDep = Annotated[UserAssetRepository, Depends(get_user_asset_r
 # ---------------------------------------------------------------------------
 
 
-def get_auth_service(repo: UserRepositoryDep) -> AuthService:
-    """Inject an AuthService bound to the current request session."""
-    return AuthService(repo)
+# Module-level singleton so the in-memory counter survives across requests  # ADDED
+_login_rate_limiter: LoginRateLimiter | None = None  # ADDED
+
+
+def get_login_rate_limiter() -> LoginRateLimiter:  # ADDED
+    """Return a module-level singleton LoginRateLimiter configured from settings."""
+    global _login_rate_limiter  # noqa: PLW0603  # intentional module-level singleton
+    if _login_rate_limiter is None:
+        _login_rate_limiter = LoginRateLimiter(
+            max_attempts=settings.login_max_attempts,
+            lockout_seconds=settings.login_lockout_seconds,
+        )
+    return _login_rate_limiter
+
+
+LoginRateLimiterDep = Annotated[LoginRateLimiter, Depends(get_login_rate_limiter)]  # ADDED
+
+
+def get_auth_service(  # MODIFIED
+    repo: UserRepositoryDep,
+    rate_limiter: LoginRateLimiterDep,  # ADDED
+) -> AuthService:
+    """Inject an AuthService with UserRepository and LoginRateLimiter."""
+    return AuthService(repo, rate_limiter=rate_limiter, settings=settings)
 
 
 AuthServiceDep = Annotated[AuthService, Depends(get_auth_service)]

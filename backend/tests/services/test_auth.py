@@ -1,4 +1,4 @@
-"""Unit tests for AuthService — uses AsyncMock to isolate from DB."""
+"""Unit tests for AuthService — single-owner password-only auth."""
 
 from __future__ import annotations
 
@@ -6,126 +6,173 @@ from datetime import UTC, datetime
 from unittest.mock import AsyncMock
 
 import pytest
-from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import Settings
 from app.core.security import create_access_token, hash_password
-from app.exceptions import ConflictError, UnauthorizedError
+from app.exceptions import OwnerPasswordNotConfiguredError, TooManyAttemptsError, UnauthorizedError
 from app.models.user import User
 from app.repositories.user import UserRepository
-from app.schemas.auth import UserCreate, UserLogin
 from app.services.auth import AuthService
+from app.services.login_rate_limiter import LoginRateLimiter
 
 
 def _make_user(
     *,
     user_id: int = 1,
-    email: str = "test@example.com",
-    password: str = "Secur3Pass",
+    email: str = "owner+local-1@assetlog.local",
 ) -> User:
     """Build a transient User ORM instance for testing without a real DB session."""
     now = datetime.now(UTC)
-    user = User(email=email, password_hash=hash_password(password))
+    user = User(email=email, password_hash="!disabled")
     user.id = user_id
     user.created_at = now
     user.updated_at = now
     return user
 
 
-def _make_service(repo: UserRepository) -> AuthService:
-    return AuthService(repo)
+def _make_settings(pw_hash: str | None = None) -> Settings:
+    return Settings(
+        database_url="sqlite+aiosqlite:///:memory:",
+        jwt_secret_key="test-secret",
+        app_password_hash=pw_hash,
+        login_max_attempts=5,
+        login_lockout_seconds=600,
+    )
 
 
-class TestAuthServiceRegister:
-    async def test_신규_이메일이면_사용자를_생성한다(self) -> None:
-        mock_session = AsyncMock(spec=AsyncSession)
-        repo = AsyncMock(spec=UserRepository)
-        repo.get_by_email.return_value = None
-        new_user = _make_user(user_id=1, email="new@example.com")
-        repo.create.return_value = new_user
-
-        service = _make_service(repo)
-        data = UserCreate(email="new@example.com", password="Secur3Pass")
-        result = await service.register(mock_session, data)
-
-        assert result.email == "new@example.com"
-        repo.get_by_email.assert_awaited_once_with("new@example.com")
-        repo.create.assert_awaited_once()
-
-    async def test_이미_등록된_이메일이면_ConflictError를_던진다(self) -> None:
-        mock_session = AsyncMock(spec=AsyncSession)
-        repo = AsyncMock(spec=UserRepository)
-        repo.get_by_email.return_value = _make_user(email="dup@example.com")
-
-        service = _make_service(repo)
-        data = UserCreate(email="dup@example.com", password="Secur3Pass")
-
-        with pytest.raises(ConflictError):
-            await service.register(mock_session, data)
-
-        repo.create.assert_not_awaited()
-
-    async def test_비밀번호는_해시되어_저장된다(self) -> None:
-        mock_session = AsyncMock(spec=AsyncSession)
-        repo = AsyncMock(spec=UserRepository)
-        repo.get_by_email.return_value = None
-        captured_hash: list[str] = []
-
-        async def capture_create(email: str, password_hash: str) -> User:
-            captured_hash.append(password_hash)
-            return _make_user(email=email, password="Secur3Pass")
-
-        repo.create.side_effect = capture_create
-
-        service = _make_service(repo)
-        data = UserCreate(email="hash@example.com", password="Secur3Pass")
-        await service.register(mock_session, data)
-
-        assert len(captured_hash) == 1
-        assert captured_hash[0] != "Secur3Pass"  # plain text must NOT be stored
+def _make_service(
+    repo: UserRepository,
+    *,
+    pw: str | None = "TestPass1",
+    limiter: LoginRateLimiter | None = None,
+) -> AuthService:
+    pw_hash = hash_password(pw) if pw else None
+    settings = _make_settings(pw_hash=pw_hash)
+    if limiter is None:
+        limiter = LoginRateLimiter(max_attempts=5, lockout_seconds=600)
+    return AuthService(repo, rate_limiter=limiter, settings=settings)
 
 
 class TestAuthServiceAuthenticate:
-    async def test_올바른_자격증명이면_사용자를_반환한다(self) -> None:
-        mock_session = AsyncMock(spec=AsyncSession)
+    async def test_올바른_비밀번호이면_owner_user를_반환한다(self) -> None:
+        mock_session = AsyncMock()
         repo = AsyncMock(spec=UserRepository)
-        user = _make_user(email="auth@example.com", password="Secur3Pass")
-        repo.get_by_email.return_value = user
+        owner = _make_user(user_id=1)
+        repo.get_by_id.return_value = owner
 
-        service = _make_service(repo)
-        data = UserLogin(email="auth@example.com", password="Secur3Pass")
-        result = await service.authenticate(mock_session, data)
+        service = _make_service(repo, pw="TestPass1")
+        result = await service.authenticate(mock_session, "TestPass1", "1.2.3.4")
 
-        assert result.email == "auth@example.com"
+        assert result.id == 1
+        repo.get_by_id.assert_awaited_once_with(1)
 
-    async def test_이메일이_없으면_UnauthorizedError를_던진다(self) -> None:
-        mock_session = AsyncMock(spec=AsyncSession)
+    async def test_잘못된_비밀번호이면_UnauthorizedError를_던진다(self) -> None:
+        mock_session = AsyncMock()
         repo = AsyncMock(spec=UserRepository)
-        repo.get_by_email.return_value = None
 
-        service = _make_service(repo)
-        data = UserLogin(email="ghost@example.com", password="Secur3Pass")
+        service = _make_service(repo, pw="TestPass1")
+
+        with pytest.raises(UnauthorizedError) as exc_info:
+            await service.authenticate(mock_session, "WrongPass", "1.2.3.4")
+
+        assert "Invalid password" in str(exc_info.value)
+
+    async def test_비밀번호_미설정이면_OwnerPasswordNotConfiguredError를_던진다(self) -> None:
+        mock_session = AsyncMock()
+        repo = AsyncMock(spec=UserRepository)
+        settings = _make_settings(pw_hash=None)
+        limiter = LoginRateLimiter(max_attempts=5, lockout_seconds=600)
+        service = AuthService(repo, rate_limiter=limiter, settings=settings)
+
+        with pytest.raises(OwnerPasswordNotConfiguredError):
+            await service.authenticate(mock_session, "anything", "1.2.3.4")
+
+    async def test_빈_문자열_해시이면_OwnerPasswordNotConfiguredError를_던진다(self) -> None:
+        mock_session = AsyncMock()
+        repo = AsyncMock(spec=UserRepository)
+        settings = _make_settings(pw_hash="")
+        limiter = LoginRateLimiter(max_attempts=5, lockout_seconds=600)
+        service = AuthService(repo, rate_limiter=limiter, settings=settings)
+
+        with pytest.raises(OwnerPasswordNotConfiguredError):
+            await service.authenticate(mock_session, "anything", "1.2.3.4")
+
+    async def test_5회_실패_후_TooManyAttemptsError를_던진다(self) -> None:
+        mock_session = AsyncMock()
+        repo = AsyncMock(spec=UserRepository)
+
+        limiter = LoginRateLimiter(max_attempts=5, lockout_seconds=600)
+        service = _make_service(repo, pw="TestPass1", limiter=limiter)
+
+        for _ in range(5):
+            with pytest.raises(UnauthorizedError):
+                await service.authenticate(mock_session, "WrongPass", "9.9.9.9")
+
+        with pytest.raises(TooManyAttemptsError):
+            await service.authenticate(mock_session, "WrongPass", "9.9.9.9")
+
+    async def test_rate_limit_check가_먼저_호출된다(self) -> None:
+        """Verify check() is called before password verification."""
+        mock_session = AsyncMock()
+        repo = AsyncMock(spec=UserRepository)
+
+        mock_limiter = AsyncMock(spec=LoginRateLimiter)
+        mock_limiter.check.side_effect = TooManyAttemptsError(300)
+
+        settings = _make_settings(pw_hash=hash_password("TestPass1"))
+        service = AuthService(repo, rate_limiter=mock_limiter, settings=settings)
+
+        with pytest.raises(TooManyAttemptsError):
+            await service.authenticate(mock_session, "TestPass1", "blocked-ip")
+
+        mock_limiter.check.assert_awaited_once_with("blocked-ip")
+        repo.get_by_id.assert_not_awaited()
+
+    async def test_성공_시_record_success가_호출된다(self) -> None:
+        mock_session = AsyncMock()
+        repo = AsyncMock(spec=UserRepository)
+        owner = _make_user(user_id=1)
+        repo.get_by_id.return_value = owner
+
+        mock_limiter = AsyncMock(spec=LoginRateLimiter)
+        settings = _make_settings(pw_hash=hash_password("TestPass1"))
+        service = AuthService(repo, rate_limiter=mock_limiter, settings=settings)
+
+        await service.authenticate(mock_session, "TestPass1", "5.5.5.5")
+
+        mock_limiter.record_success.assert_awaited_once_with("5.5.5.5")
+
+    async def test_실패_시_record_failure가_호출된다(self) -> None:
+        mock_session = AsyncMock()
+        repo = AsyncMock(spec=UserRepository)
+
+        mock_limiter = AsyncMock(spec=LoginRateLimiter)
+        settings = _make_settings(pw_hash=hash_password("TestPass1"))
+        service = AuthService(repo, rate_limiter=mock_limiter, settings=settings)
 
         with pytest.raises(UnauthorizedError):
-            await service.authenticate(mock_session, data)
+            await service.authenticate(mock_session, "WrongPass", "6.6.6.6")
 
-    async def test_비밀번호가_틀리면_UnauthorizedError를_던진다(self) -> None:
-        mock_session = AsyncMock(spec=AsyncSession)
+        mock_limiter.record_failure.assert_awaited_once_with("6.6.6.6")
+
+    async def test_owner_user_없으면_UnauthorizedError를_던진다(self) -> None:
+        mock_session = AsyncMock()
         repo = AsyncMock(spec=UserRepository)
-        user = _make_user(email="pw@example.com", password="Secur3Pass")
-        repo.get_by_email.return_value = user
+        repo.get_by_id.return_value = None
 
-        service = _make_service(repo)
-        data = UserLogin(email="pw@example.com", password="WrongPass1")
+        service = _make_service(repo, pw="TestPass1")
 
-        with pytest.raises(UnauthorizedError):
-            await service.authenticate(mock_session, data)
+        with pytest.raises(UnauthorizedError) as exc_info:
+            await service.authenticate(mock_session, "TestPass1", "1.2.3.4")
+
+        assert "not initialized" in str(exc_info.value)
 
 
 class TestAuthServiceGetUserFromToken:
     async def test_유효한_토큰이면_사용자를_반환한다(self) -> None:
-        mock_session = AsyncMock(spec=AsyncSession)
+        mock_session = AsyncMock()
         repo = AsyncMock(spec=UserRepository)
-        user = _make_user(user_id=42, email="token@example.com")
+        user = _make_user(user_id=42)
         repo.get_by_id.return_value = user
 
         service = _make_service(repo)
@@ -136,7 +183,7 @@ class TestAuthServiceGetUserFromToken:
         repo.get_by_id.assert_awaited_once_with(42)
 
     async def test_잘못된_토큰이면_UnauthorizedError를_던진다(self) -> None:
-        mock_session = AsyncMock(spec=AsyncSession)
+        mock_session = AsyncMock()
         repo = AsyncMock(spec=UserRepository)
 
         service = _make_service(repo)
@@ -145,7 +192,7 @@ class TestAuthServiceGetUserFromToken:
             await service.get_user_from_token(mock_session, "not.a.valid.jwt")
 
     async def test_토큰의_사용자가_없으면_UnauthorizedError를_던진다(self) -> None:
-        mock_session = AsyncMock(spec=AsyncSession)
+        mock_session = AsyncMock()
         repo = AsyncMock(spec=UserRepository)
         repo.get_by_id.return_value = None
 

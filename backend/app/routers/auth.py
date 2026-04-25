@@ -1,13 +1,13 @@
-"""Auth router — signup, login, logout, and current-user endpoints."""
+"""Auth router — login, logout, and current-user endpoints."""
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Response, status
+from fastapi import APIRouter, Request, Response, status
 
 from app.core.config import settings
 from app.core.deps import AuthServiceDep, CurrentUser, DbSession
 from app.core.security import create_access_token
-from app.schemas.auth import ErrorResponse, UserCreate, UserLogin, UserResponse
+from app.schemas.auth import ErrorResponse, UserLogin, UserResponse  # MODIFIED — UserCreate removed
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -28,46 +28,26 @@ def _set_auth_cookie(response: Response, token: str) -> None:
 
 
 @router.post(
-    "/signup",
-    response_model=UserResponse,
-    status_code=status.HTTP_201_CREATED,
-    summary="Register a new user account",
-    responses={
-        409: {"model": ErrorResponse, "description": "Email already registered"},
-        422: {"model": ErrorResponse, "description": "Validation error"},
-    },
-)
-async def signup(
-    data: UserCreate,
-    response: Response,
-    session: DbSession,
-    auth_service: AuthServiceDep,
-) -> UserResponse:
-    """Create a new user and return the profile with an httpOnly auth cookie."""
-    user = await auth_service.register(session, data)
-    token = create_access_token(subject=user.id)
-    _set_auth_cookie(response, token)
-    return UserResponse.model_validate(user)
-
-
-@router.post(
     "/login",
     response_model=UserResponse,
     status_code=status.HTTP_200_OK,
-    summary="Authenticate and receive an access token cookie",
+    summary="Authenticate with owner password and receive an access token cookie",
     responses={
-        401: {"model": ErrorResponse, "description": "Invalid credentials"},
-        422: {"model": ErrorResponse, "description": "Validation error"},
+        401: {"model": ErrorResponse, "description": "Invalid password"},
+        429: {"model": ErrorResponse, "description": "Too many login attempts"},
+        503: {"model": ErrorResponse, "description": "Owner password not configured"},
     },
 )
-async def login(
+async def login(  # MODIFIED
     data: UserLogin,
+    request: Request,  # ADDED
     response: Response,
     session: DbSession,
     auth_service: AuthServiceDep,
 ) -> UserResponse:
-    """Verify credentials and set an httpOnly auth cookie on success."""
-    user = await auth_service.authenticate(session, data)
+    """Verify the owner password and set an httpOnly auth cookie on success."""
+    client_ip: str = request.client.host if request.client else "unknown"  # ADDED
+    user = await auth_service.authenticate(session, data.password, client_ip)  # MODIFIED
     token = create_access_token(subject=user.id)
     _set_auth_cookie(response, token)
     return UserResponse.model_validate(user)
