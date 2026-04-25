@@ -2,6 +2,7 @@ import { render, screen } from "@testing-library/react";
 import { DashboardView } from "@/components/features/portfolio/dashboard-view";
 import * as usePortfolioModule from "@/hooks/use-portfolio";
 import * as usePortfolioHistoryModule from "@/hooks/use-portfolio-history";
+import * as useSampleSeedModule from "@/hooks/use-sample-seed";
 import type { PortfolioSummary, HoldingResponse } from "@/types/portfolio";
 
 const mockPush = jest.fn();
@@ -11,6 +12,11 @@ jest.mock("next/navigation", () => ({
 
 jest.mock("@/hooks/use-portfolio");
 jest.mock("@/hooks/use-portfolio-history");
+jest.mock("@/hooks/use-sample-seed", () => ({
+  useSampleSeed: jest.fn(),
+}));
+
+const mockedUseSampleSeed = jest.mocked(useSampleSeedModule.useSampleSeed);
 
 // recharts 는 ResizeObserver / SVG 처리가 필요하므로 모킹
 jest.mock("recharts", () => {
@@ -111,7 +117,16 @@ function setupMocks(
 }
 
 describe("DashboardView", () => {
-  beforeEach(() => jest.clearAllMocks());
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockedUseSampleSeed.mockReturnValue({
+      mutate: jest.fn(),
+      isPending: false,
+      isError: false,
+      isSuccess: false,
+      error: null,
+    } as unknown as ReturnType<typeof useSampleSeedModule.useSampleSeed>);
+  });
 
   it("로딩 중에 스켈레톤을 렌더링한다", () => {
     setupMocks({ isLoading: true }, { isLoading: true });
