@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock
 
 from app.domain.asset_type import AssetType
 from app.domain.portfolio import STALE_THRESHOLD, HoldingRow
+from app.exceptions import FxRateNotAvailableError  # ADDED
 from app.models.asset_symbol import AssetSymbol
 from app.repositories.portfolio import PortfolioRepository
 from app.services.fx_rate import FxRateService
@@ -71,7 +72,11 @@ def _make_service(
 def _make_fx_service(
     rates: dict[tuple[str, str], Decimal] | None = None,
 ) -> FxRateService:
-    """Build a FxRateService mock with a simple rate map."""
+    """Build a FxRateService mock with a simple rate map.
+
+    Supports both get_all_rates_for_conversion (used by get_summary) and
+    convert (used by get_holdings row-level conversion).
+    """
     mock_fx = AsyncMock(spec=FxRateService)
 
     async def _get_all_rates(
@@ -90,7 +95,18 @@ def _make_fx_service(
             result[cur] = rates[key]
         return result
 
+    async def _convert(amount: Decimal, from_currency: str, to_currency: str) -> Decimal:  # ADDED
+        if from_currency == to_currency:  # ADDED
+            return amount  # ADDED
+        if rates is None:  # ADDED
+            raise FxRateNotAvailableError()  # ADDED
+        key = (from_currency, to_currency)  # ADDED
+        if key not in rates:  # ADDED
+            raise FxRateNotAvailableError()  # ADDED
+        return amount * rates[key]  # ADDED
+
     mock_fx.get_all_rates_for_conversion.side_effect = _get_all_rates
+    mock_fx.convert.side_effect = _convert  # ADDED
     return mock_fx  # type: ignore[return-value]  # AsyncMock satisfies FxRateService protocol
 
 
@@ -174,6 +190,105 @@ class TestPortfolioServiceGetHoldings:
         svc = _make_service([])
         holdings = await svc.get_holdings(user_id=1)
         assert holdings == []
+
+
+# ---------------------------------------------------------------------------
+# get_holdings with convert_to
+# ---------------------------------------------------------------------------
+
+
+class TestPortfolioServiceGetHoldingsConversion:  # ADDED
+    async def test_convert_to_없으면_converted_필드_전부_null(self) -> None:  # ADDED
+        sym = _make_symbol(last_price=Decimal("200"), refreshed_at=datetime.now(UTC))
+        row = _make_row(total_qty="5", total_cost="800", symbol=sym)
+        svc = _make_service([row])
+
+        holdings = await svc.get_holdings(user_id=1)
+        h = holdings[0]
+        assert h.converted_latest_value is None
+        assert h.converted_cost_basis is None
+        assert h.converted_pnl_abs is None
+        assert h.converted_realized_pnl is None
+        assert h.display_currency is None
+
+    async def test_convert_to_KRW_USD_holding_환산값_채워짐(self) -> None:  # ADDED
+        sym = _make_symbol(1, "AAPL", "USD", AssetType.US_STOCK, Decimal("100"), datetime.now(UTC))
+        # qty=10, cost=800, latest_value=1000, pnl_abs=200
+        row = _make_row(1, "10", "800", sym, realized_pnl="50")
+        fx = _make_fx_service(rates={("USD", "KRW"): Decimal("1380")})
+        svc = _make_service([row], fx_service=fx)
+
+        holdings = await svc.get_holdings(user_id=1, convert_to="KRW")
+        h = holdings[0]
+        assert h.display_currency == "KRW"
+        assert h.converted_latest_value == Decimal("1000") * Decimal("1380")
+        assert h.converted_cost_basis == Decimal("800") * Decimal("1380")
+        assert h.converted_pnl_abs == Decimal("200") * Decimal("1380")
+        assert h.converted_realized_pnl == Decimal("50") * Decimal("1380")
+
+    async def test_rate_없는_통화_holding만_converted_null_나머지_정상(self) -> None:  # ADDED
+        sym_usd = _make_symbol(
+            1, "AAPL", "USD", AssetType.US_STOCK, Decimal("100"), datetime.now(UTC)
+        )
+        sym_eur = _make_symbol(
+            2, "SAP", "EUR", AssetType.US_STOCK, Decimal("200"), datetime.now(UTC)
+        )
+        rows = [
+            _make_row(1, "10", "800", sym_usd),  # USD→KRW 환율 있음
+            _make_row(2, "5", "900", sym_eur),  # EUR→KRW 환율 없음
+        ]
+        # Only USD→KRW provided; EUR→KRW missing → EUR holding converted_* must be null
+        fx = _make_fx_service(rates={("USD", "KRW"): Decimal("1380")})
+        svc = _make_service(rows, fx_service=fx)
+
+        holdings = await svc.get_holdings(user_id=1, convert_to="KRW")
+        usd_h = next(h for h in holdings if h.asset_symbol.currency == "USD")
+        eur_h = next(h for h in holdings if h.asset_symbol.currency == "EUR")
+
+        assert usd_h.display_currency == "KRW"
+        assert usd_h.converted_latest_value == Decimal("1000") * Decimal("1380")
+        assert usd_h.converted_cost_basis == Decimal("800") * Decimal("1380")
+
+        assert eur_h.display_currency == "KRW"
+        assert eur_h.converted_latest_value is None
+        assert eur_h.converted_cost_basis is None
+        assert eur_h.converted_pnl_abs is None
+        assert eur_h.converted_realized_pnl is None
+
+    async def test_native_currency_같으면_환산값_동일(self) -> None:  # ADDED
+        sym = _make_symbol(
+            1, "BTC", "KRW", AssetType.CRYPTO, Decimal("50000000"), datetime.now(UTC)
+        )
+        row = _make_row(1, "1", "40000000", sym, realized_pnl="300000")
+        # KRW→KRW: no rate entry needed (convert() returns amount directly)
+        fx = _make_fx_service(rates={})
+        svc = _make_service([row], fx_service=fx)
+
+        holdings = await svc.get_holdings(user_id=1, convert_to="KRW")
+        h = holdings[0]
+        assert h.display_currency == "KRW"
+        assert h.converted_latest_value == Decimal("50000000")
+        assert h.converted_cost_basis == Decimal("40000000")
+        assert h.converted_pnl_abs == Decimal("10000000")
+        assert h.converted_realized_pnl == Decimal("300000")
+
+    async def test_pending_holding_converted_latest_value_pnl_abs_null_cost_basis_환산(
+        self,
+    ) -> None:  # ADDED
+        sym = _make_symbol(1, "AAPL", "USD", AssetType.US_STOCK, last_price=None)
+        row = _make_row(1, "10", "800", sym, realized_pnl="50")
+        fx = _make_fx_service(rates={("USD", "KRW"): Decimal("1380")})
+        svc = _make_service([row], fx_service=fx)
+
+        holdings = await svc.get_holdings(user_id=1, convert_to="KRW")
+        h = holdings[0]
+        assert h.display_currency == "KRW"
+        # pending → latest_value/pnl_abs null → converted도 null
+        assert h.converted_latest_value is None
+        assert h.converted_pnl_abs is None
+        # cost_basis/realized_pnl은 가능한 한 환산
+        assert h.converted_cost_basis == Decimal("800") * Decimal("1380")
+        assert h.converted_realized_pnl == Decimal("50") * Decimal("1380")
 
 
 # ---------------------------------------------------------------------------

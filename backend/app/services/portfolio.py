@@ -8,6 +8,7 @@ from decimal import Decimal, InvalidOperation
 from typing import TYPE_CHECKING
 
 from app.domain.portfolio import STALE_THRESHOLD, HoldingRow
+from app.exceptions import FxRateNotAvailableError  # ADDED
 from app.repositories.portfolio import PortfolioRepository
 from app.schemas.portfolio import (
     AllocationEntry,
@@ -42,11 +43,21 @@ class PortfolioService:
     # Public API
     # ------------------------------------------------------------------
 
-    async def get_holdings(self, user_id: int) -> list[HoldingResponse]:
+    async def get_holdings(  # MODIFIED
+        self,
+        user_id: int,
+        convert_to: str | None = None,  # ADDED
+    ) -> list[HoldingResponse]:
         """Return per-holding rows with derived valuation fields.
+
+        When *convert_to* is provided and a cached FX rate is available for the
+        holding's currency, the converted_* fields are populated.  If any rate
+        is missing only that holding's converted_* fields are null — other
+        holdings are still converted (partial conversion allowed, row-level).
 
         Args:
             user_id: Authenticated user's PK.
+            convert_to: Optional target currency code (e.g. "KRW").
 
         Returns:
             List of HoldingResponse — one entry per UserAsset row.
@@ -73,6 +84,41 @@ class PortfolioService:
                 h.weight_pct = round(float(h.latest_value / denom * 100), 2)
             else:
                 h.weight_pct = 0.0
+
+        # ADDED — optional per-row currency conversion (partial allowed)
+        if convert_to is not None and self._fx_service is not None:
+            for h in holdings:
+                h.display_currency = convert_to  # ADDED — set regardless of rate availability
+                from_currency = h.asset_symbol.currency
+                try:
+                    # converted_cost_basis — always available when fx rate exists
+                    h.converted_cost_basis = await self._fx_service.convert(
+                        h.cost_basis, from_currency, convert_to
+                    )
+                    # converted_realized_pnl — always available when fx rate exists
+                    h.converted_realized_pnl = await self._fx_service.convert(
+                        h.realized_pnl, from_currency, convert_to
+                    )
+                    # converted_latest_value / converted_pnl_abs — only when not pending
+                    if h.latest_value is not None:
+                        h.converted_latest_value = await self._fx_service.convert(
+                            h.latest_value, from_currency, convert_to
+                        )
+                    if h.pnl_abs is not None:
+                        h.converted_pnl_abs = await self._fx_service.convert(
+                            h.pnl_abs, from_currency, convert_to
+                        )
+                except FxRateNotAvailableError:  # ADDED — row-level catch; others proceed normally
+                    logger.debug(
+                        "get_holdings: FX rate unavailable for %s→%s, holding user_asset_id=%s converted_* set null",
+                        from_currency,
+                        convert_to,
+                        h.user_asset_id,
+                    )
+                    h.converted_latest_value = None
+                    h.converted_cost_basis = None
+                    h.converted_pnl_abs = None
+                    h.converted_realized_pnl = None
 
         return holdings
 
