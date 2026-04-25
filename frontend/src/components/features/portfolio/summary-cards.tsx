@@ -10,7 +10,7 @@ interface SummaryCardsProps {
 
 function PnlColorClass(abs: string): string {
   const n = Number(abs);
-  if (n > 0) return "text-green-600";
+  if (n > 0) return "text-green-600 dark:text-green-400";
   if (n < 0) return "text-destructive";
   return "text-muted-foreground";
 }
