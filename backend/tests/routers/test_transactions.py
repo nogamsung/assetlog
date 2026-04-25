@@ -32,7 +32,11 @@ def _make_user(user_id: int = 1, email: str = "test@example.com") -> User:
     return user
 
 
-def _make_transaction(tx_id: int = 1, user_asset_id: int = 1) -> Transaction:
+def _make_transaction(
+    tx_id: int = 1,
+    user_asset_id: int = 1,
+    tag: str | None = None,
+) -> Transaction:
     tx = Transaction(
         user_asset_id=user_asset_id,
         type=TransactionType.BUY,
@@ -42,6 +46,7 @@ def _make_transaction(tx_id: int = 1, user_asset_id: int = 1) -> Transaction:
     )
     tx.id = tx_id
     tx.memo = None
+    tx.tag = tag
     tx.created_at = datetime.now(UTC)
     tx.updated_at = datetime.now(UTC)
     return tx
@@ -235,6 +240,7 @@ class TestListTransactions:
                 1,
                 limit=10,
                 offset=20,
+                tag=None,
             )
         finally:
             app.dependency_overrides.pop(get_current_user, None)
@@ -473,6 +479,7 @@ def _make_import_tx(tx_id: int = 1, user_asset_id: int = 1) -> Transaction:
     )
     tx.id = tx_id
     tx.memo = None
+    tx.tag = None
     tx.created_at = datetime.now(UTC)
     tx.updated_at = datetime.now(UTC)
     return tx
@@ -618,6 +625,154 @@ class TestImportTransactionsCsv:
             assert response.status_code == 422
         finally:
             app.dependency_overrides.pop(get_current_user, None)
+
+
+class TestListTransactionsTagFilter:
+    async def test_tag_쿼리파라미터_전달된다(self, async_client: AsyncClient) -> None:
+        user = _make_user()
+        mock_service = AsyncMock(spec=TransactionService)
+        mock_service.list.return_value = []
+
+        app.dependency_overrides[get_current_user] = lambda: user
+        app.dependency_overrides[get_transaction_service] = lambda: mock_service
+
+        try:
+            response = await async_client.get("/api/user-assets/1/transactions?tag=DCA")
+            assert response.status_code == 200
+            mock_service.list.assert_called_once_with(
+                user.id,
+                1,
+                limit=100,
+                offset=0,
+                tag="DCA",
+            )
+        finally:
+            app.dependency_overrides.pop(get_current_user, None)
+            app.dependency_overrides.pop(get_transaction_service, None)
+
+    async def test_tag_없으면_None_전달된다(self, async_client: AsyncClient) -> None:
+        user = _make_user()
+        mock_service = AsyncMock(spec=TransactionService)
+        mock_service.list.return_value = []
+
+        app.dependency_overrides[get_current_user] = lambda: user
+        app.dependency_overrides[get_transaction_service] = lambda: mock_service
+
+        try:
+            response = await async_client.get("/api/user-assets/1/transactions")
+            assert response.status_code == 200
+            mock_service.list.assert_called_once_with(
+                user.id,
+                1,
+                limit=100,
+                offset=0,
+                tag=None,
+            )
+        finally:
+            app.dependency_overrides.pop(get_current_user, None)
+            app.dependency_overrides.pop(get_transaction_service, None)
+
+    async def test_tag_50자_초과면_422(self, async_client: AsyncClient) -> None:
+        user = _make_user()
+        app.dependency_overrides[get_current_user] = lambda: user
+
+        try:
+            long_tag = "A" * 51
+            response = await async_client.get(f"/api/user-assets/1/transactions?tag={long_tag}")
+            assert response.status_code == 422
+        finally:
+            app.dependency_overrides.pop(get_current_user, None)
+
+    async def test_response에_tag_포함된다(self, async_client: AsyncClient) -> None:
+        user = _make_user()
+        tx = _make_transaction(tag="DCA")
+        mock_service = AsyncMock(spec=TransactionService)
+        mock_service.list.return_value = [tx]
+
+        app.dependency_overrides[get_current_user] = lambda: user
+        app.dependency_overrides[get_transaction_service] = lambda: mock_service
+
+        try:
+            response = await async_client.get("/api/user-assets/1/transactions?tag=DCA")
+            assert response.status_code == 200
+            body = response.json()
+            assert body[0]["tag"] == "DCA"
+        finally:
+            app.dependency_overrides.pop(get_current_user, None)
+            app.dependency_overrides.pop(get_transaction_service, None)
+
+    async def test_tag_None인_response는_null(self, async_client: AsyncClient) -> None:
+        user = _make_user()
+        tx = _make_transaction(tag=None)
+        mock_service = AsyncMock(spec=TransactionService)
+        mock_service.list.return_value = [tx]
+
+        app.dependency_overrides[get_current_user] = lambda: user
+        app.dependency_overrides[get_transaction_service] = lambda: mock_service
+
+        try:
+            response = await async_client.get("/api/user-assets/1/transactions")
+            assert response.status_code == 200
+            body = response.json()
+            assert body[0]["tag"] is None
+        finally:
+            app.dependency_overrides.pop(get_current_user, None)
+            app.dependency_overrides.pop(get_transaction_service, None)
+
+
+class TestListUserTags:
+    async def test_인증_없이_접근하면_401(self, async_client: AsyncClient) -> None:
+        response = await async_client.get("/api/user-assets/transactions/tags")
+        assert response.status_code == 401
+
+    async def test_태그_목록_200_반환(self, async_client: AsyncClient) -> None:
+        user = _make_user()
+        mock_service = AsyncMock(spec=TransactionService)
+        mock_service.list_distinct_tags.return_value = ["DCA", "장기보유"]
+
+        app.dependency_overrides[get_current_user] = lambda: user
+        app.dependency_overrides[get_transaction_service] = lambda: mock_service
+
+        try:
+            response = await async_client.get("/api/user-assets/transactions/tags")
+            assert response.status_code == 200
+            body = response.json()
+            assert body == ["DCA", "장기보유"]
+        finally:
+            app.dependency_overrides.pop(get_current_user, None)
+            app.dependency_overrides.pop(get_transaction_service, None)
+
+    async def test_태그_없으면_빈_배열(self, async_client: AsyncClient) -> None:
+        user = _make_user()
+        mock_service = AsyncMock(spec=TransactionService)
+        mock_service.list_distinct_tags.return_value = []
+
+        app.dependency_overrides[get_current_user] = lambda: user
+        app.dependency_overrides[get_transaction_service] = lambda: mock_service
+
+        try:
+            response = await async_client.get("/api/user-assets/transactions/tags")
+            assert response.status_code == 200
+            assert response.json() == []
+        finally:
+            app.dependency_overrides.pop(get_current_user, None)
+            app.dependency_overrides.pop(get_transaction_service, None)
+
+    async def test_service_user_id로_호출된다(self, async_client: AsyncClient) -> None:
+        user = _make_user(user_id=42)
+        mock_service = AsyncMock(spec=TransactionService)
+        mock_service.list_distinct_tags.return_value = []
+
+        app.dependency_overrides[get_current_user] = lambda: user
+        app.dependency_overrides[get_transaction_service] = lambda: mock_service
+
+        try:
+            response = await async_client.get("/api/user-assets/transactions/tags")
+            assert response.status_code == 200
+            mock_service.list_distinct_tags.assert_called_once_with(42)
+        finally:
+            app.dependency_overrides.pop(get_current_user, None)
+            app.dependency_overrides.pop(get_transaction_service, None)
 
 
 class TestTransactionUserIsolation:

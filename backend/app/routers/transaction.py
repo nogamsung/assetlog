@@ -19,6 +19,34 @@ _MAX_CSV_BYTES = 1_048_576  # 1 MB
 router = APIRouter(prefix="/api/user-assets", tags=["transactions"])
 
 
+# ---------------------------------------------------------------------------
+# Static routes — MUST be declared before dynamic /{user_asset_id}/... routes
+# to prevent FastAPI from treating "transactions" as a path parameter value.
+# ---------------------------------------------------------------------------
+
+
+@router.get(
+    "/transactions/tags",
+    response_model=list[str],
+    status_code=status.HTTP_200_OK,
+    summary="List distinct tags used by the current user",
+    responses={
+        401: {"model": ErrorResponse, "description": "Not authenticated"},
+    },
+)
+async def list_user_tags(
+    current_user: CurrentUser,
+    transaction_service: TransactionServiceDep,
+) -> list[str]:
+    """Return a deduplicated, alphabetically sorted list of all tags the
+    authenticated user has attached to their transactions.
+
+    Useful for autocomplete suggestions in the UI.  Returns an empty list
+    when no transactions have been tagged yet.
+    """
+    return await transaction_service.list_distinct_tags(current_user.id)
+
+
 @router.post(
     "/{user_asset_id}/transactions",
     response_model=TransactionResponse,
@@ -65,13 +93,15 @@ async def list_transactions(
     user_asset_id: int = Path(..., ge=1, description="UserAsset ID to query"),
     limit: int = Query(default=100, ge=1, le=500, description="Maximum number of results"),
     offset: int = Query(default=0, ge=0, description="Pagination offset"),
+    tag: str | None = Query(default=None, max_length=50, description="Filter by tag"),
 ) -> list[TransactionResponse]:
     """Return paginated transactions for an asset holding (most recent first).
 
+    Pass ``?tag=DCA`` to filter to only transactions with that exact tag.
     Returns 404 if the user_asset_id does not exist or is not owned by the caller.
     """
     transactions = await transaction_service.list(
-        current_user.id, user_asset_id, limit=limit, offset=offset
+        current_user.id, user_asset_id, limit=limit, offset=offset, tag=tag
     )
     return [TransactionResponse.model_validate(tx) for tx in transactions]
 

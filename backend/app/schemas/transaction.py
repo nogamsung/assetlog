@@ -81,6 +81,20 @@ class _TransactionBase(BaseModel):  # ADDED — shared validator base for Create
         description="Optional personal note about this trade",
         examples=["DCA buy"],
     )
+    tag: str | None = Field(
+        default=None,
+        max_length=50,
+        description="Optional user-defined tag (e.g. 'DCA')",
+        examples=["DCA"],
+    )
+
+    @field_validator("tag")
+    @classmethod
+    def normalise_tag(cls, v: str | None) -> str | None:
+        """Convert blank / whitespace-only tag to None."""
+        if v is not None and not v.strip():
+            return None
+        return v
 
     @field_validator("traded_at")
     @classmethod
@@ -116,6 +130,11 @@ class TransactionResponse(BaseModel):
     )
     traded_at: datetime = Field(..., description="UTC datetime of the trade")
     memo: str | None = Field(default=None, description="Personal note", examples=["DCA buy"])
+    tag: str | None = Field(
+        default=None,
+        description="User-defined tag (e.g. 'DCA')",
+        examples=["DCA"],
+    )
     created_at: datetime = Field(..., description="Record creation timestamp")
 
 

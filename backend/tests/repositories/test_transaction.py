@@ -17,6 +17,7 @@ def _buy(
     quantity: str = "1.0",
     price: str = "50000.0",
     hours_ago: int = 0,
+    tag: str | None = None,
 ) -> TransactionCreate:
     traded_at = datetime.now(tz=UTC) - timedelta(hours=hours_ago)
     return TransactionCreate(
@@ -25,6 +26,7 @@ def _buy(
         price=Decimal(price),
         traded_at=traded_at,
         memo=None,
+        tag=tag,
     )
 
 
@@ -32,6 +34,7 @@ def _sell(  # ADDED
     quantity: str = "1.0",
     price: str = "55000.0",
     hours_ago: int = 0,
+    tag: str | None = None,
 ) -> TransactionCreate:
     traded_at = datetime.now(tz=UTC) - timedelta(hours=hours_ago)
     return TransactionCreate(
@@ -40,6 +43,7 @@ def _sell(  # ADDED
         price=Decimal(price),
         traded_at=traded_at,
         memo=None,
+        tag=tag,
     )
 
 
@@ -413,6 +417,171 @@ class TestListAllForUserAsset:
         repo = TransactionRepository(db_session)
         result = await repo.list_all_for_user_asset(ua.id)
         assert result == []
+
+
+class TestTransactionTag:
+    async def test_tag가_저장된다(
+        self,
+        db_session: AsyncSession,
+        user_asset_factory: Any,
+        user_factory: Any,
+        asset_symbol_factory: Any,
+    ) -> None:
+        user = await user_factory(email="repo_tag@example.com")
+        sym = await asset_symbol_factory(symbol="TAG_COIN")
+        ua = await user_asset_factory(user=user, asset_symbol=sym)
+
+        repo = TransactionRepository(db_session)
+        tx = await repo.create(ua.id, _buy(tag="DCA"))
+        assert tx.tag == "DCA"
+
+    async def test_tag_None이면_필터_없음(
+        self,
+        db_session: AsyncSession,
+        user_asset_factory: Any,
+        user_factory: Any,
+        asset_symbol_factory: Any,
+    ) -> None:
+        user = await user_factory(email="repo_tag_nofilter@example.com")
+        sym = await asset_symbol_factory(symbol="NOTAG_COIN")
+        ua = await user_asset_factory(user=user, asset_symbol=sym)
+
+        repo = TransactionRepository(db_session)
+        await repo.create(ua.id, _buy(tag="DCA"))
+        await repo.create(ua.id, _buy(tag="장기보유"))
+        await repo.create(ua.id, _buy(tag=None))
+
+        result = await repo.list_for_user_asset(ua.id, tag=None)
+        assert len(result) == 3
+
+    async def test_tag_필터_적용된다(
+        self,
+        db_session: AsyncSession,
+        user_asset_factory: Any,
+        user_factory: Any,
+        asset_symbol_factory: Any,
+    ) -> None:
+        user = await user_factory(email="repo_tag_filter@example.com")
+        sym = await asset_symbol_factory(symbol="FILTER_TAG_COIN")
+        ua = await user_asset_factory(user=user, asset_symbol=sym)
+
+        repo = TransactionRepository(db_session)
+        await repo.create(ua.id, _buy(tag="DCA"))
+        await repo.create(ua.id, _buy(tag="DCA"))
+        await repo.create(ua.id, _buy(tag="장기보유"))
+
+        result = await repo.list_for_user_asset(ua.id, tag="DCA")
+        assert len(result) == 2
+        assert all(tx.tag == "DCA" for tx in result)
+
+    async def test_list_distinct_tags_반환된다(
+        self,
+        db_session: AsyncSession,
+        user_asset_factory: Any,
+        user_factory: Any,
+        asset_symbol_factory: Any,
+    ) -> None:
+        user = await user_factory(email="repo_distinct@example.com")
+        sym = await asset_symbol_factory(symbol="DISTINCT_COIN")
+        ua = await user_asset_factory(user=user, asset_symbol=sym)
+
+        repo = TransactionRepository(db_session)
+        await repo.create(ua.id, _buy(tag="DCA"))
+        await repo.create(ua.id, _buy(tag="DCA"))
+        await repo.create(ua.id, _buy(tag="장기보유"))
+        await repo.create(ua.id, _buy(tag=None))
+
+        tags = await repo.list_distinct_tags_for_user(user.id)
+        assert tags == ["DCA", "장기보유"]
+
+    async def test_list_distinct_tags_다른_유저_태그_제외(
+        self,
+        db_session: AsyncSession,
+        user_asset_factory: Any,
+        user_factory: Any,
+        asset_symbol_factory: Any,
+    ) -> None:
+        user_a = await user_factory(email="repo_dist_a@example.com")
+        user_b = await user_factory(email="repo_dist_b@example.com")
+        sym_a = await asset_symbol_factory(symbol="DIST_COIN_A")
+        sym_b = await asset_symbol_factory(symbol="DIST_COIN_B")
+        ua_a = await user_asset_factory(user=user_a, asset_symbol=sym_a)
+        ua_b = await user_asset_factory(user=user_b, asset_symbol=sym_b)
+
+        repo = TransactionRepository(db_session)
+        await repo.create(ua_a.id, _buy(tag="DCA"))
+        await repo.create(ua_b.id, _buy(tag="OTHER"))
+
+        tags_a = await repo.list_distinct_tags_for_user(user_a.id)
+        assert "OTHER" not in tags_a
+        assert "DCA" in tags_a
+
+    async def test_list_distinct_tags_없으면_빈_리스트(
+        self,
+        db_session: AsyncSession,
+        user_asset_factory: Any,
+        user_factory: Any,
+        asset_symbol_factory: Any,
+    ) -> None:
+        user = await user_factory(email="repo_empty_tags@example.com")
+        sym = await asset_symbol_factory(symbol="EMPTY_TAG_COIN")
+        ua = await user_asset_factory(user=user, asset_symbol=sym)
+
+        repo = TransactionRepository(db_session)
+        await repo.create(ua.id, _buy(tag=None))
+
+        tags = await repo.list_distinct_tags_for_user(user.id)
+        assert tags == []
+
+    async def test_update_tag가_반영된다(
+        self,
+        db_session: AsyncSession,
+        user_asset_factory: Any,
+        user_factory: Any,
+        asset_symbol_factory: Any,
+    ) -> None:
+        from app.schemas.transaction import TransactionUpdate
+
+        user = await user_factory(email="repo_upd_tag@example.com")
+        sym = await asset_symbol_factory(symbol="UPD_TAG_COIN")
+        ua = await user_asset_factory(user=user, asset_symbol=sym)
+
+        repo = TransactionRepository(db_session)
+        tx = await repo.create(ua.id, _buy(tag="DCA"))
+
+        new_data = TransactionUpdate(
+            type=TransactionType.BUY,
+            quantity=Decimal("1.0"),
+            price=Decimal("50000.0"),
+            traded_at=datetime.now(tz=UTC),
+            tag="장기보유",
+        )
+        updated = await repo.update(tx.id, ua.id, new_data)
+        assert updated is not None
+        assert updated.tag == "장기보유"
+
+    async def test_공백_tag는_None으로_정규화(
+        self,
+        db_session: AsyncSession,
+        user_asset_factory: Any,
+        user_factory: Any,
+        asset_symbol_factory: Any,
+    ) -> None:
+        user = await user_factory(email="repo_blank_tag@example.com")
+        sym = await asset_symbol_factory(symbol="BLANK_TAG_COIN")
+        ua = await user_asset_factory(user=user, asset_symbol=sym)
+
+        repo = TransactionRepository(db_session)
+        # Schema normalise_tag converts blank → None before reaching DB
+        data = TransactionCreate(
+            type=TransactionType.BUY,
+            quantity=Decimal("1.0"),
+            price=Decimal("50000.0"),
+            traded_at=datetime.now(tz=UTC),
+            tag="   ",
+        )
+        tx = await repo.create(ua.id, data)
+        assert tx.tag is None
 
 
 class TestTransactionDelete:
