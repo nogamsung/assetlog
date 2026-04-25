@@ -9,6 +9,7 @@ import { AllocationDonut } from "./allocation-donut";
 import { HoldingsTable } from "./holdings-table";
 import { PortfolioHistoryChart } from "./portfolio-history-chart";
 import { CurrencySwitcher } from "./currency-switcher";
+import { TagBreakdownTable } from "./tag-breakdown-table";
 import { Button } from "@/components/ui/button";
 
 function DashboardSkeleton() {
@@ -129,6 +130,7 @@ export function DashboardView() {
       <SummaryCards summary={summary} />
       <AllocationDonut allocation={summary.allocation} />
       <PortfolioHistoryChart currency={defaultCurrency} />
+      <TagBreakdownTable />
       <HoldingsTable holdings={holdings} />
     </div>
   );

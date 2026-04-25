@@ -37,6 +37,18 @@ jest.mock("@/components/features/portfolio/portfolio-history-chart", () => ({
 jest.mock("@/components/features/portfolio/currency-switcher", () => ({
   CurrencySwitcher: () => <div data-testid="currency-switcher" />,
 }));
+jest.mock("@/components/features/portfolio/tag-breakdown-table", () => ({
+  TagBreakdownTable: () => <div data-testid="tag-breakdown-table" />,
+}));
+jest.mock("@/hooks/use-tag-breakdown", () => ({
+  useTagBreakdown: jest.fn(() => ({
+    data: { entries: [] },
+    isLoading: false,
+    isError: false,
+    error: null,
+    isSuccess: true,
+  })),
+}));
 
 const mockedUsePortfolioSummary = jest.mocked(portfolioHook.usePortfolioSummary);
 const mockedUsePortfolioHoldings = jest.mocked(portfolioHook.usePortfolioHoldings);
@@ -202,6 +214,12 @@ describe("DashboardView", () => {
       renderDashboard();
       expect(screen.getByTestId("summary-cards")).toBeInTheDocument();
       expect(screen.getByTestId("holdings-table")).toBeInTheDocument();
+    });
+
+    it("TagBreakdownTable 이 마운트된다", () => {
+      setupQueryMocks(fakeSummary, [fakeHolding]);
+      renderDashboard();
+      expect(screen.getByTestId("tag-breakdown-table")).toBeInTheDocument();
     });
   });
 });
