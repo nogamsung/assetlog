@@ -10,6 +10,7 @@ import {
   deleteTransaction,
   getAssetSummary,
   importTransactionsCsv,
+  listUserTags,
 } from "@/lib/api/transaction";
 import type {
   TransactionResponse,
@@ -22,8 +23,12 @@ import type { TransactionCreateInput } from "@/lib/schemas/transaction";
 // ── Query keys (co-located) ───────────────────────────────────────────────────
 
 export const transactionKeys = {
-  list: (userAssetId: number) => ["transactions", userAssetId] as const,
+  list: (userAssetId: number, tag?: string) =>
+    tag !== undefined
+      ? (["transactions", userAssetId, tag] as const)
+      : (["transactions", userAssetId] as const),
   summary: (userAssetId: number) => ["assetSummary", userAssetId] as const,
+  tags: () => ["userTags"] as const,  // ADDED
 } as const;
 
 const portfolioInvalidationKeys = [
@@ -35,11 +40,25 @@ const portfolioInvalidationKeys = [
 
 // ── Hooks ─────────────────────────────────────────────────────────────────────
 
-export function useTransactions(userAssetId: number) {
+export function useTransactions(userAssetId: number, tag?: string) {  // MODIFIED
   return useQuery<TransactionResponse[]>({
-    queryKey: transactionKeys.list(userAssetId),
-    queryFn: () => listTransactions(userAssetId, { limit: 100, offset: 0 }),
+    queryKey: transactionKeys.list(userAssetId, tag),
+    queryFn: () => listTransactions(userAssetId, { limit: 100, offset: 0, tag }),
     staleTime: 30_000,
+  });
+}
+
+export function useUserTags() {  // ADDED
+  return useQuery<string[]>({
+    queryKey: transactionKeys.tags(),
+    queryFn: async () => {
+      try {
+        return await listUserTags();
+      } catch {
+        return [];
+      }
+    },
+    staleTime: 60_000,
   });
 }
 
@@ -56,10 +75,13 @@ function invalidateAll(
   userAssetId: number,
 ): void {
   void queryClient.invalidateQueries({
-    queryKey: transactionKeys.list(userAssetId),
+    queryKey: ["transactions", userAssetId],  // tag 포함 모든 variant invalidate
   });
   void queryClient.invalidateQueries({
     queryKey: transactionKeys.summary(userAssetId),
+  });
+  void queryClient.invalidateQueries({
+    queryKey: transactionKeys.tags(),  // ADDED — 태그 목록도 갱신
   });
   for (const key of portfolioInvalidationKeys) {
     void queryClient.invalidateQueries({ queryKey: key });

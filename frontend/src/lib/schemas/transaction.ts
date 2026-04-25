@@ -19,6 +19,11 @@ export const transactionCreateSchema = z.object({
     .max(255, "메모는 255자 이하로 입력하세요")
     .optional()
     .nullable(),
+  tag: z
+    .string()
+    .max(50, "태그는 50자 이하로 입력하세요")
+    .optional()
+    .nullable(),
 });
 
 export type TransactionCreateInput = z.infer<typeof transactionCreateSchema>;

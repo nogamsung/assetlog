@@ -193,6 +193,7 @@ describe("TransactionImport", () => {
           price: "50000",
           tradedAt: "2026-01-15T10:00:00+09:00",
           memo: "첫 매수",
+          tag: null,
           createdAt: "2026-01-15T01:00:00Z",
         },
       ],

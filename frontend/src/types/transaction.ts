@@ -24,6 +24,7 @@ export interface TransactionResponse {
   price: string;          // Decimal as string
   tradedAt: string;       // ISO datetime string
   memo: string | null;
+  tag: string | null;     // ADDED
   createdAt: string;      // ISO datetime string
 }
 

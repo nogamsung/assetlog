@@ -9,15 +9,17 @@ import type { TransactionResponse } from "@/types/transaction";
 jest.mock("@/hooks/use-transactions", () => ({
   ...jest.requireActual("@/hooks/use-transactions"),
   useCreateTransaction: jest.fn(),
-  useUpdateTransaction: jest.fn(), // ADDED
+  useUpdateTransaction: jest.fn(),
+  useUserTags: jest.fn(),
 }));
 
 const mockedUseCreateTransaction = jest.mocked(
   useTransactionsHook.useCreateTransaction,
 );
-const mockedUseUpdateTransaction = jest.mocked( // ADDED
+const mockedUseUpdateTransaction = jest.mocked(
   useTransactionsHook.useUpdateTransaction,
 );
+const mockedUseUserTags = jest.mocked(useTransactionsHook.useUserTags);
 
 const mockMutate = jest.fn();
 const mockUpdateMutate = jest.fn(); // ADDED
@@ -42,6 +44,7 @@ function setupMutationMock(opts: {
   isPending?: boolean;
   isError?: boolean;
   error?: Error | null;
+  tags?: string[];
 } = {}) {
   mockedUseCreateTransaction.mockReturnValue({
     mutate: mockMutate,
@@ -50,13 +53,20 @@ function setupMutationMock(opts: {
     isError: opts.isError ?? false,
     error: opts.error ?? null,
   } as unknown as ReturnType<typeof useTransactionsHook.useCreateTransaction>);
-  mockedUseUpdateTransaction.mockReturnValue({ // ADDED
+  mockedUseUpdateTransaction.mockReturnValue({
     mutate: mockUpdateMutate,
     isPending: false,
     isSuccess: false,
     isError: false,
     error: null,
   } as unknown as ReturnType<typeof useTransactionsHook.useUpdateTransaction>);
+  mockedUseUserTags.mockReturnValue({
+    data: opts.tags ?? [],
+    isLoading: false,
+    isError: false,
+    error: null,
+    isSuccess: true,
+  } as unknown as ReturnType<typeof useTransactionsHook.useUserTags>);
 }
 
 const fakeInitialTx: TransactionResponse = { // ADDED
@@ -67,6 +77,7 @@ const fakeInitialTx: TransactionResponse = { // ADDED
   price: "60000",
   tradedAt: "2026-04-20T12:00:00Z",
   memo: "기존 메모",
+  tag: null,
   createdAt: "2026-04-20T12:01:00Z",
 };
 
@@ -328,5 +339,60 @@ describe("TransactionForm — SELL 사전 검증", () => {
 
     await user.selectOptions(screen.getByLabelText("거래 유형"), "sell");
     expect(screen.queryByText(/보유 수량:/)).not.toBeInTheDocument();
+  });
+});
+
+describe("TransactionForm — tag 입력 및 자동완성", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    setupMutationMock({ tags: ["DCA", "장기보유"] });
+  });
+
+  it("거래 태그 입력 필드가 렌더링된다", () => {
+    const { Wrapper } = makeWrapper();
+    render(<TransactionForm userAssetId={10} />, { wrapper: Wrapper });
+    expect(screen.getByLabelText("거래 태그")).toBeInTheDocument();
+  });
+
+  it("기존 태그가 datalist option 으로 노출된다", () => {
+    const { Wrapper } = makeWrapper();
+    const { container } = render(<TransactionForm userAssetId={10} />, {
+      wrapper: Wrapper,
+    });
+    const datalist = container.querySelector("#tx-tag-suggestions");
+    expect(datalist).toBeInTheDocument();
+    const options = container.querySelectorAll("#tx-tag-suggestions option");
+    expect(options.length).toBe(2);
+    expect((options[0] as HTMLOptionElement).value).toBe("DCA");
+    expect((options[1] as HTMLOptionElement).value).toBe("장기보유");
+  });
+
+  it("tag 입력값이 mutate 페이로드에 포함된다", async () => {
+    const user = userEvent.setup();
+    const { Wrapper } = makeWrapper();
+    render(<TransactionForm userAssetId={10} />, { wrapper: Wrapper });
+
+    await user.type(screen.getByLabelText("거래 수량"), "1");
+    await user.type(screen.getByLabelText("거래 단가"), "50000");
+    await user.type(screen.getByLabelText("거래 태그"), "DCA");
+    await user.click(screen.getByRole("button", { name: "거래 추가" }));
+
+    await waitFor(() => {
+      expect(mockMutate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ tag: "DCA" }),
+        }),
+        expect.any(Object),
+      );
+    });
+  });
+
+  it("기존 태그가 없을 때는 datalist 가 렌더되지 않는다", () => {
+    setupMutationMock({ tags: [] });
+    const { Wrapper } = makeWrapper();
+    const { container } = render(<TransactionForm userAssetId={10} />, {
+      wrapper: Wrapper,
+    });
+    expect(container.querySelector("#tx-tag-suggestions")).not.toBeInTheDocument();
   });
 });

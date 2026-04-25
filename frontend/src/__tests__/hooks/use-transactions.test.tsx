@@ -8,6 +8,7 @@ import {
   useUpdateTransaction,
   useDeleteTransaction,
   useImportTransactionsCsv,
+  useUserTags,
 } from "@/hooks/use-transactions";
 import * as txApi from "@/lib/api/transaction";
 import type { TransactionResponse, UserAssetSummaryResponse, TransactionImportResponse } from "@/types/transaction";
@@ -23,6 +24,7 @@ const mockedCreateTransaction = jest.mocked(txApi.createTransaction);
 const mockedUpdateTransaction = jest.mocked(txApi.updateTransaction); // ADDED
 const mockedDeleteTransaction = jest.mocked(txApi.deleteTransaction);
 const mockedImportTransactionsCsv = jest.mocked(txApi.importTransactionsCsv);
+const mockedListUserTags = jest.mocked(txApi.listUserTags);
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const mockedToast = jest.mocked(require("sonner").toast) as {
@@ -53,6 +55,7 @@ const fakeTx: TransactionResponse = {
   price: "50000.000000",
   tradedAt: "2026-04-23T10:00:00Z",
   memo: null,
+  tag: null,
   createdAt: "2026-04-23T10:01:00Z",
 };
 
@@ -500,5 +503,65 @@ describe("toast 알림", () => {
 
     await waitFor(() => expect(result.current.isError).toBe(true));
     expect(mockedToast.error).toHaveBeenCalledWith("거래 삭제에 실패했습니다.");
+  });
+});
+
+describe("useUserTags", () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it("listUserTags 호출 결과를 반환한다", async () => {
+    mockedListUserTags.mockResolvedValueOnce(["DCA", "장기보유"]);
+    const { Wrapper } = makeWrapper();
+    const { result } = renderHook(() => useUserTags(), { wrapper: Wrapper });
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(result.current.data).toEqual(["DCA", "장기보유"]);
+  });
+
+  it("API 실패 시 빈 배열로 fallback 한다", async () => {
+    mockedListUserTags.mockRejectedValueOnce(new Error("Network error"));
+    const { Wrapper } = makeWrapper();
+    const { result } = renderHook(() => useUserTags(), { wrapper: Wrapper });
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(result.current.data).toEqual([]);
+  });
+});
+
+describe("useTransactions — tag filter", () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it("tag 가 주어지면 listTransactions 에 그대로 전달한다", async () => {
+    mockedListTransactions.mockResolvedValueOnce([]);
+    const { Wrapper } = makeWrapper();
+    const { result } = renderHook(() => useTransactions(10, "DCA"), {
+      wrapper: Wrapper,
+    });
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(mockedListTransactions).toHaveBeenCalledWith(10, {
+      limit: 100,
+      offset: 0,
+      tag: "DCA",
+    });
+  });
+
+  it("tag 가 다르면 별도 캐시로 분리된다 (다른 query key)", async () => {
+    mockedListTransactions
+      .mockResolvedValueOnce([{ ...fakeTx, tag: "DCA" }])
+      .mockResolvedValueOnce([{ ...fakeTx, tag: "스윙" }]);
+    const { Wrapper } = makeWrapper();
+    const { result: r1 } = renderHook(() => useTransactions(10, "DCA"), {
+      wrapper: Wrapper,
+    });
+    const { result: r2 } = renderHook(() => useTransactions(10, "스윙"), {
+      wrapper: Wrapper,
+    });
+
+    await waitFor(() => expect(r1.current.isSuccess).toBe(true));
+    await waitFor(() => expect(r2.current.isSuccess).toBe(true));
+    expect(r1.current.data?.[0].tag).toBe("DCA");
+    expect(r2.current.data?.[0].tag).toBe("스윙");
+    expect(mockedListTransactions).toHaveBeenCalledTimes(2);
   });
 });

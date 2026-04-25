@@ -236,6 +236,7 @@ describe("AssetDetail", () => {
       price: "50000.000000",
       tradedAt: "2026-04-23T10:00:00Z",
       memo: null,
+      tag: null,
       createdAt: "2026-04-23T10:01:00Z",
     };
     mockedUseTransactions.mockReturnValue({
@@ -320,6 +321,7 @@ describe("AssetDetail", () => {
       price: "50000.000000",
       tradedAt: "2026-04-23T10:00:00Z",
       memo: null,
+      tag: null,
       createdAt: "2026-04-23T10:01:00Z",
     };
     mockedUseTransactions.mockReturnValue({

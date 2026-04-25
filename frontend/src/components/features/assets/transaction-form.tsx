@@ -5,7 +5,7 @@ import { useForm, useWatch, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { isAxiosError } from "axios"; // ADDED
 import { transactionCreateSchema, type TransactionCreateInput } from "@/lib/schemas/transaction";
-import { useCreateTransaction, useUpdateTransaction } from "@/hooks/use-transactions"; // MODIFIED
+import { useCreateTransaction, useUpdateTransaction, useUserTags } from "@/hooks/use-transactions"; // MODIFIED
 import type { TransactionResponse } from "@/types/transaction"; // ADDED
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -31,6 +31,7 @@ export function TransactionForm({
   const updateMutation = useUpdateTransaction();
   const activeMutation = mode === "edit" ? updateMutation : createMutation;
   const [conflictError, setConflictError] = useState<string | null>(null);
+  const { data: existingTags = [] } = useUserTags();  // ADDED
 
   const today = new Date();
   const todayLocal = new Date(
@@ -54,6 +55,7 @@ export function TransactionForm({
           price: initialValues.price,
           tradedAt: new Date(initialValues.tradedAt),
           memo: initialValues.memo,
+          tag: initialValues.tag,  // ADDED
         }
       : {
           type: "buy",
@@ -61,6 +63,7 @@ export function TransactionForm({
           price: "",
           tradedAt: new Date(),
           memo: null,
+          tag: null,  // ADDED
         },
   });
 
@@ -249,6 +252,31 @@ export function TransactionForm({
         {errors.memo && (
           <p role="alert" className="text-xs text-destructive">
             {errors.memo.message}
+          </p>
+        )}
+      </div>
+
+      <div className="space-y-2">
+        <Label htmlFor="tx-tag">태그 (선택)</Label>
+        <Input
+          id="tx-tag"
+          type="text"
+          placeholder="예: DCA, 스윙, 장기보유"
+          aria-label="거래 태그"
+          maxLength={50}
+          list="tx-tag-suggestions"
+          {...register("tag")}
+        />
+        {existingTags.length > 0 && (
+          <datalist id="tx-tag-suggestions">
+            {existingTags.map((t) => (
+              <option key={t} value={t} />
+            ))}
+          </datalist>
+        )}
+        {errors.tag && (
+          <p role="alert" className="text-xs text-destructive">
+            {errors.tag.message}
           </p>
         )}
       </div>
