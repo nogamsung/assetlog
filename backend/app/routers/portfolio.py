@@ -4,7 +4,12 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Query, status
 
-from app.core.deps import CurrentUser, PortfolioHistoryServiceDep, PortfolioServiceDep
+from app.core.deps import (
+    CurrentUser,
+    PortfolioHistoryServiceDep,
+    PortfolioServiceDep,
+    TagBreakdownServiceDep,
+)
 from app.domain.portfolio_history import HistoryPeriod
 from app.schemas.auth import ErrorResponse
 from app.schemas.portfolio import (
@@ -12,6 +17,7 @@ from app.schemas.portfolio import (
     PortfolioHistoryResponse,
     PortfolioSummaryResponse,
 )
+from app.schemas.tag_breakdown import TagBreakdownResponse
 
 router = APIRouter(prefix="/api/portfolio", tags=["portfolio"])
 
@@ -108,3 +114,26 @@ async def get_portfolio_history(
 ) -> PortfolioHistoryResponse:
     """Return portfolio value time series for the authenticated user."""
     return await history_service.get_history(current_user.id, period, currency.upper())
+
+
+@router.get(
+    "/tags/breakdown",
+    response_model=TagBreakdownResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Per-tag transaction flow breakdown",
+    description=(
+        "Groups the authenticated user's transactions by tag and returns per-tag "
+        "buy/sell counts and currency-bucketed value totals. "
+        "Untagged transactions are grouped under tag=null and always appear last. "
+        "Returns entries=[] when the user has no transactions."
+    ),
+    responses={
+        401: {"model": ErrorResponse, "description": "Not authenticated"},
+    },
+)
+async def get_tag_breakdown(
+    current_user: CurrentUser,
+    service: TagBreakdownServiceDep,
+) -> TagBreakdownResponse:
+    """Return per-tag transaction flow breakdown for the authenticated user."""
+    return await service.get_breakdown(current_user.id)

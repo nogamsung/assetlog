@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock
 
 from httpx import AsyncClient
 
-from app.core.deps import get_current_user, get_portfolio_service
+from app.core.deps import get_current_user, get_portfolio_service, get_tag_breakdown_service
 from app.domain.asset_type import AssetType
 from app.main import app
 from app.models.user import User
@@ -19,7 +19,9 @@ from app.schemas.portfolio import (
     PortfolioSummaryResponse,
     SymbolEmbedded,
 )
+from app.schemas.tag_breakdown import TagBreakdownEntry, TagBreakdownResponse
 from app.services.portfolio import PortfolioService
+from app.services.tag_breakdown import TagBreakdownService
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -346,3 +348,150 @@ class TestGetPortfolioHoldings:
         finally:
             app.dependency_overrides.pop(get_current_user, None)
             app.dependency_overrides.pop(get_portfolio_service, None)
+
+
+# ---------------------------------------------------------------------------
+# GET /api/portfolio/tags/breakdown
+# ---------------------------------------------------------------------------
+
+
+def _make_breakdown_response(
+    tag: str | None = "DCA",
+    buy_count: int = 10,
+    sell_count: int = 2,
+) -> TagBreakdownResponse:
+    entry = TagBreakdownEntry(
+        tag=tag,
+        transaction_count=buy_count + sell_count,
+        buy_count=buy_count,
+        sell_count=sell_count,
+        total_bought_value_by_currency={"USD": "1500.00", "KRW": "5000000.00"},
+        total_sold_value_by_currency={"USD": "100.00"},
+    )
+    return TagBreakdownResponse(entries=[entry])
+
+
+class TestGetTagBreakdown:
+    async def test_미인증_401_반환(self, async_client: AsyncClient) -> None:
+        response = await async_client.get("/api/portfolio/tags/breakdown")
+        assert response.status_code == 401
+
+    async def test_정상_200_반환_schema_검증(self, async_client: AsyncClient) -> None:
+        user = _make_user()
+        mock_service = AsyncMock(spec=TagBreakdownService)
+        mock_service.get_breakdown.return_value = _make_breakdown_response()
+
+        app.dependency_overrides[get_current_user] = lambda: user
+        app.dependency_overrides[get_tag_breakdown_service] = lambda: mock_service
+
+        try:
+            response = await async_client.get("/api/portfolio/tags/breakdown")
+            assert response.status_code == 200
+            body = response.json()
+            assert "entries" in body
+            assert isinstance(body["entries"], list)
+        finally:
+            app.dependency_overrides.pop(get_current_user, None)
+            app.dependency_overrides.pop(get_tag_breakdown_service, None)
+
+    async def test_거래없음_빈_entries_반환(self, async_client: AsyncClient) -> None:
+        user = _make_user()
+        mock_service = AsyncMock(spec=TagBreakdownService)
+        mock_service.get_breakdown.return_value = TagBreakdownResponse(entries=[])
+
+        app.dependency_overrides[get_current_user] = lambda: user
+        app.dependency_overrides[get_tag_breakdown_service] = lambda: mock_service
+
+        try:
+            response = await async_client.get("/api/portfolio/tags/breakdown")
+            assert response.status_code == 200
+            assert response.json() == {"entries": []}
+        finally:
+            app.dependency_overrides.pop(get_current_user, None)
+            app.dependency_overrides.pop(get_tag_breakdown_service, None)
+
+    async def test_contract_응답_키_일치(self, async_client: AsyncClient) -> None:
+        user = _make_user()
+        mock_service = AsyncMock(spec=TagBreakdownService)
+        mock_service.get_breakdown.return_value = _make_breakdown_response()
+
+        app.dependency_overrides[get_current_user] = lambda: user
+        app.dependency_overrides[get_tag_breakdown_service] = lambda: mock_service
+
+        try:
+            response = await async_client.get("/api/portfolio/tags/breakdown")
+            entry = response.json()["entries"][0]
+            required_keys = {
+                "tag",
+                "transaction_count",
+                "buy_count",
+                "sell_count",
+                "total_bought_value_by_currency",
+                "total_sold_value_by_currency",
+            }
+            assert required_keys.issubset(set(entry.keys()))
+        finally:
+            app.dependency_overrides.pop(get_current_user, None)
+            app.dependency_overrides.pop(get_tag_breakdown_service, None)
+
+    async def test_entry_통화별_금액_str_타입(self, async_client: AsyncClient) -> None:
+        user = _make_user()
+        mock_service = AsyncMock(spec=TagBreakdownService)
+        mock_service.get_breakdown.return_value = _make_breakdown_response()
+
+        app.dependency_overrides[get_current_user] = lambda: user
+        app.dependency_overrides[get_tag_breakdown_service] = lambda: mock_service
+
+        try:
+            response = await async_client.get("/api/portfolio/tags/breakdown")
+            entry = response.json()["entries"][0]
+            for val in entry["total_bought_value_by_currency"].values():
+                assert isinstance(val, str)
+            for val in entry["total_sold_value_by_currency"].values():
+                assert isinstance(val, str)
+        finally:
+            app.dependency_overrides.pop(get_current_user, None)
+            app.dependency_overrides.pop(get_tag_breakdown_service, None)
+
+    async def test_untagged_entry_tag_null(self, async_client: AsyncClient) -> None:
+        user = _make_user()
+        mock_service = AsyncMock(spec=TagBreakdownService)
+        mock_service.get_breakdown.return_value = TagBreakdownResponse(
+            entries=[
+                TagBreakdownEntry(
+                    tag=None,
+                    transaction_count=3,
+                    buy_count=3,
+                    sell_count=0,
+                    total_bought_value_by_currency={"KRW": "1000000.00"},
+                    total_sold_value_by_currency={},
+                )
+            ]
+        )
+
+        app.dependency_overrides[get_current_user] = lambda: user
+        app.dependency_overrides[get_tag_breakdown_service] = lambda: mock_service
+
+        try:
+            response = await async_client.get("/api/portfolio/tags/breakdown")
+            assert response.status_code == 200
+            entry = response.json()["entries"][0]
+            assert entry["tag"] is None
+        finally:
+            app.dependency_overrides.pop(get_current_user, None)
+            app.dependency_overrides.pop(get_tag_breakdown_service, None)
+
+    async def test_service가_user_id로_호출됨(self, async_client: AsyncClient) -> None:
+        user = _make_user(user_id=99)
+        mock_service = AsyncMock(spec=TagBreakdownService)
+        mock_service.get_breakdown.return_value = TagBreakdownResponse(entries=[])
+
+        app.dependency_overrides[get_current_user] = lambda: user
+        app.dependency_overrides[get_tag_breakdown_service] = lambda: mock_service
+
+        try:
+            await async_client.get("/api/portfolio/tags/breakdown")
+            mock_service.get_breakdown.assert_called_once_with(99)
+        finally:
+            app.dependency_overrides.pop(get_current_user, None)
+            app.dependency_overrides.pop(get_tag_breakdown_service, None)
