@@ -67,7 +67,10 @@ async def get_portfolio_summary(
     description=(
         "Returns one row per UserAsset with derived fields: latest_price, "
         "latest_value, pnl_abs, pnl_pct, weight_pct, is_stale, is_pending. "
-        "Decimal fields are serialised as strings."
+        "Decimal fields are serialised as strings. "
+        "Pass ``convert_to`` (e.g. ``KRW``) to receive per-row converted_* fields. "
+        "If the FX rate for a holding's currency is unavailable, that holding's "
+        "converted_* fields are null while others remain converted (partial conversion allowed)."  # MODIFIED
     ),
     responses={
         401: {"model": ErrorResponse, "description": "Not authenticated"},
@@ -76,9 +79,19 @@ async def get_portfolio_summary(
 async def get_portfolio_holdings(
     current_user: CurrentUser,
     portfolio_service: PortfolioServiceDep,
+    convert_to: str | None = Query(  # ADDED
+        default=None,
+        min_length=3,
+        max_length=10,
+        description="Target currency for per-row conversion (e.g. KRW, USD, EUR)",
+        examples=["KRW"],
+    ),
 ) -> list[HoldingResponse]:
     """Return per-holding valuation rows for the authenticated user."""
-    return await portfolio_service.get_holdings(current_user.id)
+    return await portfolio_service.get_holdings(  # MODIFIED
+        current_user.id,
+        convert_to=convert_to.upper() if convert_to else None,  # ADDED
+    )
 
 
 @router.get(

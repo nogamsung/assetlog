@@ -344,7 +344,58 @@ class TestGetPortfolioHoldings:
 
         try:
             await async_client.get("/api/portfolio/holdings")
-            mock_service.get_holdings.assert_called_once_with(7)
+            mock_service.get_holdings.assert_called_once_with(7, convert_to=None)  # MODIFIED
+        finally:
+            app.dependency_overrides.pop(get_current_user, None)
+            app.dependency_overrides.pop(get_portfolio_service, None)
+
+    async def test_convert_to_KRW_query_전달(self, async_client: AsyncClient) -> None:  # ADDED
+        user = _make_user()
+        mock_service = AsyncMock(spec=PortfolioService)
+        holding = _make_holding()
+        holding.converted_latest_value = Decimal("2418768.00")
+        holding.converted_cost_basis = Decimal("2352900.00")
+        holding.converted_pnl_abs = Decimal("64946.00")
+        holding.converted_realized_pnl = Decimal("0")
+        holding.display_currency = "KRW"
+        mock_service.get_holdings.return_value = [holding]
+
+        app.dependency_overrides[get_current_user] = lambda: user
+        app.dependency_overrides[get_portfolio_service] = lambda: mock_service
+
+        try:
+            response = await async_client.get("/api/portfolio/holdings?convert_to=krw")
+            assert response.status_code == 200
+            body = response.json()
+            assert len(body) == 1
+            item = body[0]
+            assert item["display_currency"] == "KRW"
+            assert item["converted_latest_value"] is not None
+            assert item["converted_cost_basis"] is not None
+            mock_service.get_holdings.assert_called_once_with(user.id, convert_to="KRW")
+        finally:
+            app.dependency_overrides.pop(get_current_user, None)
+            app.dependency_overrides.pop(get_portfolio_service, None)
+
+    async def test_convert_to_없으면_converted_필드_null(
+        self, async_client: AsyncClient
+    ) -> None:  # ADDED
+        user = _make_user()
+        mock_service = AsyncMock(spec=PortfolioService)
+        mock_service.get_holdings.return_value = [_make_holding()]
+
+        app.dependency_overrides[get_current_user] = lambda: user
+        app.dependency_overrides[get_portfolio_service] = lambda: mock_service
+
+        try:
+            response = await async_client.get("/api/portfolio/holdings")
+            assert response.status_code == 200
+            item = response.json()[0]
+            assert item["converted_latest_value"] is None
+            assert item["converted_cost_basis"] is None
+            assert item["converted_pnl_abs"] is None
+            assert item["converted_realized_pnl"] is None
+            assert item["display_currency"] is None
         finally:
             app.dependency_overrides.pop(get_current_user, None)
             app.dependency_overrides.pop(get_portfolio_service, None)

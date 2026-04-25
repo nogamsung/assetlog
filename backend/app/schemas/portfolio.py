@@ -92,6 +92,33 @@ class HoldingResponse(BaseModel):
         description="True if latest_price is null",
     )
 
+    # ADDED — optional currency-conversion fields (all null when convert_to not provided)
+    converted_latest_value: Decimal | None = Field(  # ADDED
+        default=None,
+        description="latest_value converted to display_currency (null if unavailable or pending)",
+        examples=["242776.00"],
+    )
+    converted_cost_basis: Decimal | None = Field(  # ADDED
+        default=None,
+        description="cost_basis converted to display_currency (null if rate unavailable)",
+        examples=["235390.00"],
+    )
+    converted_pnl_abs: Decimal | None = Field(  # ADDED
+        default=None,
+        description="pnl_abs converted to display_currency (null if unavailable or pending)",
+        examples=["6486.00"],
+    )
+    converted_realized_pnl: Decimal | None = Field(  # ADDED
+        default=None,
+        description="realized_pnl converted to display_currency (null if rate unavailable)",
+        examples=["69000.00"],
+    )
+    display_currency: str | None = Field(  # ADDED
+        default=None,
+        description="Target currency for conversion (null if convert_to not provided)",
+        examples=["KRW"],
+    )
+
     @field_serializer("quantity", "avg_cost", "cost_basis", "realized_pnl")  # MODIFIED
     def _serialize_decimal_required(self, v: Decimal) -> str:
         return str(v)
@@ -99,6 +126,15 @@ class HoldingResponse(BaseModel):
     @field_serializer("latest_price", "latest_value", "pnl_abs")
     def _serialize_decimal_optional(self, v: Decimal | None) -> str | None:
         return str(v) if v is not None else None
+
+    @field_serializer(  # ADDED
+        "converted_latest_value",
+        "converted_cost_basis",
+        "converted_pnl_abs",
+        "converted_realized_pnl",
+    )
+    def _serialize_converted_decimal(self, v: Decimal | None) -> str | None:  # ADDED
+        return str(v) if v is not None else None  # ADDED
 
 
 class PnlEntry(BaseModel):
