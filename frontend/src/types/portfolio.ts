@@ -44,4 +44,10 @@ export interface HoldingResponse {
   lastPriceRefreshedAt: string | null;
   isStale: boolean;
   isPending: boolean;
+  // 환산 필드 (convert_to 파라미터 사용 시) — ADDED
+  convertedLatestValue: string | null;
+  convertedCostBasis: string | null;
+  convertedPnlAbs: string | null;
+  convertedRealizedPnl: string | null;
+  displayCurrency: string | null;
 }

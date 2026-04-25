@@ -68,7 +68,7 @@ export function DashboardView() {
   const [displayCurrency, setDisplayCurrency] = useState<string | null>(null);
 
   const summaryQuery = usePortfolioSummary(displayCurrency ?? undefined);
-  const holdingsQuery = usePortfolioHoldings();
+  const holdingsQuery = usePortfolioHoldings(displayCurrency ?? undefined); {/* MODIFIED */}
 
   const isLoading = summaryQuery.isLoading || holdingsQuery.isLoading;
   const isError = summaryQuery.isError || holdingsQuery.isError;

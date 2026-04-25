@@ -93,6 +93,12 @@ const fakeHolding: HoldingResponse = {
   lastPriceRefreshedAt: "2026-04-24T09:00:00+09:00",
   isStale: false,
   isPending: false,
+  // 환산 필드 — ADDED
+  convertedLatestValue: null,
+  convertedCostBasis: null,
+  convertedPnlAbs: null,
+  convertedRealizedPnl: null,
+  displayCurrency: null,
 };
 
 function setupMocks(

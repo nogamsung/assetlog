@@ -78,6 +78,12 @@ const rawHolding = {
   last_price_refreshed_at: "2026-04-24T09:00:00+09:00",
   is_stale: false,
   is_pending: false,
+  // 환산 필드 — ADDED
+  converted_latest_value: null,
+  converted_cost_basis: null,
+  converted_pnl_abs: null,
+  converted_realized_pnl: null,
+  display_currency: null,
 };
 
 const expectedHolding: HoldingResponse = {
@@ -104,6 +110,12 @@ const expectedHolding: HoldingResponse = {
   lastPriceRefreshedAt: "2026-04-24T09:00:00+09:00",
   isStale: false,
   isPending: false,
+  // 환산 필드 — ADDED
+  convertedLatestValue: null,
+  convertedCostBasis: null,
+  convertedPnlAbs: null,
+  convertedRealizedPnl: null,
+  displayCurrency: null,
 };
 
 describe("getPortfolioSummary", () => {
@@ -184,6 +196,38 @@ describe("getPortfolioHoldings", () => {
     const result = await getPortfolioHoldings();
     expect(mockedGet).toHaveBeenCalledWith("/api/portfolio/holdings");
     expect(result).toEqual([expectedHolding]);
+  });
+
+  it("convertTo 옵션이 있으면 query string 을 붙인다", async () => { // ADDED
+    mockedGet.mockResolvedValueOnce({ data: [rawHolding] });
+    await getPortfolioHoldings({ convertTo: "KRW" });
+    expect(mockedGet).toHaveBeenCalledWith(
+      "/api/portfolio/holdings?convert_to=KRW",
+    );
+  });
+
+  it("convertTo 가 없으면 기본 URL 을 사용한다", async () => { // ADDED
+    mockedGet.mockResolvedValueOnce({ data: [rawHolding] });
+    await getPortfolioHoldings({});
+    expect(mockedGet).toHaveBeenCalledWith("/api/portfolio/holdings");
+  });
+
+  it("converted_* 필드를 camelCase 로 매핑한다", async () => { // ADDED
+    const rawWithConverted = {
+      ...rawHolding,
+      converted_latest_value: "2437280.00",
+      converted_cost_basis: "2370415.00",
+      converted_pnl_abs: "65345.00",
+      converted_realized_pnl: "0.00",
+      display_currency: "KRW",
+    };
+    mockedGet.mockResolvedValueOnce({ data: [rawWithConverted] });
+    const result = await getPortfolioHoldings({ convertTo: "KRW" });
+    expect(result[0].convertedLatestValue).toBe("2437280.00");
+    expect(result[0].convertedCostBasis).toBe("2370415.00");
+    expect(result[0].convertedPnlAbs).toBe("65345.00");
+    expect(result[0].convertedRealizedPnl).toBe("0.00");
+    expect(result[0].displayCurrency).toBe("KRW");
   });
 
   it("빈 배열을 반환할 수 있다", async () => {

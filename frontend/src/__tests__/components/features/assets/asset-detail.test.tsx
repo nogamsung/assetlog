@@ -74,6 +74,11 @@ const fakeHolding: HoldingResponse = {
   lastPriceRefreshedAt: "2026-04-24T09:00:00Z",
   isStale: false,
   isPending: false,
+  convertedLatestValue: null,
+  convertedCostBasis: null,
+  convertedPnlAbs: null,
+  convertedRealizedPnl: null,
+  displayCurrency: null,
 };
 
 function setupAllMocks(opts: {
