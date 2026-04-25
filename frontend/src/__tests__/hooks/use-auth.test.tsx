@@ -1,7 +1,7 @@
 import { renderHook, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import React from "react";
-import { useCurrentUser, useLogin, useLogout, useSignup } from "@/hooks/use-auth";
+import { useCurrentUser, useLogin, useLogout } from "@/hooks/use-auth"; // {/* MODIFIED */}
 import * as authApi from "@/lib/api/auth";
 
 // Next.js router mock
@@ -16,12 +16,18 @@ jest.mock("next/navigation", () => ({
 jest.mock("@/lib/api/auth");
 const mockedGetMe = jest.mocked(authApi.getMe);
 const mockedLogin = jest.mocked(authApi.login);
-const mockedSignup = jest.mocked(authApi.signup);
 const mockedLogout = jest.mocked(authApi.logout);
+
+// sonner toast mock {/* ADDED */}
+jest.mock("sonner", () => ({
+  toast: Object.assign(jest.fn(), { error: jest.fn() }),
+}));
+import { toast } from "sonner";
+const mockedToastError = jest.mocked(toast.error);
 
 function makeWrapper() {
   const queryClient = new QueryClient({
-    defaultOptions: { queries: { retry: false } },
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
   function Wrapper({ children }: { children: React.ReactNode }) {
     return (
@@ -61,15 +67,16 @@ describe("useCurrentUser", () => {
 });
 
 describe("useLogin", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
   it("성공 시 queryData 세팅 후 push 호출한다", async () => {
     mockedLogin.mockResolvedValueOnce(fakeUser);
     const { Wrapper } = makeWrapper();
     const { result } = renderHook(() => useLogin(), { wrapper: Wrapper });
 
-    result.current.mutate({
-      email: "test@example.com",
-      password: "password1",
-    });
+    result.current.mutate({ password: "secret123" }); // {/* MODIFIED */}
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
     expect(mockPush).toHaveBeenCalledWith("/");
@@ -80,40 +87,62 @@ describe("useLogin", () => {
     const { Wrapper } = makeWrapper();
     const { result } = renderHook(() => useLogin(), { wrapper: Wrapper });
 
-    result.current.mutate({
-      email: "test@example.com",
-      password: "password1",
-      redirectTo: "/dashboard",
-    });
+    result.current.mutate({ password: "secret123", redirectTo: "/dashboard" }); // {/* MODIFIED */}
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
     expect(mockPush).toHaveBeenCalledWith("/dashboard");
   });
 
-  it("에러 시 isError 가 true 다", async () => {
-    mockedLogin.mockRejectedValueOnce(new Error("Login failed"));
+  it("401 에러 시 toast.error('비밀번호가 올바르지 않습니다.') 를 호출한다", async () => { // {/* ADDED */}
+    const axiosError = Object.assign(new Error("Unauthorized"), {
+      response: { status: 401, data: { detail: "Invalid password" }, headers: {} },
+    });
+    mockedLogin.mockRejectedValueOnce(axiosError);
     const { Wrapper } = makeWrapper();
     const { result } = renderHook(() => useLogin(), { wrapper: Wrapper });
 
-    result.current.mutate({ email: "bad@example.com", password: "wrongpw1" });
+    result.current.mutate({ password: "wrong" });
 
     await waitFor(() => expect(result.current.isError).toBe(true));
+    expect(mockedToastError).toHaveBeenCalledWith("비밀번호가 올바르지 않습니다.");
   });
-});
 
-describe("useSignup", () => {
-  it("성공 시 push('/') 호출한다", async () => {
-    mockedSignup.mockResolvedValueOnce(fakeUser);
-    const { Wrapper } = makeWrapper();
-    const { result } = renderHook(() => useSignup(), { wrapper: Wrapper });
-
-    result.current.mutate({
-      email: "new@example.com",
-      password: "password1",
+  it("429 에러 시 Retry-After 헤더로 toast.error 를 호출한다", async () => { // {/* ADDED */}
+    const axiosError = Object.assign(new Error("Too Many Requests"), {
+      response: {
+        status: 429,
+        data: { detail: "Too many login attempts. Try again in 60 seconds." },
+        headers: { "retry-after": "60" },
+      },
     });
+    mockedLogin.mockRejectedValueOnce(axiosError);
+    const { Wrapper } = makeWrapper();
+    const { result } = renderHook(() => useLogin(), { wrapper: Wrapper });
 
-    await waitFor(() => expect(result.current.isSuccess).toBe(true));
-    expect(mockPush).toHaveBeenCalledWith("/");
+    result.current.mutate({ password: "anypass" });
+
+    await waitFor(() => expect(result.current.isError).toBe(true));
+    expect(mockedToastError).toHaveBeenCalledWith("60초 후 다시 시도해주세요.");
+  });
+
+  it("503 에러 시 관리자 문의 toast.error 를 호출한다", async () => { // {/* ADDED */}
+    const axiosError = Object.assign(new Error("Service Unavailable"), {
+      response: {
+        status: 503,
+        data: { detail: "Owner password not configured" },
+        headers: {},
+      },
+    });
+    mockedLogin.mockRejectedValueOnce(axiosError);
+    const { Wrapper } = makeWrapper();
+    const { result } = renderHook(() => useLogin(), { wrapper: Wrapper });
+
+    result.current.mutate({ password: "anypass" });
+
+    await waitFor(() => expect(result.current.isError).toBe(true));
+    expect(mockedToastError).toHaveBeenCalledWith(
+      "서버 비밀번호 미설정. 관리자에게 문의하세요.",
+    );
   });
 });
 

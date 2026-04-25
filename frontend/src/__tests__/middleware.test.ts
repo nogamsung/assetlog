@@ -6,7 +6,11 @@
 
 // 미들웨어 내부 헬퍼 로직을 재현합니다 (동일 로직 추출)
 const PROTECTED_ROUTES = ["/", "/dashboard", "/assets", "/settings", "/profile"];
-const PUBLIC_ROUTES = ["/login", "/signup"];
+const PUBLIC_ROUTES = ["/login"]; // {/* MODIFIED */}
+
+function isSignupRoute(pathname: string): boolean { // {/* ADDED */}
+  return pathname === "/signup" || pathname.startsWith("/signup/"); // {/* ADDED */}
+} // {/* ADDED */}
 
 function isProtectedRoute(pathname: string): boolean {
   return PROTECTED_ROUTES.some(
@@ -20,24 +24,39 @@ function isPublicRoute(pathname: string): boolean {
   );
 }
 
+function shouldRedirectToSignup(pathname: string): boolean { // {/* ADDED */}
+  return isSignupRoute(pathname); // {/* ADDED */}
+} // {/* ADDED */}
+
 function shouldRedirectToLogin(pathname: string, hasToken: boolean): boolean {
+  if (isSignupRoute(pathname)) return false; // handled separately {/* ADDED */}
   if (isPublicRoute(pathname)) return false;
   if (isProtectedRoute(pathname) && !hasToken) return true;
   return false;
 }
 
 function shouldPass(pathname: string, hasToken: boolean): boolean {
-  return !shouldRedirectToLogin(pathname, hasToken);
+  return !shouldRedirectToLogin(pathname, hasToken) && !shouldRedirectToSignup(pathname);
 }
 
 describe("미들웨어 라우트 로직", () => {
+  describe("/signup 리다이렉트 — 단일 사용자 전환", () => { // {/* ADDED */}
+    it("/signup 은 /login 으로 리다이렉트된다", () => {
+      expect(shouldRedirectToSignup("/signup")).toBe(true);
+    });
+
+    it("/signup/confirm 도 /login 으로 리다이렉트된다", () => {
+      expect(shouldRedirectToSignup("/signup/confirm")).toBe(true);
+    });
+
+    it("/login 은 리다이렉트되지 않는다", () => {
+      expect(shouldRedirectToSignup("/login")).toBe(false);
+    });
+  });
+
   describe("공개 라우트", () => {
     it("/login 은 토큰 없이 통과한다", () => {
       expect(shouldPass("/login", false)).toBe(true);
-    });
-
-    it("/signup 은 토큰 없이 통과한다", () => {
-      expect(shouldPass("/signup", false)).toBe(true);
     });
 
     it("/login 은 토큰 있어도 통과한다", () => {
@@ -91,7 +110,6 @@ describe("미들웨어 라우트 로직", () => {
     });
 
     it("/api/holdings 는 토큰 없어도 미들웨어 라우트 체크는 통과한다", () => {
-      // API 라우트는 보호/공개 어느 쪽도 아니므로 통과
       expect(shouldPass("/api/holdings", false)).toBe(true);
     });
   });
@@ -101,12 +119,8 @@ describe("미들웨어 라우트 로직", () => {
       expect(isPublicRoute("/login")).toBe(true);
     });
 
-    it("/signup 은 공개 라우트다", () => {
-      expect(isPublicRoute("/signup")).toBe(true);
-    });
-
-    it("/signup/confirm 은 공개 라우트다", () => {
-      expect(isPublicRoute("/signup/confirm")).toBe(true);
+    it("/signup 은 공개 라우트가 아니다 (리다이렉트 대상)", () => { // {/* MODIFIED */}
+      expect(isPublicRoute("/signup")).toBe(false);
     });
 
     it("/ 는 공개 라우트가 아니다", () => {
