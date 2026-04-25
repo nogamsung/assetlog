@@ -26,6 +26,7 @@ from app.services.fx_rate import FxRateService
 from app.services.portfolio import PortfolioService
 from app.services.portfolio_history import PortfolioHistoryService
 from app.services.price_refresh import PriceRefreshService
+from app.services.sample_seed import SampleSeedService
 from app.services.symbol import SymbolService
 from app.services.transaction import TransactionService
 from app.services.user_asset import UserAssetService
@@ -224,6 +225,26 @@ def get_price_refresh_service(
 
 
 PriceRefreshServiceDep = Annotated[PriceRefreshService, Depends(get_price_refresh_service)]
+
+# ---------------------------------------------------------------------------
+# Sample seed DI
+# ---------------------------------------------------------------------------
+
+
+def get_sample_seed_service(
+    asset_symbol_repo: AssetSymbolRepositoryDep,
+    user_asset_repo: UserAssetRepositoryDep,
+    transaction_repo: TransactionRepositoryDep,
+) -> SampleSeedService:
+    """Inject a SampleSeedService wired to the current-request repositories."""
+    return SampleSeedService(
+        asset_symbol_repo=asset_symbol_repo,
+        user_asset_repo=user_asset_repo,
+        transaction_repo=transaction_repo,
+    )
+
+
+SampleSeedServiceDep = Annotated[SampleSeedService, Depends(get_sample_seed_service)]
 
 # ---------------------------------------------------------------------------
 # Current-user guard
