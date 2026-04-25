@@ -1,4 +1,4 @@
-import { signup, login, logout, getMe } from "@/lib/api/auth";
+import { login, logout, getMe } from "@/lib/api/auth"; // {/* MODIFIED */}
 import { apiClient } from "@/lib/api-client";
 import type { UserResponse } from "@/lib/api/auth";
 
@@ -29,40 +29,33 @@ describe("auth API", () => {
     jest.clearAllMocks();
   });
 
-  describe("signup", () => {
-    it("POST /api/auth/signup 를 호출하고 UserResponse 를 반환한다", async () => {
-      mockedPost.mockResolvedValueOnce({ data: rawUser });
-      const result = await signup({
-        email: "test@example.com",
-        password: "password1",
-      });
-      expect(mockedPost).toHaveBeenCalledWith("/api/auth/signup", {
-        email: "test@example.com",
-        password: "password1",
-      });
-      expect(result).toEqual(expectedUser);
-    });
-
-    it("에러 시 throw 한다", async () => {
-      mockedPost.mockRejectedValueOnce(new Error("Network error"));
-      await expect(
-        signup({ email: "test@example.com", password: "password1" }),
-      ).rejects.toThrow("Network error");
-    });
-  });
-
   describe("login", () => {
-    it("POST /api/auth/login 를 호출하고 UserResponse 를 반환한다", async () => {
+    it("POST /api/auth/login 을 password 만 담아 호출하고 UserResponse 를 반환한다", async () => { // {/* MODIFIED */}
       mockedPost.mockResolvedValueOnce({ data: rawUser });
-      const result = await login({
-        email: "test@example.com",
-        password: "password1",
-      });
+      const result = await login({ password: "secret123" }); // {/* MODIFIED */}
       expect(mockedPost).toHaveBeenCalledWith("/api/auth/login", {
-        email: "test@example.com",
-        password: "password1",
+        password: "secret123", // {/* MODIFIED */}
       });
       expect(result).toEqual(expectedUser);
+    });
+
+    it("email 필드를 body 에 포함하지 않는다", async () => { // {/* ADDED */}
+      mockedPost.mockResolvedValueOnce({ data: rawUser });
+      await login({ password: "secret123" });
+      const callArg = (mockedPost.mock.calls[0] as [string, unknown])[1] as Record<string, unknown>;
+      expect(callArg).not.toHaveProperty("email");
+    });
+
+    it("429 응답 시 에러를 throw 한다 (Retry-After 헤더는 호출자가 처리)", async () => { // {/* ADDED */}
+      const retryError = Object.assign(new Error("Too Many Requests"), {
+        response: {
+          status: 429,
+          data: { detail: "Too many login attempts. Try again in 30 seconds." },
+          headers: { "retry-after": "30" },
+        },
+      });
+      mockedPost.mockRejectedValueOnce(retryError);
+      await expect(login({ password: "any" })).rejects.toThrow("Too Many Requests");
     });
   });
 

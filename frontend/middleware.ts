@@ -1,7 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server";
 
 const PROTECTED_ROUTES = ["/", "/dashboard", "/assets", "/settings", "/profile"];
-const PUBLIC_ROUTES = ["/login", "/signup"];
+const PUBLIC_ROUTES = ["/login"]; // {/* MODIFIED */}
 
 function isProtectedRoute(pathname: string): boolean {
   return PROTECTED_ROUTES.some(
@@ -17,6 +17,11 @@ function isPublicRoute(pathname: string): boolean {
 
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
+
+  // /signup 은 삭제됨 — /login 으로 영구 리다이렉트 {/* ADDED */}
+  if (pathname === "/signup" || pathname.startsWith("/signup/")) { // {/* ADDED */}
+    return NextResponse.redirect(new URL("/login", request.url), 308); // {/* ADDED */}
+  } // {/* ADDED */}
 
   // 공개 라우트는 토큰 검사 없이 통과
   if (isPublicRoute(pathname)) {

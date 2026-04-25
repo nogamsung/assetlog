@@ -1,6 +1,6 @@
 import { apiClient } from "@/lib/api-client";
 import { snakeToCamel } from "@/lib/case";
-import type { LoginInput, SignupInput } from "@/lib/schemas/auth";
+import type { LoginInput } from "@/lib/schemas/auth"; // {/* MODIFIED */}
 
 export interface UserResponse {
   id: number;
@@ -19,15 +19,7 @@ function toUserResponse(raw: RawUserResponse): UserResponse {
   return camelCased;
 }
 
-export async function signup(data: SignupInput): Promise<UserResponse> {
-  const response = await apiClient.post<RawUserResponse>(
-    "/api/auth/signup",
-    data,
-  );
-  return toUserResponse(response.data);
-}
-
-export async function login(data: LoginInput): Promise<UserResponse> {
+export async function login(data: LoginInput): Promise<UserResponse> { // {/* MODIFIED */}
   const response = await apiClient.post<RawUserResponse>(
     "/api/auth/login",
     data,

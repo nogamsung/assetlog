@@ -19,7 +19,7 @@ export default function LoginPage() {
       <CardHeader>
         <CardTitle>로그인</CardTitle>
         <CardDescription>
-          AssetLog 계정으로 로그인하세요.
+          AssetLog — 비밀번호로 로그인 {/* MODIFIED */}
         </CardDescription>
       </CardHeader>
       <CardContent>
