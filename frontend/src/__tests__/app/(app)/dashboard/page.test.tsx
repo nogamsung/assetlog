@@ -15,6 +15,15 @@ jest.mock("@/hooks/use-portfolio-history");
 jest.mock("@/hooks/use-sample-seed", () => ({
   useSampleSeed: jest.fn(),
 }));
+jest.mock("@/hooks/use-tag-breakdown", () => ({
+  useTagBreakdown: jest.fn(() => ({
+    data: { entries: [] },
+    isLoading: false,
+    isError: false,
+    error: null,
+    isSuccess: true,
+  })),
+}));
 
 const mockedUseSampleSeed = jest.mocked(useSampleSeedModule.useSampleSeed);
 
@@ -168,6 +177,17 @@ describe("DashboardView", () => {
     expect(screen.getByText("005930")).toBeInTheDocument();
     // 차트 영역
     expect(screen.getByRole("img", { name: "포트폴리오 시계열 차트" })).toBeInTheDocument();
+    // 태그별 거래 집계 테이블 마운트
+    expect(screen.getByText("태그별 거래 집계")).toBeInTheDocument();
+  });
+
+  it("TagBreakdownTable 이 DashboardView 에 마운트된다", () => {
+    setupMocks(
+      { data: fakeSummary },
+      { data: [fakeHolding] },
+    );
+    render(<DashboardView />);
+    expect(screen.getByText("태그별 거래 집계")).toBeInTheDocument();
   });
 
   it("pending 100% 상태에서도 정상 렌더된다", () => {
