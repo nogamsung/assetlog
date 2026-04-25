@@ -37,6 +37,7 @@ class Transaction(Base):
     price: Mapped[Decimal] = mapped_column(Numeric(20, 6), nullable=False)
     traded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     memo: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    tag: Mapped[str | None] = mapped_column(String(50), nullable=True, index=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),

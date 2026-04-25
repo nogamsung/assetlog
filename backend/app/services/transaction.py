@@ -97,6 +97,7 @@ class TransactionService:
         user_asset_id: int,
         limit: int = 100,
         offset: int = 0,
+        tag: str | None = None,
     ) -> list[Transaction]:
         """Return paginated transactions for a UserAsset owned by user_id.
 
@@ -105,6 +106,7 @@ class TransactionService:
             user_asset_id: The UserAsset to query.
             limit: Maximum number of rows (default 100).
             offset: Pagination offset (default 0).
+            tag: Optional tag filter.  None means no filter.
 
         Returns:
             List of Transaction rows ordered by traded_at DESC.
@@ -115,7 +117,20 @@ class TransactionService:
         ua = await self._ua_repo.get_by_id_for_user(user_asset_id, user_id)
         if ua is None:
             raise NotFoundError(f"UserAsset with id={user_asset_id} not found or not owned by you.")
-        return await self._tx_repo.list_for_user_asset(user_asset_id, limit=limit, offset=offset)
+        return await self._tx_repo.list_for_user_asset(
+            user_asset_id, limit=limit, offset=offset, tag=tag
+        )
+
+    async def list_distinct_tags(self, user_id: int) -> builtins.list[str]:
+        """Return distinct non-null tags used across all transactions for user_id.
+
+        Args:
+            user_id: The authenticated user's ID.
+
+        Returns:
+            Alphabetically sorted list of unique tags.  May be empty.
+        """
+        return await self._tx_repo.list_distinct_tags_for_user(user_id)
 
     async def summary(
         self,
@@ -326,6 +341,10 @@ class TransactionService:
             raw_memo = raw_row.get("memo", "").strip()
             memo_value: str | None = raw_memo if raw_memo else None
 
+            # Normalize tag — present only when CSV has a "tag" column
+            raw_tag = raw_row.get("tag", "").strip() if "tag" in (raw_row or {}) else ""
+            tag_value: str | None = raw_tag if raw_tag else None
+
             try:
                 create_data = TransactionCreate.model_validate(
                     {
@@ -334,6 +353,7 @@ class TransactionService:
                         "price": raw_row.get("price", "").strip(),
                         "traded_at": raw_row.get("traded_at", "").strip(),
                         "memo": memo_value,
+                        "tag": tag_value,
                     }
                 )
                 validated_rows.append(create_data)
@@ -411,6 +431,7 @@ class TransactionService:
                 price=row.price,
                 traded_at=row.traded_at,
                 memo=row.memo,
+                tag=row.tag,
             )
             new_txs.append(tx)
 

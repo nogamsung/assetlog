@@ -125,6 +125,7 @@ def _make_service(
     transactions: list[Transaction] | None = None,
     delete_result: bool = True,
     update_result: Transaction | None = None,  # ADDED
+    distinct_tags: list[str] | None = None,
 ) -> TransactionService:
     ua_repo = AsyncMock(spec=UserAssetRepository)
     ua_repo.get_by_id_for_user.return_value = ua
@@ -142,6 +143,9 @@ def _make_service(
     tx_repo.delete_by_id_for_user_asset.return_value = delete_result
     if update_result is not None:  # ADDED
         tx_repo.update.return_value = update_result
+    tx_repo.list_distinct_tags_for_user.return_value = (
+        distinct_tags if distinct_tags is not None else []
+    )
 
     return TransactionService(transaction_repo=tx_repo, user_asset_repo=ua_repo)
 
@@ -426,7 +430,42 @@ class TestTransactionServiceListPagination:
         svc = TransactionService(transaction_repo=tx_repo, user_asset_repo=ua_repo)
         await svc.list(user_id=1, user_asset_id=1, limit=10, offset=20)
 
-        tx_repo.list_for_user_asset.assert_called_once_with(1, limit=10, offset=20)
+        tx_repo.list_for_user_asset.assert_called_once_with(1, limit=10, offset=20, tag=None)
+
+    async def test_tag_필터가_repo로_전달된다(self) -> None:
+        ua = _make_user_asset()
+        ua_repo = AsyncMock(spec=UserAssetRepository)
+        ua_repo.get_by_id_for_user.return_value = ua
+
+        tx_repo = AsyncMock(spec=TransactionRepository)
+        tx_repo.list_for_user_asset.return_value = []
+
+        svc = TransactionService(transaction_repo=tx_repo, user_asset_repo=ua_repo)
+        await svc.list(user_id=1, user_asset_id=1, tag="DCA")
+
+        tx_repo.list_for_user_asset.assert_called_once_with(1, limit=100, offset=0, tag="DCA")
+
+
+class TestTransactionServiceListDistinctTags:
+    async def test_태그_목록_반환(self) -> None:
+        svc = _make_service(distinct_tags=["DCA", "장기보유"])
+        result = await svc.list_distinct_tags(user_id=1)
+        assert result == ["DCA", "장기보유"]
+
+    async def test_태그_없으면_빈_리스트(self) -> None:
+        svc = _make_service(distinct_tags=[])
+        result = await svc.list_distinct_tags(user_id=1)
+        assert result == []
+
+    async def test_repo_호출_검증(self) -> None:
+        ua_repo = AsyncMock(spec=UserAssetRepository)
+        tx_repo = AsyncMock(spec=TransactionRepository)
+        tx_repo.list_distinct_tags_for_user.return_value = ["DCA"]
+
+        svc = TransactionService(transaction_repo=tx_repo, user_asset_repo=ua_repo)
+        await svc.list_distinct_tags(user_id=42)
+
+        tx_repo.list_distinct_tags_for_user.assert_called_once_with(42)
 
 
 # Helper for type-checking — ensure service does not use Any from mock
@@ -697,3 +736,37 @@ class TestTransactionServiceImportCsv:
         assert count == 1
         # memo should be None (empty string normalised to None)
         assert preview[0].memo is None
+
+    async def test_tag_컬럼_있으면_저장된다(self) -> None:
+        ua = _make_user_asset()
+        svc = _make_import_service(ua=ua)
+
+        csv_text = _csv(
+            [f"buy,1.0,50000,{_past_ts(1)},note,DCA"],
+            header="type,quantity,price,traded_at,memo,tag",
+        )
+        count, preview = await svc.import_csv(user_id=1, user_asset_id=1, csv_text=csv_text)
+        assert count == 1
+        assert preview[0].tag == "DCA"
+
+    async def test_tag_컬럼_없으면_None(self) -> None:
+        ua = _make_user_asset()
+        svc = _make_import_service(ua=ua)
+
+        # Standard CSV without tag column
+        csv_text = _csv([f"buy,1.0,50000,{_past_ts(1)},"])
+        count, preview = await svc.import_csv(user_id=1, user_asset_id=1, csv_text=csv_text)
+        assert count == 1
+        assert preview[0].tag is None
+
+    async def test_tag_빈문자열은_None으로_처리(self) -> None:
+        ua = _make_user_asset()
+        svc = _make_import_service(ua=ua)
+
+        csv_text = _csv(
+            [f"buy,1.0,50000,{_past_ts(1)},note,"],
+            header="type,quantity,price,traded_at,memo,tag",
+        )
+        count, preview = await svc.import_csv(user_id=1, user_asset_id=1, csv_text=csv_text)
+        assert count == 1
+        assert preview[0].tag is None

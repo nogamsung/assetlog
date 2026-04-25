@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domain.transaction_type import TransactionType
 from app.models.transaction import Transaction
+from app.models.user_asset import UserAsset
 from app.schemas.transaction import TransactionCreate, TransactionUpdate  # MODIFIED
 
 
@@ -46,6 +47,7 @@ class TransactionRepository:
             price=data.price,
             traded_at=data.traded_at,
             memo=data.memo,
+            tag=data.tag,
         )
         self._session.add(tx)
         await self._session.flush()
@@ -58,15 +60,17 @@ class TransactionRepository:
         *,
         limit: int = 100,
         offset: int = 0,
+        tag: str | None = None,
     ) -> list[Transaction]:
-        """Return transactions for a UserAsset ordered by traded_at DESC."""
-        stmt = (
-            select(Transaction)
-            .where(Transaction.user_asset_id == user_asset_id)
-            .order_by(Transaction.traded_at.desc())
-            .limit(limit)
-            .offset(offset)
-        )
+        """Return transactions for a UserAsset ordered by traded_at DESC.
+
+        If *tag* is provided (non-empty), only transactions with that exact tag
+        are returned.  An empty string is treated the same as None (no filter).
+        """
+        stmt = select(Transaction).where(Transaction.user_asset_id == user_asset_id)
+        if tag:
+            stmt = stmt.where(Transaction.tag == tag)
+        stmt = stmt.order_by(Transaction.traded_at.desc()).limit(limit).offset(offset)
         result = await self._session.execute(stmt)
         return list(result.scalars().all())
 
@@ -185,6 +189,7 @@ class TransactionRepository:
         tx.price = data.price
         tx.traded_at = data.traded_at
         tx.memo = data.memo
+        tx.tag = data.tag
         await self._session.flush()
         await self._session.refresh(tx)
         return tx
@@ -204,3 +209,23 @@ class TransactionRepository:
         await self._session.delete(tx)
         await self._session.flush()
         return True
+
+    async def list_distinct_tags_for_user(self, user_id: int) -> list[str]:
+        """Return distinct non-null tags across all transactions owned by user_id.
+
+        Joins transactions → user_assets to enforce user scoping.
+        Results are ordered alphabetically (ASC).
+        Returns an empty list when no tagged transactions exist.
+        """
+        stmt = (
+            select(Transaction.tag)
+            .join(UserAsset, Transaction.user_asset_id == UserAsset.id)
+            .where(
+                UserAsset.user_id == user_id,
+                Transaction.tag.is_not(None),
+            )
+            .distinct()
+            .order_by(Transaction.tag.asc())
+        )
+        result = await self._session.execute(stmt)
+        return [row for (row,) in result.all()]
