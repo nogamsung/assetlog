@@ -5,12 +5,13 @@ from __future__ import annotations
 import logging
 from decimal import Decimal
 
-from sqlalchemy import case, func, select  # MODIFIED — added case
+from sqlalchemy import case, func, select, text  # MODIFIED — added text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.domain.portfolio import HoldingRow
 from app.domain.transaction_type import TransactionType
+from app.models.asset_symbol import AssetSymbol
 from app.models.transaction import Transaction
 from app.models.user_asset import UserAsset
 
@@ -139,6 +140,51 @@ class PortfolioRepository:
 
         logger.debug(
             "list_user_holdings_with_aggregates: user_id=%s returned %d rows",
+            user_id,
+            len(result),
+        )
+        return result
+
+    async def list_tag_breakdown_rows(
+        self,
+        user_id: int,
+    ) -> list[tuple[str | None, str, str, Decimal, int]]:
+        """Return one row per (tag, currency, transaction_type) triple.
+
+        Issues a single GROUP BY query — no N+1.  NULL tag values are kept
+        as a separate group by the database (consistent across MySQL/SQLite).
+
+        Returns:
+            List of (tag, currency, type, value_sum, count) tuples where
+            ``value_sum`` = Σ(quantity × price) and ``count`` = COUNT(*).
+        """
+        stmt = (
+            select(
+                Transaction.tag,
+                AssetSymbol.currency,
+                Transaction.type,
+                func.sum(Transaction.quantity * Transaction.price).label("value_sum"),
+                func.count(text("*")).label("cnt"),
+            )
+            .join(UserAsset, Transaction.user_asset_id == UserAsset.id)
+            .join(AssetSymbol, UserAsset.asset_symbol_id == AssetSymbol.id)
+            .where(UserAsset.user_id == user_id)
+            .group_by(Transaction.tag, AssetSymbol.currency, Transaction.type)
+        )
+
+        rows = (await self._session.execute(stmt)).all()
+
+        result: list[tuple[str | None, str, str, Decimal, int]] = []
+        for row in rows:
+            tag: str | None = row[0]
+            currency: str = row[1]
+            tx_type: str = str(row[2])
+            value_sum = Decimal(str(row[3])) if row[3] is not None else Decimal("0")
+            cnt: int = int(row[4])
+            result.append((tag, currency, tx_type, value_sum, cnt))
+
+        logger.debug(
+            "list_tag_breakdown_rows: user_id=%s returned %d raw rows",
             user_id,
             len(result),
         )

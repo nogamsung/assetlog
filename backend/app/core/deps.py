@@ -28,6 +28,7 @@ from app.services.portfolio_history import PortfolioHistoryService
 from app.services.price_refresh import PriceRefreshService
 from app.services.sample_seed import SampleSeedService
 from app.services.symbol import SymbolService
+from app.services.tag_breakdown import TagBreakdownService
 from app.services.transaction import TransactionService
 from app.services.user_asset import UserAssetService
 
@@ -225,6 +226,20 @@ def get_price_refresh_service(
 
 
 PriceRefreshServiceDep = Annotated[PriceRefreshService, Depends(get_price_refresh_service)]
+
+# ---------------------------------------------------------------------------
+# Tag breakdown DI
+# ---------------------------------------------------------------------------
+
+
+def get_tag_breakdown_service(
+    portfolio_repo: PortfolioRepositoryDep,
+) -> TagBreakdownService:
+    """Inject a TagBreakdownService bound to the current request session."""
+    return TagBreakdownService(repo=portfolio_repo)
+
+
+TagBreakdownServiceDep = Annotated[TagBreakdownService, Depends(get_tag_breakdown_service)]
 
 # ---------------------------------------------------------------------------
 # Sample seed DI
