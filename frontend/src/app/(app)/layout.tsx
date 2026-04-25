@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { Settings } from "lucide-react";
 import { useCurrentUser, useLogout } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
 
@@ -36,6 +37,14 @@ function AppHeader() {
         {user && (
           <span className="text-sm text-muted-foreground">{user.email}님</span>
         )}
+        <Link
+          href="/settings"
+          className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
+          aria-label="설정 페이지로 이동"
+        >
+          <Settings className="h-4 w-4" aria-hidden="true" />
+          설정
+        </Link>
         <Button
           variant="outline"
           size="sm"
