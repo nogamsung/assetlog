@@ -210,6 +210,23 @@ class TransactionRepository:
         await self._session.flush()
         return True
 
+    async def list_all_for_user(self, user_id: int) -> list[Transaction]:
+        """Return all transactions across all user_assets owned by user_id.
+
+        Joins transactions → user_assets on user_id so that a single SQL round-trip
+        collects the full export dataset without N+1 per-asset queries.
+        Results are ordered by user_asset_id ASC, then traded_at ASC for reproducible
+        export ordering.
+        """
+        stmt = (
+            select(Transaction)
+            .join(UserAsset, Transaction.user_asset_id == UserAsset.id)
+            .where(UserAsset.user_id == user_id)
+            .order_by(Transaction.user_asset_id.asc(), Transaction.traded_at.asc())
+        )
+        result = await self._session.execute(stmt)
+        return list(result.scalars().all())
+
     async def list_distinct_tags_for_user(self, user_id: int) -> list[str]:
         """Return distinct non-null tags across all transactions owned by user_id.
 
