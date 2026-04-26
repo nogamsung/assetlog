@@ -23,6 +23,8 @@ jest.mock("recharts", () => {
     XAxis: () => <div data-testid="x-axis" />,
     YAxis: () => <div data-testid="y-axis" />,
     Tooltip: () => <div data-testid="tooltip" />,
+    Brush: () => <div data-testid="brush" />, /* ADDED */
+    ReferenceLine: ({ y }: { y?: number }) => <div data-testid="reference-line" data-y={y} />, /* ADDED */
   };
 });
 
@@ -167,4 +169,71 @@ describe("PortfolioHistoryChart", () => {
       expect.objectContaining({ period: "1M" }),
     );
   });
+
+  /* ADDED — 인터랙션 강화 기능 검증 */
+  it("데이터가 있으면 Brush 컴포넌트가 마운트된다", () => {
+    const { Wrapper } = makeWrapper();
+    render(<PortfolioHistoryChart currency="KRW" />, { wrapper: Wrapper });
+
+    expect(screen.getByTestId("brush")).toBeInTheDocument();
+  });
+
+  it("데이터가 있으면 ReferenceLine 컴포넌트가 마운트된다", () => {
+    const { Wrapper } = makeWrapper();
+    render(<PortfolioHistoryChart currency="KRW" />, { wrapper: Wrapper });
+
+    expect(screen.getByTestId("reference-line")).toBeInTheDocument();
+  });
+
+  it("ReferenceLine 의 y 값이 마지막 포인트의 value 와 일치한다", () => {
+    const { Wrapper } = makeWrapper();
+    render(<PortfolioHistoryChart currency="KRW" />, { wrapper: Wrapper });
+
+    const lastPointValue = Number(
+      fakeHistoryData.points[fakeHistoryData.points.length - 1].value,
+    );
+    expect(screen.getByTestId("reference-line")).toHaveAttribute(
+      "data-y",
+      String(lastPointValue),
+    );
+  });
+
+  it("데이터가 변경되면 ReferenceLine 의 y 값이 갱신된다", () => {
+    const updatedData: PortfolioHistoryResponse = {
+      ...fakeHistoryData,
+      points: [
+        ...fakeHistoryData.points,
+        {
+          timestamp: new Date("2026-03-27T00:00:00Z"),
+          value: "1500000.000000",
+          costBasis: "1000000.000000",
+        },
+      ],
+    };
+    setupHistoryMock({ data: updatedData });
+    const { Wrapper } = makeWrapper();
+    render(<PortfolioHistoryChart currency="KRW" />, { wrapper: Wrapper });
+
+    expect(screen.getByTestId("reference-line")).toHaveAttribute(
+      "data-y",
+      "1500000",
+    );
+  });
+
+  it("데이터가 없으면 ReferenceLine 이 렌더링되지 않는다", () => {
+    setupHistoryMock({ data: { ...fakeHistoryData, points: [] } });
+    const { Wrapper } = makeWrapper();
+    render(<PortfolioHistoryChart currency="KRW" />, { wrapper: Wrapper });
+
+    expect(screen.queryByTestId("reference-line")).not.toBeInTheDocument();
+  });
+
+  it("데이터가 없으면 Brush 가 렌더링되지 않는다", () => {
+    setupHistoryMock({ data: { ...fakeHistoryData, points: [] } });
+    const { Wrapper } = makeWrapper();
+    render(<PortfolioHistoryChart currency="KRW" />, { wrapper: Wrapper });
+
+    expect(screen.queryByTestId("brush")).not.toBeInTheDocument();
+  });
+  /* END ADDED */
 });
