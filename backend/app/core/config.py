@@ -42,6 +42,9 @@ class Settings(BaseSettings):
     app_password_hash: str | None = None  # ADDED
     login_max_attempts: int = 5  # ADDED
     login_lockout_seconds: int = 600  # 10 min  # ADDED
+    login_global_max_attempts: int = 50  # ADDED
+    login_global_window_seconds: int = 60  # ADDED
+    login_attempt_retention_days: int = 90  # ADDED
 
     @field_validator("cors_origins", mode="before")
     @classmethod

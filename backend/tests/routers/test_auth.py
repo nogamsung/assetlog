@@ -116,6 +116,25 @@ class TestLogin:
         finally:
             app.dependency_overrides.pop(get_auth_service, None)
 
+    async def test_글로벌_rate_limit_초과이면_429를_반환한다(  # ADDED
+        self, async_client: AsyncClient
+    ) -> None:
+        """Global IP-rotation defense also returns 429 with Retry-After."""
+        mock_service = AsyncMock(spec=AuthService)
+        mock_service.authenticate.side_effect = TooManyAttemptsError(60)
+        app.dependency_overrides[get_auth_service] = lambda: mock_service
+
+        try:
+            response = await async_client.post(
+                "/api/auth/login",
+                json={"password": "anything"},
+            )
+            assert response.status_code == 429
+            assert "Retry-After" in response.headers
+            assert response.headers["Retry-After"] == "60"
+        finally:
+            app.dependency_overrides.pop(get_auth_service, None)
+
     async def test_비밀번호_빈_문자열이면_422를_반환한다(self, async_client: AsyncClient) -> None:
         response = await async_client.post(
             "/api/auth/login",

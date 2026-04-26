@@ -16,6 +16,7 @@ from app.exceptions import UnauthorizedError
 from app.models.user import User
 from app.repositories.asset_symbol import AssetSymbolRepository
 from app.repositories.fx_rate import FxRateRepository
+from app.repositories.login_attempt import LoginAttemptRepository  # ADDED
 from app.repositories.portfolio import PortfolioRepository
 from app.repositories.portfolio_history import PortfolioHistoryRepository
 from app.repositories.price_point import PricePointRepository
@@ -73,19 +74,27 @@ UserAssetRepositoryDep = Annotated[UserAssetRepository, Depends(get_user_asset_r
 # ---------------------------------------------------------------------------
 
 
-# Module-level singleton so the in-memory counter survives across requests  # ADDED
-_login_rate_limiter: LoginRateLimiter | None = None  # ADDED
+def get_login_attempt_repository(session: DbSession) -> LoginAttemptRepository:  # ADDED
+    """Inject a LoginAttemptRepository bound to the current request session."""
+    return LoginAttemptRepository(session)
 
 
-def get_login_rate_limiter() -> LoginRateLimiter:  # ADDED
-    """Return a module-level singleton LoginRateLimiter configured from settings."""
-    global _login_rate_limiter  # noqa: PLW0603  # intentional module-level singleton
-    if _login_rate_limiter is None:
-        _login_rate_limiter = LoginRateLimiter(
-            max_attempts=settings.login_max_attempts,
-            lockout_seconds=settings.login_lockout_seconds,
-        )
-    return _login_rate_limiter
+LoginAttemptRepositoryDep = Annotated[  # ADDED
+    LoginAttemptRepository, Depends(get_login_attempt_repository)
+]
+
+
+def get_login_rate_limiter(  # MODIFIED — DB-backed, per-request instance
+    repo: LoginAttemptRepositoryDep,
+) -> LoginRateLimiter:
+    """Return a DB-backed LoginRateLimiter configured from settings."""
+    return LoginRateLimiter(
+        repo=repo,
+        per_ip_max=settings.login_max_attempts,
+        global_max=settings.login_global_max_attempts,
+        per_ip_window_seconds=settings.login_lockout_seconds,
+        global_window_seconds=settings.login_global_window_seconds,
+    )
 
 
 LoginRateLimiterDep = Annotated[LoginRateLimiter, Depends(get_login_rate_limiter)]  # ADDED

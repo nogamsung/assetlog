@@ -5,11 +5,12 @@ from contextlib import asynccontextmanager
 from apscheduler.schedulers.asyncio import (
     AsyncIOScheduler,  # noqa: F401  # apscheduler has no stubs
 )
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from starlette.middleware.base import BaseHTTPMiddleware  # ADDED
 
 from app.adapters import build_default_adapter_registry
 from app.core.config import settings
@@ -47,6 +48,29 @@ _OWNER_EMAIL = "owner+local-1@assetlog.local"
 _OWNER_PASSWORD_HASH_PLACEHOLDER = "!disabled"  # not used for login — env hash only
 
 
+def _validate_password_hash_cost(hash_str: str) -> None:  # ADDED
+    """Warn if the bcrypt cost factor stored in APP_PASSWORD_HASH is below 12.
+
+    bcrypt hash format: ``$2b$<cost>$<22-char salt><31-char hash>``
+
+    Args:
+        hash_str: Raw value of APP_PASSWORD_HASH from settings.
+    """
+    if not hash_str:
+        return
+    try:
+        parts = hash_str.split("$")
+        cost = int(parts[2])
+        if cost < 12:
+            logger.warning(
+                "APP_PASSWORD_HASH cost factor is %d (recommended >= 12). "
+                "Rebuild with bcrypt.gensalt(rounds=12) or higher.",
+                cost,
+            )
+    except (IndexError, ValueError):
+        logger.warning("APP_PASSWORD_HASH format unexpected — verify it's a valid bcrypt hash.")
+
+
 async def _ensure_owner_user(session_factory: async_sessionmaker[AsyncSession]) -> None:  # ADDED
     """Ensure user id=1 (owner) exists; create a placeholder row if not."""
     from app.repositories.user import (
@@ -72,6 +96,9 @@ async def _ensure_owner_user(session_factory: async_sessionmaker[AsyncSession]) 
 async def lifespan(_: FastAPI) -> AsyncGenerator[None, None]:
     """Application lifespan — DB connectivity check + owner ensure + scheduler startup."""
     logger.info("Starting up AssetLog API...")
+    # Validate bcrypt cost factor at startup  # ADDED
+    if settings.app_password_hash:  # ADDED
+        _validate_password_hash_cost(settings.app_password_hash)  # ADDED
     # Use the configured database_url at startup time.
     session_factory = _make_session_factory(settings.database_url)
     try:
@@ -87,7 +114,11 @@ async def lifespan(_: FastAPI) -> AsyncGenerator[None, None]:
     scheduler: AsyncIOScheduler | None = None
     if settings.enable_scheduler:
         adapters = build_default_adapter_registry()
-        scheduler = build_scheduler(session_factory, adapters)
+        scheduler = build_scheduler(  # MODIFIED — pass retention_days
+            session_factory,
+            adapters,
+            login_attempt_retention_days=settings.login_attempt_retention_days,
+        )
         scheduler.start()
         logger.info(
             "price_refresh scheduler started (Asia/Seoul, every hour :00)",
@@ -120,6 +151,36 @@ app.add_middleware(
     allow_methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
     allow_headers=["*"],
 )
+
+
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):  # ADDED
+    """Inject security headers on every response.
+
+    HSTS is only added when ``cookie_secure=True`` (i.e., HTTPS environments)
+    to avoid breaking HTTP-only local development setups.
+    CSP is excluded from this PR — to be aligned with frontend in a follow-up.
+    """
+
+    async def dispatch(  # ADDED
+        self,
+        request: Request,
+        call_next: object,
+    ) -> Response:
+        """Forward the request and attach security headers to the response."""
+        from collections.abc import Callable as _Callable  # noqa: PLC0415
+
+        _call: _Callable[..., object] = call_next  # type: ignore[assignment]
+        response: Response = await _call(request)  # type: ignore[misc]
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+        if settings.cookie_secure:
+            response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+        return response
+
+
+app.add_middleware(SecurityHeadersMiddleware)  # ADDED
 
 
 @app.exception_handler(AppError)
