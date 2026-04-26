@@ -11,6 +11,7 @@ from app.core.config import Settings
 from app.core.security import create_access_token, hash_password
 from app.exceptions import OwnerPasswordNotConfiguredError, TooManyAttemptsError, UnauthorizedError
 from app.models.user import User
+from app.repositories.login_attempt import LoginAttemptRepository
 from app.repositories.user import UserRepository
 from app.services.auth import AuthService
 from app.services.login_rate_limiter import LoginRateLimiter
@@ -37,6 +38,33 @@ def _make_settings(pw_hash: str | None = None) -> Settings:
         app_password_hash=pw_hash,
         login_max_attempts=5,
         login_lockout_seconds=600,
+        login_global_max_attempts=50,  # ADDED
+        login_global_window_seconds=60,  # ADDED
+    )
+
+
+def _make_limiter_with_mock_repo(
+    *,
+    ip_failures: int = 0,
+    global_failures: int = 0,
+    per_ip_max: int = 5,
+    global_max: int = 50,
+    per_ip_window: int = 600,
+    global_window: int = 60,
+) -> LoginRateLimiter:
+    """Build a LoginRateLimiter backed by a mocked repo with preset failure counts."""
+    repo = AsyncMock(spec=LoginAttemptRepository)
+
+    async def _count(ip: str | None, since: datetime) -> int:  # type: ignore[misc]
+        return global_failures if ip is None else ip_failures
+
+    repo.count_failures_since.side_effect = _count
+    return LoginRateLimiter(
+        repo=repo,
+        per_ip_max=per_ip_max,
+        global_max=global_max,
+        per_ip_window_seconds=per_ip_window,
+        global_window_seconds=global_window,
     )
 
 
@@ -49,7 +77,7 @@ def _make_service(
     pw_hash = hash_password(pw) if pw else None
     settings = _make_settings(pw_hash=pw_hash)
     if limiter is None:
-        limiter = LoginRateLimiter(max_attempts=5, lockout_seconds=600)
+        limiter = _make_limiter_with_mock_repo()  # MODIFIED — DB-backed mock
     return AuthService(repo, rate_limiter=limiter, settings=settings)
 
 
@@ -81,7 +109,7 @@ class TestAuthServiceAuthenticate:
         mock_session = AsyncMock()
         repo = AsyncMock(spec=UserRepository)
         settings = _make_settings(pw_hash=None)
-        limiter = LoginRateLimiter(max_attempts=5, lockout_seconds=600)
+        limiter = _make_limiter_with_mock_repo()  # MODIFIED
         service = AuthService(repo, rate_limiter=limiter, settings=settings)
 
         with pytest.raises(OwnerPasswordNotConfiguredError):
@@ -91,7 +119,7 @@ class TestAuthServiceAuthenticate:
         mock_session = AsyncMock()
         repo = AsyncMock(spec=UserRepository)
         settings = _make_settings(pw_hash="")
-        limiter = LoginRateLimiter(max_attempts=5, lockout_seconds=600)
+        limiter = _make_limiter_with_mock_repo()  # MODIFIED
         service = AuthService(repo, rate_limiter=limiter, settings=settings)
 
         with pytest.raises(OwnerPasswordNotConfiguredError):
@@ -101,12 +129,9 @@ class TestAuthServiceAuthenticate:
         mock_session = AsyncMock()
         repo = AsyncMock(spec=UserRepository)
 
-        limiter = LoginRateLimiter(max_attempts=5, lockout_seconds=600)
+        # After 5 failures the limiter returns 5 as failure count → blocks
+        limiter = _make_limiter_with_mock_repo(ip_failures=5, per_ip_max=5)
         service = _make_service(repo, pw="TestPass1", limiter=limiter)
-
-        for _ in range(5):
-            with pytest.raises(UnauthorizedError):
-                await service.authenticate(mock_session, "WrongPass", "9.9.9.9")
 
         with pytest.raises(TooManyAttemptsError):
             await service.authenticate(mock_session, "WrongPass", "9.9.9.9")

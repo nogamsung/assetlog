@@ -1,113 +1,134 @@
-"""In-memory per-IP login rate limiter.
+"""DB-backed per-IP and global login rate limiter with progressive backoff.
 
-Single-instance, no Redis dependency. Safe for FastAPI single-process async context.
+Replaces the previous in-memory dict implementation.  All state is persisted
+in the ``login_attempts`` table so that limits survive server restarts and
+work correctly across multiple application instances.
 """
 
 from __future__ import annotations
 
-import asyncio
 import logging
-from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from app.exceptions import TooManyAttemptsError
+from app.repositories.login_attempt import LoginAttemptRepository
 
 logger = logging.getLogger(__name__)
 
-_INACTIVE_TTL_SECONDS = 1800  # evict entries idle for 30 min
 
+def _utc_now_naive() -> datetime:
+    """Return the current UTC time as a naive datetime (no tzinfo).
 
-@dataclass
-class _IpState:
-    failure_count: int = 0
-    locked_until: datetime | None = None
-    last_seen: datetime = field(default_factory=lambda: datetime.now(UTC))
+    The ``login_attempts.attempted_at`` column uses DATETIME (without timezone)
+    so all comparisons must use naive UTC datetimes.
+    """
+    return datetime.now(UTC).replace(tzinfo=None)
 
 
 class LoginRateLimiter:
-    """Per-IP login attempt counter with lockout on max failures.
+    """Per-IP and global login attempt rate limiter backed by the DB.
+
+    Two independent limits are enforced on every ``check()`` call:
+
+    **Per-IP limit** — within ``per_ip_window_seconds``, if a single IP has
+    ``>= per_ip_max`` failures the request is blocked.  The block duration
+    grows exponentially (progressive backoff) as additional failures accumulate
+    beyond the threshold.
+
+    **Global limit** — within ``global_window_seconds``, if the total failure
+    count across ALL IPs reaches ``>= global_max`` the request is blocked for
+    ``global_window_seconds``.  This defends against distributed IP-rotation
+    attacks where no single IP hits its per-IP threshold.
 
     Args:
-        max_attempts: Number of consecutive failures before lockout.
-        lockout_seconds: Seconds to lock out the IP after max_attempts failures.
+        repo: Repository used to record and query login attempts.
+        per_ip_max: Max failures per IP before lockout (default 5).
+        global_max: Max total failures across all IPs before global lockout (default 50).
+        per_ip_window_seconds: Lookback window for per-IP failures (default 600).
+        global_window_seconds: Lookback window for global failures (default 60).
     """
 
-    def __init__(self, max_attempts: int, lockout_seconds: int) -> None:
-        self._max_attempts = max_attempts
-        self._lockout_seconds = lockout_seconds
-        self._states: dict[str, _IpState] = {}
-        self._lock = asyncio.Lock()
+    def __init__(
+        self,
+        repo: LoginAttemptRepository,
+        per_ip_max: int = 5,
+        global_max: int = 50,
+        per_ip_window_seconds: int = 600,
+        global_window_seconds: int = 60,
+    ) -> None:
+        self._repo = repo
+        self._per_ip_max = per_ip_max
+        self._global_max = global_max
+        self._per_ip_window = per_ip_window_seconds
+        self._global_window = global_window_seconds
 
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
 
     async def check(self, ip: str) -> None:
-        """Raise TooManyAttemptsError if the IP is currently locked out.
+        """Raise TooManyAttemptsError if any rate limit is exceeded.
+
+        Checks are ordered: per-IP first (with backoff), then global.
 
         Args:
             ip: Client IP address string.
 
         Raises:
-            TooManyAttemptsError: If the IP is within its lockout window.
+            TooManyAttemptsError: If either the per-IP or global limit is exceeded.
+                The ``retry_after_seconds`` attribute indicates how long to wait.
         """
-        async with self._lock:
-            self._evict_expired()
-            state = self._states.get(ip)
-            if state is None:
-                return
-            now = datetime.now(UTC)
-            if state.locked_until is not None and now < state.locked_until:
-                retry_after = int((state.locked_until - now).total_seconds()) + 1
-                raise TooManyAttemptsError(retry_after)
+        now = _utc_now_naive()
 
-    async def record_failure(self, ip: str) -> None:
-        """Increment the failure counter for an IP, locking it out if threshold is reached.
+        # --- Per-IP check ---------------------------------------------------
+        per_ip_since = now - timedelta(seconds=self._per_ip_window)
+        failures = await self._repo.count_failures_since(ip, per_ip_since)
+        if failures >= self._per_ip_max:
+            excess = failures - self._per_ip_max
+            # Progressive backoff: double the base window for every 5 excess failures
+            # cap at 64× (per_ip_window × 64) or 1 hour, whichever is smaller.
+            multiplier = min(2 ** (excess // 5), 64)
+            retry_after = min(self._per_ip_window * multiplier, 3600)
+            logger.warning(
+                "Per-IP rate limit exceeded: ip=%s failures=%d retry_after=%d",
+                ip,
+                failures,
+                retry_after,
+            )
+            raise TooManyAttemptsError(retry_after)
+
+        # --- Global check ---------------------------------------------------
+        global_since = now - timedelta(seconds=self._global_window)
+        global_failures = await self._repo.count_failures_since(None, global_since)
+        if global_failures >= self._global_max:
+            logger.warning(
+                "Global rate limit exceeded: total_failures=%d retry_after=%d",
+                global_failures,
+                self._global_window,
+            )
+            raise TooManyAttemptsError(self._global_window)
+
+    async def record_failure(self, ip: str, when: datetime | None = None) -> None:  # MODIFIED
+        """Record a failed login attempt for the given IP.
 
         Args:
             ip: Client IP address string.
+            when: UTC-naive timestamp of the attempt (defaults to now).
         """
-        async with self._lock:
-            self._evict_expired()
-            now = datetime.now(UTC)
-            state = self._states.setdefault(ip, _IpState())
-            state.failure_count += 1
-            state.last_seen = now
-            if state.failure_count >= self._max_attempts:
-                from datetime import timedelta
+        ts = when.replace(tzinfo=None) if when is not None else _utc_now_naive()
+        await self._repo.record(ip=ip, success=False, attempted_at=ts)
 
-                state.locked_until = now + timedelta(seconds=self._lockout_seconds)
-                logger.warning(
-                    "IP locked out after %d failures: ip=%s locked_until=%s",
-                    state.failure_count,
-                    ip,
-                    state.locked_until.isoformat(),
-                )
+    async def record_success(self, ip: str, when: datetime | None = None) -> None:  # MODIFIED
+        """Record a successful login for the given IP.
 
-    async def record_success(self, ip: str) -> None:
-        """Reset the failure counter on successful login.
+        The success record is stored for audit purposes but does not affect
+        failure counts — ``count_failures_since`` only counts ``success=False``
+        rows, so the per-IP lockout window expires naturally once all failure
+        rows fall outside the window.
 
         Args:
             ip: Client IP address string.
+            when: UTC-naive timestamp of the attempt (defaults to now).
         """
-        async with self._lock:
-            self._states.pop(ip, None)
-
-    # ------------------------------------------------------------------
-    # Internal helpers
-    # ------------------------------------------------------------------
-
-    def _evict_expired(self) -> None:
-        """Remove stale entries: expired lockouts idle longer than _INACTIVE_TTL_SECONDS."""
-        now = datetime.now(UTC)
-        from datetime import timedelta
-
-        cutoff = now - timedelta(seconds=_INACTIVE_TTL_SECONDS)
-        stale = [
-            ip
-            for ip, state in self._states.items()
-            if state.last_seen < cutoff
-            or (state.locked_until is not None and state.locked_until <= now)
-        ]
-        for ip in stale:
-            del self._states[ip]
+        ts = when.replace(tzinfo=None) if when is not None else _utc_now_naive()
+        await self._repo.record(ip=ip, success=True, attempted_at=ts)

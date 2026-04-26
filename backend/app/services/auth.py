@@ -56,11 +56,13 @@ class AuthService:
         await self._limiter.check(client_ip)
 
         if not verify_password(password, pw_hash):
-            await self._limiter.record_failure(client_ip)
+            await self._limiter.record_failure(
+                client_ip
+            )  # MODIFIED — no 'when' arg (defaults to now)
             logger.warning("Failed login attempt from ip=%s", client_ip)
             raise UnauthorizedError("Invalid password")
 
-        await self._limiter.record_success(client_ip)
+        await self._limiter.record_success(client_ip)  # MODIFIED — no 'when' arg (defaults to now)
 
         user = await self._repo.get_by_id(_OWNER_USER_ID)
         if user is None:
