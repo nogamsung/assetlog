@@ -8,6 +8,36 @@
 const PROTECTED_ROUTES = ["/", "/dashboard", "/assets", "/settings", "/profile"];
 const PUBLIC_ROUTES = ["/login"]; // {/* MODIFIED */}
 
+// {/* ADDED */}
+function buildCsp(nonce: string, apiUrl?: string): string {
+  const apiBase = apiUrl ?? "";
+  const connectSrc = ["'self'"];
+  if (apiBase && !apiBase.startsWith("/")) {
+    try {
+      const u = new URL(apiBase);
+      connectSrc.push(u.origin);
+    } catch {
+      // 잘못된 URL 은 무시
+    }
+  }
+
+  const directives = [
+    "default-src 'self'",
+    `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'`,
+    "style-src 'self' 'unsafe-inline'",
+    "img-src 'self' data: blob:",
+    "font-src 'self' data:",
+    `connect-src ${connectSrc.join(" ")}`,
+    "frame-ancestors 'none'",
+    "form-action 'self'",
+    "base-uri 'self'",
+    "object-src 'none'",
+    "upgrade-insecure-requests",
+  ];
+  return directives.join("; ");
+}
+// {/* ADDED */}
+
 function isSignupRoute(pathname: string): boolean { // {/* ADDED */}
   return pathname === "/signup" || pathname.startsWith("/signup/"); // {/* ADDED */}
 } // {/* ADDED */}
@@ -142,3 +172,94 @@ describe("미들웨어 라우트 로직", () => {
     });
   });
 });
+
+// {/* ADDED */}
+describe("CSP buildCsp", () => {
+  describe("기본 디렉티브", () => {
+    it("default-src 'self' 를 포함한다", () => {
+      const csp = buildCsp("testnonce");
+      expect(csp).toContain("default-src 'self'");
+    });
+
+    it("frame-ancestors 'none' 를 포함한다", () => {
+      const csp = buildCsp("testnonce");
+      expect(csp).toContain("frame-ancestors 'none'");
+    });
+
+    it("object-src 'none' 를 포함한다", () => {
+      const csp = buildCsp("testnonce");
+      expect(csp).toContain("object-src 'none'");
+    });
+
+    it("form-action 'self' 를 포함한다", () => {
+      const csp = buildCsp("testnonce");
+      expect(csp).toContain("form-action 'self'");
+    });
+
+    it("base-uri 'self' 를 포함한다", () => {
+      const csp = buildCsp("testnonce");
+      expect(csp).toContain("base-uri 'self'");
+    });
+
+    it("style-src 'unsafe-inline' 를 포함한다", () => {
+      const csp = buildCsp("testnonce");
+      expect(csp).toContain("style-src 'self' 'unsafe-inline'");
+    });
+
+    it("upgrade-insecure-requests 를 포함한다", () => {
+      const csp = buildCsp("testnonce");
+      expect(csp).toContain("upgrade-insecure-requests");
+    });
+  });
+
+  describe("nonce 삽입", () => {
+    it("script-src 에 전달된 nonce 가 포함된다", () => {
+      const nonce = "abc123xyz";
+      const csp = buildCsp(nonce);
+      expect(csp).toContain(`'nonce-${nonce}'`);
+    });
+
+    it("script-src 에 'strict-dynamic' 이 포함된다", () => {
+      const csp = buildCsp("anynonce");
+      expect(csp).toContain("'strict-dynamic'");
+    });
+
+    it("nonce 가 다르면 CSP 문자열도 달라진다", () => {
+      const csp1 = buildCsp("nonce-aaa");
+      const csp2 = buildCsp("nonce-bbb");
+      expect(csp1).not.toBe(csp2);
+    });
+  });
+
+  describe("connect-src + NEXT_PUBLIC_API_URL", () => {
+    it("API URL 미설정 시 connect-src 는 self 만 포함한다", () => {
+      const csp = buildCsp("testnonce", "");
+      expect(csp).toContain("connect-src 'self'");
+      expect(csp).not.toContain("localhost");
+    });
+
+    it("외부 도메인 API URL 설정 시 origin 이 connect-src 에 추가된다", () => {
+      const csp = buildCsp("testnonce", "http://localhost:8000");
+      expect(csp).toContain("connect-src 'self' http://localhost:8000");
+    });
+
+    it("경로 포함 URL 에서도 origin 만 추출된다", () => {
+      const csp = buildCsp("testnonce", "https://api.example.com/v1/path");
+      expect(csp).toContain("connect-src 'self' https://api.example.com");
+      expect(csp).not.toContain("/v1/path");
+    });
+
+    it("상대 경로(/api)는 connect-src 에 추가되지 않는다", () => {
+      const csp = buildCsp("testnonce", "/api");
+      const connectLine = csp.split("; ").find((d) => d.startsWith("connect-src"));
+      expect(connectLine).toBe("connect-src 'self'");
+    });
+
+    it("잘못된 URL 문자열은 무시되고 self 만 남는다", () => {
+      const csp = buildCsp("testnonce", "not-a-valid-url");
+      const connectLine = csp.split("; ").find((d) => d.startsWith("connect-src"));
+      expect(connectLine).toBe("connect-src 'self'");
+    });
+  });
+});
+// {/* ADDED */}

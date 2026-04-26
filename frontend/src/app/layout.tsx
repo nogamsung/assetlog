@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import { headers } from "next/headers"; // {/* ADDED */}
 import { Providers } from "@/providers";
 import { ThemeProvider } from "@/components/theme-provider";
 import "./globals.css";
@@ -21,11 +22,14 @@ export const metadata: Metadata = {
 
 const themeInitScript = `(function(){try{var s=localStorage.getItem('assetlog-theme');var t=s?JSON.parse(s):null;var theme=t&&t.state&&t.state.theme?t.state.theme:'system';var r=document.documentElement;r.classList.remove('light','dark');if(theme==='light')r.classList.add('light');else if(theme==='dark')r.classList.add('dark');}catch(e){}})();`;
 
-export default function RootLayout({
+export default async function RootLayout({ // {/* MODIFIED */}
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const headersList = await headers(); // {/* ADDED */}
+  const nonce = headersList.get("x-nonce") ?? ""; // {/* ADDED */}
+
   return (
     <html
       lang="ko"
@@ -33,7 +37,7 @@ export default function RootLayout({
       suppressHydrationWarning
     >
       <head>
-        <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
+        <script nonce={nonce} dangerouslySetInnerHTML={{ __html: themeInitScript }} /> {/* MODIFIED */}
       </head>
       <body className="min-h-full flex flex-col">
         <Providers>
