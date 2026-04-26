@@ -8,6 +8,8 @@ import {
   YAxis,
   Tooltip,
   ResponsiveContainer,
+  Brush, /* ADDED */
+  ReferenceLine, /* ADDED */
 } from "recharts";
 import { usePortfolioHistory } from "@/hooks/use-portfolio-history";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -77,6 +79,10 @@ export function PortfolioHistoryChart({ currency }: PortfolioHistoryChartProps) 
       costBasis: Number(p.costBasis),
     })) ?? [];
 
+  const lastValue = chartData.length > 0 /* ADDED */
+    ? chartData[chartData.length - 1].value /* ADDED */
+    : undefined; /* ADDED */
+
   return (
     <Card>
       <CardHeader>
@@ -119,7 +125,7 @@ export function PortfolioHistoryChart({ currency }: PortfolioHistoryChartProps) 
           )}
           {!isLoading && !isError && chartData.length === 0 && <ChartEmpty />}
           {!isLoading && !isError && chartData.length > 0 && (
-            <ResponsiveContainer width="100%" height={256}>
+            <ResponsiveContainer width="100%" height={296}> {/* MODIFIED: +40 for Brush */}
               <LineChart
                 data={chartData}
                 margin={{ top: 8, right: 8, left: 8, bottom: 8 }}
@@ -141,7 +147,18 @@ export function PortfolioHistoryChart({ currency }: PortfolioHistoryChartProps) 
                 <Tooltip
                   formatter={(val: unknown) => formatCurrencyValue(val, currency)}
                   labelFormatter={formatTooltipLabel}
+                  cursor={{ stroke: "hsl(var(--muted-foreground))", strokeDasharray: "3 3", strokeWidth: 1 }} /* MODIFIED */
                 />
+                {/* ADDED: 현재값 reference line */}
+                {lastValue !== undefined && (
+                  <ReferenceLine
+                    y={lastValue}
+                    stroke="hsl(var(--muted-foreground))"
+                    strokeDasharray="3 3"
+                    strokeWidth={1}
+                    label={{ value: "현재", position: "right", fontSize: 10, fill: "hsl(var(--muted-foreground))" }}
+                  />
+                )}
                 <Line
                   type="monotone"
                   dataKey="value"
@@ -150,6 +167,15 @@ export function PortfolioHistoryChart({ currency }: PortfolioHistoryChartProps) 
                   strokeWidth={2}
                   dot={false}
                   activeDot={{ r: 4 }}
+                />
+                {/* ADDED: 드래그 줌 슬라이더 */}
+                <Brush
+                  dataKey="timestamp"
+                  height={24}
+                  stroke="hsl(var(--muted-foreground))"
+                  fill="hsl(var(--muted)/0.3)"
+                  travellerWidth={6}
+                  tickFormatter={(val: Date) => formatTimestamp(val, period)}
                 />
               </LineChart>
             </ResponsiveContainer>
