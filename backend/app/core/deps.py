@@ -24,6 +24,7 @@ from app.repositories.transaction import TransactionRepository
 from app.repositories.user import UserRepository
 from app.repositories.user_asset import UserAssetRepository
 from app.services.auth import AuthService
+from app.services.data_export import DataExportService
 from app.services.fx_rate import FxRateService
 from app.services.login_rate_limiter import LoginRateLimiter  # ADDED
 from app.services.portfolio import PortfolioService
@@ -292,6 +293,24 @@ def get_sample_seed_service(
 
 
 SampleSeedServiceDep = Annotated[SampleSeedService, Depends(get_sample_seed_service)]
+
+# ---------------------------------------------------------------------------
+# Data export DI
+# ---------------------------------------------------------------------------
+
+
+def get_data_export_service(
+    user_asset_repo: UserAssetRepositoryDep,
+    transaction_repo: TransactionRepositoryDep,
+) -> DataExportService:
+    """Inject a DataExportService wired to the current-request repositories."""
+    return DataExportService(
+        user_asset_repo=user_asset_repo,
+        transaction_repo=transaction_repo,
+    )
+
+
+DataExportServiceDep = Annotated[DataExportService, Depends(get_data_export_service)]
 
 # ---------------------------------------------------------------------------
 # Current-user guard
