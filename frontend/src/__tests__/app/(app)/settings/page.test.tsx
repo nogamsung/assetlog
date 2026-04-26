@@ -2,6 +2,7 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import SettingsPage from "@/app/(app)/settings/page";
 import * as useAuthModule from "@/hooks/use-auth";
+import * as useExportModule from "@/hooks/use-export"; // ADDED
 import type { UserResponse } from "@/lib/api/auth";
 
 const mockPush = jest.fn();
@@ -10,6 +11,7 @@ jest.mock("next/navigation", () => ({
 }));
 
 jest.mock("@/hooks/use-auth");
+jest.mock("@/hooks/use-export"); // ADDED
 jest.mock("@/stores/theme", () => ({
   useThemeStore: jest.fn(() => ({
     theme: "system",
@@ -17,16 +19,18 @@ jest.mock("@/stores/theme", () => ({
   })),
 }));
 
-// lucide icons used in ThemeToggle
+// lucide icons used in ThemeToggle and export buttons
 jest.mock("lucide-react", () => ({
   Sun: () => <svg data-testid="icon-sun" />,
   Moon: () => <svg data-testid="icon-moon" />,
   Monitor: () => <svg data-testid="icon-monitor" />,
   Settings: () => <svg data-testid="icon-settings" />,
+  Download: () => <svg data-testid="icon-download" />, // ADDED
 }));
 
 const mockedUseCurrentUser = jest.mocked(useAuthModule.useCurrentUser);
 const mockedUseLogout = jest.mocked(useAuthModule.useLogout);
+const mockedUseExportData = jest.mocked(useExportModule.useExportData); // ADDED
 
 const fakeUser: UserResponse = {
   id: 1,
@@ -37,9 +41,11 @@ const fakeUser: UserResponse = {
 function setupMocks({
   user = fakeUser,
   logoutPending = false,
+  exportPending = false, // ADDED
 }: {
   user?: UserResponse | null;
   logoutPending?: boolean;
+  exportPending?: boolean; // ADDED
 } = {}) {
   mockedUseCurrentUser.mockReturnValue({
     data: user ?? undefined,
@@ -57,7 +63,16 @@ function setupMocks({
     error: null,
   } as unknown as ReturnType<typeof useAuthModule.useLogout>);
 
-  return { mockMutate };
+  const mockExportMutate = jest.fn(); // ADDED
+  mockedUseExportData.mockReturnValue({ // ADDED
+    mutate: mockExportMutate,
+    isPending: exportPending,
+    isError: false,
+    isSuccess: false,
+    error: null,
+  } as unknown as ReturnType<typeof useExportModule.useExportData>);
+
+  return { mockMutate, mockExportMutate }; // MODIFIED
 }
 
 describe("SettingsPage", () => {
@@ -127,5 +142,58 @@ describe("SettingsPage", () => {
     expect(screen.getByText("보안")).toBeInTheDocument();
     expect(screen.getByText("비밀번호는 서버 환경변수로 관리됩니다.")).toBeInTheDocument();
     expect(screen.getByText("비밀번호 변경은 서버 재배포가 필요합니다.")).toBeInTheDocument();
+  });
+
+  // ADDED
+  it("데이터 백업 카드와 JSON 다운로드 버튼이 렌더링된다", () => {
+    setupMocks();
+    render(<SettingsPage />);
+    expect(screen.getByText("데이터 백업")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "데이터를 JSON 으로 내려받기" }),
+    ).toBeInTheDocument();
+  });
+
+  // ADDED
+  it("데이터 백업 카드와 CSV (ZIP) 다운로드 버튼이 렌더링된다", () => {
+    setupMocks();
+    render(<SettingsPage />);
+    expect(
+      screen.getByRole("button", { name: "데이터를 CSV(ZIP) 로 내려받기" }),
+    ).toBeInTheDocument();
+  });
+
+  // ADDED
+  it("JSON 다운로드 버튼 클릭 시 exportMutation.mutate('json') 가 호출된다", async () => {
+    const user = userEvent.setup();
+    const { mockExportMutate } = setupMocks();
+    render(<SettingsPage />);
+    await user.click(
+      screen.getByRole("button", { name: "데이터를 JSON 으로 내려받기" }),
+    );
+    expect(mockExportMutate).toHaveBeenCalledWith("json");
+  });
+
+  // ADDED
+  it("CSV (ZIP) 다운로드 버튼 클릭 시 exportMutation.mutate('csv') 가 호출된다", async () => {
+    const user = userEvent.setup();
+    const { mockExportMutate } = setupMocks();
+    render(<SettingsPage />);
+    await user.click(
+      screen.getByRole("button", { name: "데이터를 CSV(ZIP) 로 내려받기" }),
+    );
+    expect(mockExportMutate).toHaveBeenCalledWith("csv");
+  });
+
+  // ADDED
+  it("exportPending=true 면 다운로드 버튼이 비활성화된다", () => {
+    setupMocks({ exportPending: true });
+    render(<SettingsPage />);
+    expect(
+      screen.getByRole("button", { name: "데이터를 JSON 으로 내려받기" }),
+    ).toBeDisabled();
+    expect(
+      screen.getByRole("button", { name: "데이터를 CSV(ZIP) 로 내려받기" }),
+    ).toBeDisabled();
   });
 });
