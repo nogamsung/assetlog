@@ -6,7 +6,7 @@
 
 <br/>
 
-[![Version](https://img.shields.io/badge/version-0.1.0-blue)](https://github.com/nogamsung/assetlog/releases)
+[![Version](https://img.shields.io/badge/version-0.9.0-blue)](https://github.com/nogamsung/assetlog/releases)
 [![Python](https://img.shields.io/badge/Python-3.11+-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
 [![Next.js](https://img.shields.io/badge/Next.js-15-000000?logo=next.js&logoColor=white)](https://nextjs.org/)
