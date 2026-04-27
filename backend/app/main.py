@@ -27,6 +27,7 @@ from app.exceptions import (
     ValidationError,
 )
 from app.routers.auth import router as auth_router
+from app.routers.bulk_transaction import router as bulk_transaction_router
 from app.routers.export import router as export_router
 from app.routers.fx import router as fx_router
 from app.routers.portfolio import router as portfolio_router
@@ -248,6 +249,7 @@ app.include_router(auth_router)
 app.include_router(symbol_router)
 app.include_router(user_asset_router)
 app.include_router(transaction_router)
+app.include_router(bulk_transaction_router)
 app.include_router(portfolio_router)
 app.include_router(fx_router)
 app.include_router(sample_router)
