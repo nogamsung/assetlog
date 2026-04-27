@@ -4,5 +4,55 @@
     "frontend-design@claude-plugins-official": true,
     "typescript-lsp@claude-plugins-official": true,
     "marketing-skills@marketingskills": true
+  },
+  "permissions": {
+    "allow": [
+      "Bash(uv *)",
+      "Bash(uvx *)",
+      "Bash(python *)",
+      "Bash(python3 *)",
+      "Bash(pytest *)",
+      "Bash(ruff *)",
+      "Bash(mypy *)",
+      "Bash(alembic *)",
+      "Bash(uvicorn *)",
+      "Bash(npm *)",
+      "Bash(npx *)",
+      "Bash(node *)",
+      "Bash(pnpm *)",
+      "Bash(yarn *)",
+      "Bash(git *)",
+      "Bash(docker *)",
+      "Bash(docker-compose *)",
+      "Bash(docker compose *)",
+      "Bash(mkdir *)",
+      "Bash(cp *)",
+      "Bash(mv *)",
+      "Bash(touch *)",
+      "Bash(jq *)"
+    ],
+    "deny": [
+      "Bash(rm -rf /)",
+      "Bash(rm -rf ~*)",
+      "Bash(git push --force *)",
+      "Bash(git push -f *)",
+      "Bash(DROP TABLE*)",
+      "Bash(TRUNCATE *)"
+    ]
+  },
+  "hooks": {
+    "SessionStart": [
+      { "hooks": [{ "type": "command", "command": "bash .claude/hooks/session-start.sh" }] }
+    ],
+    "PreToolUse": [
+      { "matcher": "Bash", "hooks": [{ "type": "command", "command": "bash .claude/hooks/safety-guard.sh" }] },
+      { "matcher": "Bash", "hooks": [{ "type": "command", "command": "bash .claude/hooks/pre-push.sh" }] }
+    ],
+    "PostToolUse": [
+      { "matcher": "Edit|Write|MultiEdit", "hooks": [{ "type": "command", "command": "bash .claude/hooks/post-edit-lint.sh" }] }
+    ],
+    "Stop": [
+      { "hooks": [{ "type": "command", "command": "[ ! -f .claude/stacks.json ] && exit 0; echo \"[Harness] stack tests\"; jq -c '.stacks[]' .claude/stacks.json 2>/dev/null | while read -r s; do P=$(echo \"$s\" | jq -r '.path'); T=$(echo \"$s\" | jq -r '.type'); [ ! -d \"$P\" ] && continue; echo \"  -> [$P] ($T)\"; case \"$T\" in kotlin*) (cd \"$P\" && [ -f ./gradlew ] && ./gradlew test --daemon -q 2>&1 | tail -15) ;; go*) (cd \"$P\" && [ -f go.mod ] && go test ./... 2>&1 | tail -15) ;; python*) (cd \"$P\" && [ -f pyproject.toml ] && command -v uv &>/dev/null && uv run pytest 2>&1 | tail -15) ;; nextjs*) (cd \"$P\" && [ -f package.json ] && npx tsc --noEmit 2>&1 | tail -10 && npx jest --passWithNoTests 2>&1 | tail -15) ;; flutter) (cd \"$P\" && [ -f pubspec.yaml ] && command -v flutter &>/dev/null && flutter test 2>&1 | tail -15) ;; esac; done" }] }
+    ]
   }
 }

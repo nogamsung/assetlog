@@ -81,6 +81,7 @@ prefix 를 소비하고 나머지 인자로 Step 1 부터 진행 (예: `/new bac
 | `module` | 멀티 모듈 서브모듈 |
 | `workflow` | GitHub Actions |
 | `worktree` | git worktree |
+| `dockerfile` | Dockerfile + docker-compose + .dockerignore |
 
 ### Step 2 — 인수 패턴 기반 자동 감지
 
@@ -136,6 +137,7 @@ prefix 를 소비하고 나머지 인자로 Step 1 부터 진행 (예: `/new bac
 /new api User                 # 자동 감지가 틀릴 때 강제 지정
 /new module notification      # 멀티 모듈에서 소문자 이름을 모듈로 강제
 /new workflow ci              # workflow 명시
+/new dockerfile               # 현재 스택에 맞춰 Dockerfile + compose 생성
 
 # 모노레포 — 역할 prefix 로 대상 스택 명시
 /new backend api User            # backend 경로에서 api 스캐폴딩
@@ -443,6 +445,62 @@ lib/features/{feature_name}/
 3. 외부 설정 안내 (npm token, OIDC role 등)
 
 **주의사항**: `secrets.*` 하드코딩 금지 / `uses:` action 버전 고정 (`@v4` 이상) / 스택별 캐시 설정 필수 / 릴리스는 `push: tags: ['v*.*.*']` 트리거.
+
+---
+
+## `dockerfile` — Dockerfile + docker-compose 생성
+
+**인수**: `[--compose | --no-compose]` (기본: `--compose`)
+
+### Step 1 — 스택 감지
+
+루트(또는 역할 prefix 로 cd 한 경로)의 마커로 스택을 결정:
+
+| 감지 파일 | 스택 | 베이스 이미지 |
+|-----------|------|----------------|
+| `pyproject.toml` (`fastapi` 의존성) | Python FastAPI | `python:3.12-slim` builder → `python:3.12-slim` runtime (non-root) |
+| `build.gradle.kts` / `pom.xml` | Kotlin Spring Boot | `eclipse-temurin:21-jdk` builder → `eclipse-temurin:21-jre-alpine` runtime |
+| `go.mod` | Go Gin | `golang:1.22-alpine` builder → `gcr.io/distroless/static-debian12` runtime |
+| `package.json` (`next` 의존성) | Next.js | `node:20-alpine` deps → builder → runner. `next.config.js` 에 `output: 'standalone'` 필요 |
+| `pubspec.yaml` | Flutter | **미지원** — 안내 후 종료 (CI 빌드용으로만 사용) |
+
+### Step 2 — 패턴 참고
+
+`.claude/skills/docker-patterns.md` 읽기 — 스택별 멀티스테이지 템플릿, .dockerignore, HEALTHCHECK, non-root user 설정 포함.
+
+### Step 3 — 생성 파일
+
+| 파일 | 목적 |
+|------|------|
+| `Dockerfile` | 멀티스테이지 빌드, non-root user, HEALTHCHECK |
+| `.dockerignore` | `.git`, `node_modules`, `.venv`, `target`, `build`, `.env*`, `tests/` 등 |
+| `docker-compose.yml` (옵션) | 로컬 개발용 — app + Postgres + Redis |
+
+`--no-compose` 시 `docker-compose.yml` 생성 생략.
+
+### Step 4 — 기존 파일 처리
+
+- `Dockerfile` 이미 있으면 덮어쓰기 전 사용자 확인
+- `.dockerignore` 이미 있으면 병합 제안
+- `docker-compose.yml` 이미 있으면 섹션 추가 제안
+
+### Step 5 — 완료 출력
+
+```
+✅ Dockerfile + docker-compose.yml 생성 완료
+
+빌드: docker build -t {project}:local .
+실행: docker compose up
+이미지 크기: {estimated size}
+```
+
+**주의사항**:
+- **시크릿 노출 금지**: `ENV API_KEY=...` 절대 금지. `docker run --env-file`, `docker secret`, 또는 런타임 주입
+- **non-root user 필수**: `RUN useradd -m app && USER app` 마지막에
+- **HEALTHCHECK 필수**: 스택별 엔드포인트 (FastAPI `/health`, Spring `/actuator/health` 등)
+- **Multi-arch 빌드**: 프로덕션 배포 시 `docker buildx build --platform linux/amd64,linux/arm64`
+- Next.js 는 반드시 `output: 'standalone'` — 안 하면 이미지가 500MB+
+- Go 는 distroless 권장 — 공격면 최소화
 
 ---
 
