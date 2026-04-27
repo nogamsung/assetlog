@@ -1,3 +1,4 @@
+@import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css'); /* ADDED */
 @import "tailwindcss";
 
 /* ============================================================
@@ -57,6 +58,19 @@
     --color-foreground: hsl(var(--foreground));
     --font-sans: var(--font-geist-sans);
     --font-mono: var(--font-geist-mono);
+
+    /* ADDED: Toss design tokens — light */
+    --toss-blue: #3182F6;
+    --toss-blue-bg: #EAF2FE;
+    --toss-text-strong: #191F28;
+    --toss-text: #333D4B;
+    --toss-text-weak: #8B95A1;
+    --toss-text-disabled: #B0B8C1;
+    --toss-up: #F04452;
+    --toss-down: #1B64DA;
+    --toss-bg: #FFFFFF;
+    --toss-card: #F9FAFB;
+    --toss-border: #F2F4F6;
   }
 
   .dark {
@@ -88,6 +102,19 @@
     --input: 240 3.7% 15.9%;
     --ring: 240 4.9% 83.9%;
 
+    /* ADDED: Toss design tokens — dark */
+    --toss-blue: #4593FC;
+    --toss-blue-bg: #1E2A3D;
+    --toss-text-strong: #F1F3F5;
+    --toss-text: #D1D6DB;
+    --toss-text-weak: #8B95A1;
+    --toss-text-disabled: #4E5968;
+    --toss-up: #F76A77;
+    --toss-down: #5187E5;
+    --toss-bg: #17171C;
+    --toss-card: #1E1F24;
+    --toss-border: #2A2D32;
+
     --chart-1: 220 70% 50%;
     --chart-2: 160 60% 45%;
     --chart-3: 30 80% 55%;
@@ -101,6 +128,19 @@
   --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+
+  /* ADDED: Toss color tokens for Tailwind v4 — bg-toss-card, text-toss-up, etc. */
+  --color-toss-blue: var(--toss-blue);
+  --color-toss-blueBg: var(--toss-blue-bg);
+  --color-toss-up: var(--toss-up);
+  --color-toss-down: var(--toss-down);
+  --color-toss-bg: var(--toss-bg);
+  --color-toss-card: var(--toss-card);
+  --color-toss-border: var(--toss-border);
+  --color-toss-text: var(--toss-text);
+  --color-toss-textStrong: var(--toss-text-strong);
+  --color-toss-textWeak: var(--toss-text-weak);
+  --color-toss-textDisabled: var(--toss-text-disabled);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -132,11 +172,38 @@
     --border: 240 3.7% 15.9%;
     --input: 240 3.7% 15.9%;
     --ring: 240 4.9% 83.9%;
+
+    /* ADDED: Toss tokens for prefers-color-scheme: dark */
+    --toss-blue: #4593FC;
+    --toss-blue-bg: #1E2A3D;
+    --toss-text-strong: #F1F3F5;
+    --toss-text: #D1D6DB;
+    --toss-text-weak: #8B95A1;
+    --toss-text-disabled: #4E5968;
+    --toss-up: #F76A77;
+    --toss-down: #5187E5;
+    --toss-bg: #17171C;
+    --toss-card: #1E1F24;
+    --toss-border: #2A2D32;
   }
 }
 
+/* MODIFIED: Pretendard font, toss bg/text, tabular nums */
 body {
-  background: hsl(var(--background));
-  color: hsl(var(--foreground));
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--toss-bg);
+  color: var(--toss-text);
+  font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', system-ui, sans-serif;
+  font-feature-settings: 'tnum' 1;
+}
+
+/* ADDED: iOS auto-zoom prevention — inputs must be >= 16px on mobile */
+@layer base {
+  input, select, textarea {
+    font-size: 16px;
+  }
+  @media (min-width: 640px) {
+    input, select, textarea {
+      font-size: 0.875rem;
+    }
+  }
 }

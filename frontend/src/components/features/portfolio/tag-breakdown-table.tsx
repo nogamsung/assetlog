@@ -97,12 +97,12 @@ export function TagBreakdownTable() {
   const { data, isLoading, isError, error } = useTagBreakdown();
 
   return (
-    <div className="rounded-xl border bg-card">
-      <div className="border-b px-4 py-3">
-        <h2 className="text-sm font-semibold">태그별 거래 집계</h2>
+    <div className="rounded-2xl border border-toss-border bg-toss-card"> {/* MODIFIED: toss tokens */}
+      <div className="border-b border-toss-border px-4 py-3"> {/* MODIFIED */}
+        <h2 className="text-sm font-semibold text-toss-textStrong">태그별 거래 집계</h2> {/* MODIFIED */}
       </div>
 
-      <div className="overflow-x-auto">
+      <div className="overflow-x-auto"> {/* MODIFIED: horizontal scroll for mobile */}
         {isLoading ? (
           <div className="p-4">
             <TableSkeleton />
@@ -119,11 +119,11 @@ export function TagBreakdownTable() {
         ) : !data || data.entries.length === 0 ? (
           <EmptyState />
         ) : (
-          <table className="w-full text-sm">
+          <table className="w-full text-sm min-w-[480px]"> {/* MODIFIED: min-w prevents collapse on mobile */}
             <caption className="sr-only">태그별 거래 flow 집계 테이블</caption>
             <thead>
-              <tr className="border-b text-left text-muted-foreground">
-                <th scope="col" className="px-4 py-3 font-medium">
+              <tr className="border-b border-toss-border text-left text-toss-textWeak"> {/* MODIFIED */}
+                <th scope="col" className="sticky left-0 bg-toss-card px-4 py-3 font-medium"> {/* MODIFIED: sticky first col */}
                   태그
                 </th>
                 <th scope="col" className="px-4 py-3 font-medium text-right">

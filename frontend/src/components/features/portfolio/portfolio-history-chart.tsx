@@ -116,6 +116,7 @@ export function PortfolioHistoryChart({ currency }: PortfolioHistoryChartProps) 
         <div
           role="img"
           aria-label="포트폴리오 시계열 차트"
+          className="h-60 sm:h-80" /* ADDED: responsive height */
         >
           {isLoading && <ChartSkeleton />}
           {isError && (
@@ -125,7 +126,7 @@ export function PortfolioHistoryChart({ currency }: PortfolioHistoryChartProps) 
           )}
           {!isLoading && !isError && chartData.length === 0 && <ChartEmpty />}
           {!isLoading && !isError && chartData.length > 0 && (
-            <ResponsiveContainer width="100%" height={296}> {/* MODIFIED: +40 for Brush */}
+            <ResponsiveContainer width="100%" height="100%"> {/* MODIFIED: use container height */}
               <LineChart
                 data={chartData}
                 margin={{ top: 8, right: 8, left: 8, bottom: 8 }}

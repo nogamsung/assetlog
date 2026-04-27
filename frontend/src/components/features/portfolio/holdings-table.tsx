@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { formatCurrency, formatPercent, formatQuantity } from "@/lib/format";
+import { formatCurrency, formatPercent, formatQuantity, pnlColor } from "@/lib/format"; /* MODIFIED */
 import { PendingBadge } from "./pending-badge";
 import { StaleBadge } from "./stale-badge";
 import type { HoldingResponse } from "@/types/portfolio";
@@ -95,7 +95,7 @@ export function HoldingsTable({ holdings }: HoldingsTableProps) {
   }
 
   return (
-    <div className="overflow-x-auto rounded-xl border bg-card">
+    <div className="hidden sm:block overflow-x-auto rounded-2xl border border-toss-border bg-toss-card"> {/* MODIFIED: hidden sm:block + toss tokens */}
       <table className="w-full text-sm">
         <caption className="sr-only">보유 자산 목록 — 열 헤더를 클릭하면 정렬됩니다</caption>
         <thead>
@@ -147,14 +147,7 @@ export function HoldingsTable({ holdings }: HoldingsTableProps) {
             const displayCurr = holding.displayCurrency ?? nativeCurrency;
 
             const dispPnl = displayValue(holding, "pnlAbs"); // ADDED
-            const pnlColorClass =
-              dispPnl === null
-                ? ""
-                : Number(dispPnl) > 0
-                  ? "text-green-600"
-                  : Number(dispPnl) < 0
-                    ? "text-destructive"
-                    : "text-muted-foreground";
+            const pnlColorClass = dispPnl === null ? "" : pnlColor(dispPnl); /* MODIFIED: pnlColor */
 
             const dispLatestValue = displayValue(holding, "latestValue"); // ADDED
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { Pencil } from "lucide-react"; // ADDED
+import { Pencil, Trash2 } from "lucide-react"; /* MODIFIED: added Trash2 */
 import { useTransactions, useDeleteTransaction } from "@/hooks/use-transactions";
 import type { TransactionResponse } from "@/types/transaction"; // ADDED
 
@@ -66,14 +66,14 @@ export function TransactionList({ userAssetId, onEdit, onTagClick, activeTag }: 
         return (
           <div
             key={tx.id}
-            className="flex items-center justify-between rounded-lg border bg-card px-4 py-3 shadow-sm"
+            className="flex items-center justify-between rounded-2xl border border-toss-border bg-toss-card px-4 py-3" /* MODIFIED: toss card */
           >
             <div className="flex items-center gap-4">
               <span
-                className={`text-xs font-semibold px-2 py-0.5 rounded-full ${ // MODIFIED
+                className={`text-xs font-bold px-2.5 py-0.5 rounded-full ${ /* MODIFIED: toss colors for buy/sell */
                   tx.type === "buy"
-                    ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400"
-                    : "bg-rose-100 text-rose-700 dark:bg-rose-950/40 dark:text-rose-400"
+                    ? "bg-toss-up/10 text-toss-up"
+                    : "bg-toss-down/10 text-toss-down"
                 }`}
               >
                 {tx.type === "buy" ? "매수" : "매도"}
@@ -102,12 +102,12 @@ export function TransactionList({ userAssetId, onEdit, onTagClick, activeTag }: 
               )}
             </div>
             <div className="flex items-center gap-1"> {/* ADDED */}
-            {onEdit && ( // ADDED
+            {onEdit && (
               <button
                 type="button"
                 onClick={() => onEdit(tx)}
                 aria-label={`거래 #${tx.id} 편집`}
-                className="rounded p-1 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                className="min-h-11 min-w-11 flex items-center justify-center rounded-xl text-toss-textWeak hover:text-toss-text hover:bg-toss-card transition-colors" /* MODIFIED: icon-touch */
               >
                 <Pencil className="h-4 w-4" aria-hidden="true" />
               </button>
@@ -117,24 +117,9 @@ export function TransactionList({ userAssetId, onEdit, onTagClick, activeTag }: 
               onClick={() => handleDelete(tx.id)}
               disabled={deleteMutation.isPending}
               aria-label={`거래 #${tx.id} 삭제`}
-              className="rounded p-1 text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors disabled:opacity-50"
+              className="min-h-11 min-w-11 flex items-center justify-center rounded-xl text-toss-textWeak hover:text-toss-up hover:bg-toss-up/10 transition-colors disabled:opacity-50" /* MODIFIED: icon-touch + toss colors + Trash2 */
             >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                width="16"
-                height="16"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                aria-hidden="true"
-              >
-                <path d="M3 6h18" />
-                <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" />
-                <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" />
-              </svg>
+              <Trash2 className="h-4 w-4" aria-hidden="true" /> {/* MODIFIED: replaced inline SVG */}
             </button>
             </div> {/* ADDED */}
           </div>

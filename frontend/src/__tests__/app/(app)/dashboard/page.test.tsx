@@ -180,8 +180,9 @@ describe("DashboardView", () => {
     expect(screen.getByText("총평가액")).toBeInTheDocument();
     expect(screen.getByText("미실현 손익")).toBeInTheDocument();
     expect(screen.getByText("실현 손익")).toBeInTheDocument();
-    // 테이블
-    expect(screen.getByText("005930")).toBeInTheDocument();
+    // 테이블 + 모바일 리스트 (둘 다 렌더링 — CSS로 교대 표시) MODIFIED
+    const symbols = screen.getAllByText("005930");
+    expect(symbols.length).toBeGreaterThanOrEqual(1);
     // 차트 영역
     expect(screen.getByRole("img", { name: "포트폴리오 시계열 차트" })).toBeInTheDocument();
     // 태그별 거래 집계 테이블 마운트

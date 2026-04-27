@@ -153,7 +153,7 @@ export function BulkGridTab({ onSuccess }: BulkGridTabProps) {
                         aria-label={`${index + 1}행 종목 코드`}
                         aria-invalid={!!rowErrors?.symbol}
                         aria-describedby={rowErrors?.symbol ? `err-${index}-symbol` : undefined}
-                        className="w-full rounded border-0 bg-transparent px-1 py-0.5 text-xs focus:outline-none focus:ring-1 focus:ring-ring aria-[invalid=true]:text-destructive"
+                        className="w-full rounded border-0 bg-transparent px-1 py-0.5 text-base focus:outline-none focus:ring-1 focus:ring-toss-blue aria-[invalid=true]:text-toss-up" /* MODIFIED: text-base + toss colors */
                       />
                       {rowErrors?.symbol && (
                         <p id={`err-${index}-symbol`} role="alert" className="text-destructive text-xs mt-0.5">
