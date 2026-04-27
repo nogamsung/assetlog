@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from sqlalchemy import select
+from sqlalchemy import select, tuple_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -78,3 +78,30 @@ class UserAssetRepository:
         stmt = select(AssetSymbol).where(AssetSymbol.id == asset_symbol_id)
         result = await self._session.execute(stmt)
         return result.scalar_one_or_none()
+
+    async def get_user_asset_ids_by_symbol_exchange(
+        self,
+        pairs: list[tuple[str, str]],
+    ) -> dict[tuple[str, str], int]:
+        """Return a mapping of (symbol, exchange) → user_asset_id for the given pairs.
+
+        Issues a single SQL query using tuple IN to avoid N+1.  Pairs that have
+        no matching UserAsset row are omitted from the result dict — the caller
+        is responsible for detecting and reporting missing entries.
+
+        Args:
+            pairs: List of (symbol, exchange) tuples to resolve.
+
+        Returns:
+            Dict mapping each found (symbol, exchange) pair to its user_asset_id.
+        """
+        if not pairs:
+            return {}
+
+        stmt = (
+            select(UserAsset.id, AssetSymbol.symbol, AssetSymbol.exchange)
+            .join(AssetSymbol, UserAsset.asset_symbol_id == AssetSymbol.id)
+            .where(tuple_(AssetSymbol.symbol, AssetSymbol.exchange).in_(pairs))
+        )
+        rows = (await self._session.execute(stmt)).all()
+        return {(row.symbol, row.exchange): row.id for row in rows}

@@ -209,6 +209,38 @@ class TransactionRepository:
         await self._session.flush()
         return True
 
+    async def list_all_for_user_assets(
+        self,
+        user_asset_ids: list[int],
+    ) -> dict[int, list[Transaction]]:
+        """Return all transactions for multiple user_assets in a single query.
+
+        Results are grouped by user_asset_id and ordered by traded_at ASC within
+        each group.  Used by BulkTransactionService to perform running-balance
+        validation across multiple assets without issuing N+1 queries.
+
+        Args:
+            user_asset_ids: List of UserAsset IDs to fetch transactions for.
+
+        Returns:
+            Dict mapping user_asset_id → list[Transaction] (sorted traded_at ASC).
+        """
+        if not user_asset_ids:
+            return {}
+
+        stmt = (
+            select(Transaction)
+            .where(Transaction.user_asset_id.in_(user_asset_ids))
+            .order_by(Transaction.user_asset_id.asc(), Transaction.traded_at.asc())
+        )
+        result = await self._session.execute(stmt)
+        txs = list(result.scalars().all())
+
+        grouped: dict[int, list[Transaction]] = {uid: [] for uid in user_asset_ids}
+        for tx in txs:
+            grouped[tx.user_asset_id].append(tx)
+        return grouped
+
     async def list_all(self) -> list[Transaction]:
         """Return all transactions across all user_assets in single-owner mode.
 

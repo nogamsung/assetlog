@@ -23,6 +23,7 @@ from app.repositories.price_point import PricePointRepository
 from app.repositories.transaction import TransactionRepository
 from app.repositories.user_asset import UserAssetRepository
 from app.services.auth import AuthService
+from app.services.bulk_transaction import BulkTransactionService
 from app.services.data_export import DataExportService
 from app.services.fx_rate import FxRateService
 from app.services.login_rate_limiter import LoginRateLimiter
@@ -139,6 +140,17 @@ def get_transaction_service(
 
 
 TransactionServiceDep = Annotated[TransactionService, Depends(get_transaction_service)]
+
+
+def get_bulk_transaction_service(
+    tx_repo: TransactionRepositoryDep,
+    ua_repo: UserAssetRepositoryDep,
+) -> BulkTransactionService:
+    """Inject a BulkTransactionService bound to the current request session."""
+    return BulkTransactionService(transaction_repo=tx_repo, user_asset_repo=ua_repo)
+
+
+BulkTransactionServiceDep = Annotated[BulkTransactionService, Depends(get_bulk_transaction_service)]
 
 
 def get_portfolio_repository(session: DbSession) -> PortfolioRepository:
