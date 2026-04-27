@@ -158,6 +158,49 @@ describe("useDeleteUserAsset", () => {
     const cached = queryClient.getQueryData<UserAssetResponse[]>(["user-assets"]);
     expect(cached).toEqual([fakeUserAsset]);
   });
+
+  it("portfolio holdings 캐시에서도 즉시 제거된다 (UI 즉시 반영)", async () => {
+    mockedDeleteUserAsset.mockResolvedValueOnce(undefined);
+    mockedListUserAssets.mockResolvedValue([fakeUserAsset]);
+
+    const { Wrapper, queryClient } = makeWrapper();
+    const fakeHolding = {
+      userAssetId: 10,
+      symbol: "AAPL",
+      exchange: "NASDAQ",
+      name: "Apple Inc.",
+      assetType: "stock",
+      quantity: "1",
+      avgPrice: "100",
+      currency: "USD",
+      currentPrice: null,
+      marketValue: null,
+      unrealizedPnl: null,
+      unrealizedPnlPct: null,
+    } as unknown as Parameters<typeof queryClient.setQueryData>[1];
+
+    queryClient.setQueryData(["portfolio", "holdings", null], [fakeHolding]);
+    queryClient.setQueryData(["user-assets"], [fakeUserAsset]);
+
+    const { result } = renderHook(() => useDeleteUserAsset(), {
+      wrapper: Wrapper,
+    });
+
+    act(() => {
+      result.current.mutate(10);
+    });
+
+    await waitFor(() => {
+      const holdings = queryClient.getQueryData<{ userAssetId: number }[]>([
+        "portfolio",
+        "holdings",
+        null,
+      ]);
+      expect(holdings?.find((h) => h.userAssetId === 10)).toBeUndefined();
+    });
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+  });
 });
 
 describe("useSymbolSearch", () => {
