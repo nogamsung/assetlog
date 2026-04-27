@@ -71,9 +71,7 @@ def get_login_attempt_repository(session: DbSession) -> LoginAttemptRepository:
     return LoginAttemptRepository(session)
 
 
-LoginAttemptRepositoryDep = Annotated[
-    LoginAttemptRepository, Depends(get_login_attempt_repository)
-]
+LoginAttemptRepositoryDep = Annotated[LoginAttemptRepository, Depends(get_login_attempt_repository)]
 
 
 def get_login_rate_limiter(
@@ -161,9 +159,14 @@ FxRateRepositoryDep = Annotated[FxRateRepository, Depends(get_fx_rate_repository
 
 def get_fx_rate_service(repo: FxRateRepositoryDep) -> FxRateService:
     """Inject a FxRateService bound to the current request session."""
-    from app.adapters.fx import FrankfurterAdapter  # noqa: PLC0415  # lazy to avoid circular import
+    from app.adapters.fx import (  # noqa: PLC0415  # lazy to avoid circular import
+        ChainedFxAdapter,
+        FawazCurrencyApiAdapter,
+        FrankfurterAdapter,
+    )
 
-    return FxRateService(repo=repo, adapter=FrankfurterAdapter())
+    adapter = ChainedFxAdapter([FrankfurterAdapter(), FawazCurrencyApiAdapter()])
+    return FxRateService(repo=repo, adapter=adapter)
 
 
 FxRateServiceDep = Annotated[FxRateService, Depends(get_fx_rate_service)]

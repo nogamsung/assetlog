@@ -7,7 +7,7 @@ import logging
 from datetime import UTC, datetime
 from decimal import Decimal
 
-from app.adapters.fx import FrankfurterAdapter
+from app.adapters.fx import FxRateAdapter
 from app.exceptions import FxRateNotAvailableError
 from app.models.fx_rate import FxRate
 from app.repositories.fx_rate import FxRateRepository
@@ -23,7 +23,7 @@ class FxRateService:
     """Business logic for exchange rate management.
 
     Responsibilities:
-    - Refresh all needed rate pairs via the Frankfurter adapter.
+    - Refresh all needed rate pairs via the injected FX adapter chain.
     - Persist rates using the FxRateRepository (upsert).
     - Convert monetary amounts between currencies using cached rates.
 
@@ -33,7 +33,7 @@ class FxRateService:
     def __init__(
         self,
         repo: FxRateRepository,
-        adapter: FrankfurterAdapter,
+        adapter: FxRateAdapter,
     ) -> None:
         self._repo = repo
         self._adapter = adapter
@@ -42,7 +42,7 @@ class FxRateService:
         """Fetch all N×(N-1) rate pairs for supported currencies and persist them.
 
         For each currency treated as the base, we fetch rates for all other
-        currencies in one API call (Frankfurter supports multi-quote).
+        currencies in one API call (the adapter chain supports multi-quote).
 
         Returns:
             Total number of rate pairs successfully upserted.
