@@ -11,6 +11,8 @@ import {
 } from "@/lib/api/asset";
 import type { AssetType, UserAssetResponse } from "@/types/asset";
 import type { UserAssetCreateInput } from "@/lib/schemas/asset";
+import type { HoldingResponse } from "@/types/portfolio";
+import { portfolioKeys } from "@/hooks/use-portfolio";
 
 // ── Query keys (co-located) ───────────────────────────────────────────────────
 
@@ -52,24 +54,50 @@ export function useDeleteUserAsset() {
   return useMutation<void, Error, number>({
     mutationFn: deleteUserAsset,
     onMutate: async (id) => {
-      await queryClient.cancelQueries({ queryKey: assetKeys.userAssets });
-      const previous = queryClient.getQueryData<UserAssetResponse[]>(
+      await Promise.all([
+        queryClient.cancelQueries({ queryKey: assetKeys.userAssets }),
+        queryClient.cancelQueries({ queryKey: ["portfolio", "holdings"] }),
+      ]);
+
+      const previousAssets = queryClient.getQueryData<UserAssetResponse[]>(
         assetKeys.userAssets,
       );
       queryClient.setQueryData<UserAssetResponse[]>(
         assetKeys.userAssets,
         (old) => old?.filter((a) => a.id !== id) ?? [],
       );
-      return { previous };
+
+      const previousHoldings = queryClient.getQueriesData<HoldingResponse[]>({
+        queryKey: ["portfolio", "holdings"],
+      });
+      for (const [key] of previousHoldings) {
+        queryClient.setQueryData<HoldingResponse[]>(key, (old) =>
+          old?.filter((h) => h.userAssetId !== id) ?? [],
+        );
+      }
+
+      return { previousAssets, previousHoldings };
     },
     onError: (_err, _id, context) => {
-      const ctx = context as { previous?: UserAssetResponse[] } | undefined;
-      if (ctx?.previous !== undefined) {
-        queryClient.setQueryData(assetKeys.userAssets, ctx.previous);
+      const ctx = context as
+        | {
+            previousAssets?: UserAssetResponse[];
+            previousHoldings?: [readonly unknown[], HoldingResponse[] | undefined][];
+          }
+        | undefined;
+      if (ctx?.previousAssets !== undefined) {
+        queryClient.setQueryData(assetKeys.userAssets, ctx.previousAssets);
+      }
+      if (ctx?.previousHoldings) {
+        for (const [key, data] of ctx.previousHoldings) {
+          queryClient.setQueryData(key, data);
+        }
       }
     },
     onSettled: () => {
       void queryClient.invalidateQueries({ queryKey: assetKeys.userAssets });
+      void queryClient.invalidateQueries({ queryKey: ["portfolio", "holdings"] });
+      void queryClient.invalidateQueries({ queryKey: portfolioKeys.summary() });
     },
   });
 }
