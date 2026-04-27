@@ -17,7 +17,7 @@ _NULL_TAG_SENTINEL = "￿"
 
 
 class TagBreakdownService:
-    """Aggregate per-tag transaction flow metrics for a single user.
+    """Aggregate per-tag transaction flow metrics.
 
     No FastAPI imports — HTTP concerns stay in the router layer.
     """
@@ -25,21 +25,15 @@ class TagBreakdownService:
     def __init__(self, repo: PortfolioRepository) -> None:
         self._repo = repo
 
-    async def get_breakdown(self, user_id: int) -> TagBreakdownResponse:
+    async def get_breakdown(self) -> TagBreakdownResponse:
         """Return per-tag flow breakdown sorted by transaction_count DESC.
 
         Sort order:
         1. transaction_count DESC
         2. tag ASC (case-sensitive lexicographic)
         3. tag=null always last
-
-        Args:
-            user_id: Authenticated user's PK.
-
-        Returns:
-            TagBreakdownResponse — entries=[] when the user has no transactions.
         """
-        raw_rows = await self._repo.list_tag_breakdown_rows(user_id)
+        raw_rows = await self._repo.list_tag_breakdown_rows()
 
         if not raw_rows:
             return TagBreakdownResponse(entries=[])
@@ -89,9 +83,5 @@ class TagBreakdownService:
             for r in sorted_rows
         ]
 
-        logger.debug(
-            "get_breakdown: user_id=%s tag_count=%d",
-            user_id,
-            len(entries),
-        )
+        logger.debug("get_breakdown: tag_count=%d", len(entries))
         return TagBreakdownResponse(entries=entries)

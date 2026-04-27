@@ -3,22 +3,13 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/theme-toggle";
-import { Download } from "lucide-react"; // ADDED
-import { useCurrentUser, useLogout } from "@/hooks/use-auth";
-import { useExportData } from "@/hooks/use-export"; // ADDED
+import { Download } from "lucide-react";
+import { useLogout } from "@/hooks/use-auth";
+import { useExportData } from "@/hooks/use-export";
 
 export default function SettingsPage() {
-  const { data: user } = useCurrentUser();
   const logoutMutation = useLogout();
-  const exportMutation = useExportData(); // ADDED
-
-  const createdAt = user?.createdAt
-    ? new Date(user.createdAt).toLocaleDateString("ko-KR", {
-        year: "numeric",
-        month: "long",
-        day: "numeric",
-      })
-    : null;
+  const exportMutation = useExportData();
 
   return (
     <div className="container mx-auto max-w-2xl px-4 py-8 space-y-6">
@@ -34,18 +25,6 @@ export default function SettingsPage() {
             <p className="text-sm font-medium text-muted-foreground">계정 유형</p>
             <p className="text-sm">단일 사용자 계정</p>
           </div>
-          {user && (
-            <>
-              <div className="space-y-1">
-                <p className="text-sm font-medium text-muted-foreground">이메일</p>
-                <p className="text-sm">{user.email}</p>
-              </div>
-              <div className="space-y-1">
-                <p className="text-sm font-medium text-muted-foreground">가입일</p>
-                <p className="text-sm">{createdAt}</p>
-              </div>
-            </>
-          )}
           <Button
             variant="outline"
             size="sm"

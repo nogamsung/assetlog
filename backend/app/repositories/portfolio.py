@@ -19,21 +19,18 @@ logger = logging.getLogger(__name__)
 
 
 class PortfolioRepository:
-    """Read-only aggregation queries scoped to a single user.
+    """Read-only aggregation queries for the single owner.
 
-    The single public method issues one database round-trip by combining
-    a correlated subquery for BUY-transaction aggregates with selectinload
-    for the AssetSymbol relationship — N+1 is explicitly prevented.
+    Issues one database round-trip by combining a correlated subquery for
+    transaction aggregates with selectinload for the AssetSymbol relationship —
+    N+1 is explicitly prevented.
     """
 
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
 
-    async def list_user_holdings_with_aggregates(
-        self,
-        user_id: int,
-    ) -> list[HoldingRow]:
-        """Return aggregated holding rows for all UserAsset rows owned by *user_id*.
+    async def list_holdings_with_aggregates(self) -> list[HoldingRow]:
+        """Return aggregated holding rows for all declared UserAssets.
 
         Each row contains:
         - ``user_asset_id`` — PK of the UserAsset row.
@@ -105,7 +102,6 @@ class PortfolioRepository:
             )
             .options(selectinload(UserAsset.asset_symbol))
             .outerjoin(tx_agg, UserAsset.id == tx_agg.c.ua_id)
-            .where(UserAsset.user_id == user_id)
             .order_by(UserAsset.created_at)
         )
 
@@ -139,15 +135,13 @@ class PortfolioRepository:
             )
 
         logger.debug(
-            "list_user_holdings_with_aggregates: user_id=%s returned %d rows",
-            user_id,
+            "list_holdings_with_aggregates returned %d rows",
             len(result),
         )
         return result
 
     async def list_tag_breakdown_rows(
         self,
-        user_id: int,
     ) -> list[tuple[str | None, str, str, Decimal, int]]:
         """Return one row per (tag, currency, transaction_type) triple.
 
@@ -168,7 +162,6 @@ class PortfolioRepository:
             )
             .join(UserAsset, Transaction.user_asset_id == UserAsset.id)
             .join(AssetSymbol, UserAsset.asset_symbol_id == AssetSymbol.id)
-            .where(UserAsset.user_id == user_id)
             .group_by(Transaction.tag, AssetSymbol.currency, Transaction.type)
         )
 
@@ -184,8 +177,7 @@ class PortfolioRepository:
             result.append((tag, currency, tx_type, value_sum, cnt))
 
         logger.debug(
-            "list_tag_breakdown_rows: user_id=%s returned %d raw rows",
-            user_id,
+            "list_tag_breakdown_rows returned %d raw rows",
             len(result),
         )
         return result

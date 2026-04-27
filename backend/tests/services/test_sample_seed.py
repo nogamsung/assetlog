@@ -38,9 +38,9 @@ def _make_asset_symbol(sym_id: int = 1, symbol: str = "BTC") -> AssetSymbol:
     return sym
 
 
-def _make_user_asset(ua_id: int = 1, user_id: int = 1, sym_id: int = 1) -> UserAsset:
+def _make_user_asset(ua_id: int = 1, sym_id: int = 1) -> UserAsset:
     sym = _make_asset_symbol(sym_id)
-    ua = UserAsset(user_id=user_id, asset_symbol_id=sym_id)
+    ua = UserAsset(asset_symbol_id=sym_id)
     ua.id = ua_id
     ua.asset_symbol = sym  # type: ignore[assignment]  # mock relationship
     ua.memo = None
@@ -75,7 +75,7 @@ def _build_service(
     ua_repo = AsyncMock(spec=UserAssetRepository)
     tx_repo = AsyncMock(spec=TransactionRepository)
 
-    ua_repo.list_for_user.return_value = existing_assets or []
+    ua_repo.list_all.return_value = existing_assets or []
 
     if symbol_exists:
         # Return a pre-existing symbol for every get_by_triple call.
@@ -100,10 +100,10 @@ def _build_service(
     ua_call_count: list[int] = [0]
 
     async def _ua_create_side_effect(
-        user_id: int, asset_symbol_id: int, memo: Any = None
+        asset_symbol_id: int, memo: Any = None
     ) -> UserAsset:
         ua_call_count[0] += 1
-        return _make_user_asset(ua_id=ua_call_count[0], user_id=user_id, sym_id=asset_symbol_id)
+        return _make_user_asset(ua_id=ua_call_count[0], sym_id=asset_symbol_id)
 
     ua_repo.create.side_effect = _ua_create_side_effect
 
@@ -133,7 +133,7 @@ class TestSampleSeedServiceSkip:
         existing = [_make_user_asset()]
         service, _, ua_repo, tx_repo = _build_service(existing_assets=existing)
 
-        result = await service.seed_for_user(user_id=1)
+        result = await service.seed()
 
         assert result.seeded is False
         assert result.reason == "user_already_has_assets"
@@ -145,12 +145,12 @@ class TestSampleSeedServiceSkip:
         """First call succeeds, second returns seeded=False (simulated via mock state)."""
         # First call: no existing assets.
         service, _, ua_repo, tx_repo = _build_service(existing_assets=[])
-        result_first = await service.seed_for_user(user_id=42)
+        result_first = await service.seed()
         assert result_first.seeded is True
 
         # Second call: simulate existing assets returned.
-        ua_repo.list_for_user.return_value = [_make_user_asset()]
-        result_second = await service.seed_for_user(user_id=42)
+        ua_repo.list_all.return_value = [_make_user_asset()]
+        result_second = await service.seed()
         assert result_second.seeded is False
         assert result_second.reason == "user_already_has_assets"
 
@@ -159,7 +159,7 @@ class TestSampleSeedServiceSuccess:
     async def test_신규_사용자는_5개_자산이_생성된다(self) -> None:
         service, symbol_repo, ua_repo, tx_repo = _build_service()
 
-        result = await service.seed_for_user(user_id=1)
+        result = await service.seed()
 
         assert result.seeded is True
         assert result.user_assets_created == 5
@@ -171,7 +171,7 @@ class TestSampleSeedServiceSuccess:
     async def test_기존_심볼이_있으면_재사용된다(self) -> None:
         service, symbol_repo, ua_repo, tx_repo = _build_service(symbol_exists=True)
 
-        result = await service.seed_for_user(user_id=5)
+        result = await service.seed()
 
         assert result.seeded is True
         assert result.symbols_reused == 5
@@ -180,13 +180,13 @@ class TestSampleSeedServiceSuccess:
 
     async def test_생성된_user_asset_수는_샘플_심볼_수와_같다(self) -> None:
         service, _, ua_repo, _ = _build_service()
-        result = await service.seed_for_user(user_id=3)
+        result = await service.seed()
         assert ua_repo.create.call_count == len(_SAMPLE_SYMBOLS)
         assert result.user_assets_created == len(_SAMPLE_SYMBOLS)
 
     async def test_거래_수는_각_자산당_2에서_4_사이이다(self) -> None:
         service, _, _, tx_repo = _build_service()
-        result = await service.seed_for_user(user_id=7)
+        result = await service.seed()
         n_symbols = len(_SAMPLE_SYMBOLS)
         assert result.transactions_created == tx_repo.create.call_count
         assert n_symbols * 2 <= result.transactions_created <= n_symbols * 4
@@ -196,26 +196,26 @@ class TestSampleSeedServiceDeterminism:
     async def test_같은_user_id는_같은_거래_수를_생성한다(self) -> None:
         """Two fresh seeds with the same user_id must produce identical tx count."""
         service_a, _, _, tx_repo_a = _build_service()
-        result_a = await service_a.seed_for_user(user_id=99)
+        result_a = await service_a.seed()
 
         service_b, _, _, tx_repo_b = _build_service()
-        result_b = await service_b.seed_for_user(user_id=99)
+        result_b = await service_b.seed()
 
         assert result_a.transactions_created == result_b.transactions_created
 
-    async def test_다른_user_id는_다른_패턴을_생성할_수_있다(self) -> None:
-        """Different user_ids should produce potentially different tx counts."""
+    async def test_owner_한_명이므로_항상_같은_결과(self) -> None:
+        """Single-owner mode: all seeds produce the same result."""
         results: set[int] = set()
-        for uid in range(1, 20):
+        for _ in range(5):
             service, _, _, _ = _build_service()
-            result = await service.seed_for_user(user_id=uid)
+            result = await service.seed()
             results.add(result.transactions_created)
-        # At least two distinct counts across 19 users (high probability).
-        assert len(results) >= 2
+        # Only one distinct count (deterministic for single owner).
+        assert len(results) == 1
 
     async def test_결정론적_거래는_BUY_타입만_포함한다(self) -> None:
         service, _, _, tx_repo = _build_service()
-        await service.seed_for_user(user_id=10)
+        await service.seed()
 
         for create_call in tx_repo.create.call_args_list:
             _, kwargs = create_call
@@ -227,7 +227,7 @@ class TestSampleSeedResponseSchema:
     async def test_seed_false_시_counts는_0이다(self) -> None:
         existing = [_make_user_asset()]
         service, _, _, _ = _build_service(existing_assets=existing)
-        result = await service.seed_for_user(user_id=1)
+        result = await service.seed()
 
         assert result.user_assets_created == 0
         assert result.transactions_created == 0
@@ -236,7 +236,7 @@ class TestSampleSeedResponseSchema:
 
     async def test_seed_true_시_reason은_None이다(self) -> None:
         service, _, _, _ = _build_service()
-        result = await service.seed_for_user(user_id=2)
+        result = await service.seed()
 
         assert result.seeded is True
         assert result.reason is None

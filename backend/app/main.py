@@ -45,17 +45,10 @@ def _make_session_factory(database_url: str) -> async_sessionmaker[AsyncSession]
     return async_sessionmaker(bind=eng, class_=AsyncSession, expire_on_commit=False)
 
 
-_OWNER_EMAIL = "owner+local-1@assetlog.local"
-_OWNER_PASSWORD_HASH_PLACEHOLDER = "!disabled"  # not used for login — env hash only
-
-
-def _validate_password_hash_cost(hash_str: str) -> None:  # ADDED
+def _validate_password_hash_cost(hash_str: str) -> None:
     """Warn if the bcrypt cost factor stored in APP_PASSWORD_HASH is below 12.
 
     bcrypt hash format: ``$2b$<cost>$<22-char salt><31-char hash>``
-
-    Args:
-        hash_str: Raw value of APP_PASSWORD_HASH from settings.
     """
     if not hash_str:
         return
@@ -72,41 +65,17 @@ def _validate_password_hash_cost(hash_str: str) -> None:  # ADDED
         logger.warning("APP_PASSWORD_HASH format unexpected — verify it's a valid bcrypt hash.")
 
 
-async def _ensure_owner_user(session_factory: async_sessionmaker[AsyncSession]) -> None:  # ADDED
-    """Ensure user id=1 (owner) exists; create a placeholder row if not."""
-    from app.repositories.user import (
-        UserRepository,  # noqa: PLC0415  # lazy to avoid circular import
-    )
-
-    async with session_factory() as session:
-        repo = UserRepository(session)
-        user = await repo.get_by_id(1)
-        if user is None:
-            try:
-                await repo.create(
-                    email=_OWNER_EMAIL,
-                    password_hash=_OWNER_PASSWORD_HASH_PLACEHOLDER,
-                )
-                await session.commit()
-                logger.info("Owner user created: email=%s", _OWNER_EMAIL)
-            except Exception as exc:  # noqa: BLE001
-                logger.warning("Could not create owner user: %s", exc)
-
-
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncGenerator[None, None]:
-    """Application lifespan — DB connectivity check + owner ensure + scheduler startup."""
+    """Application lifespan — DB connectivity check + scheduler startup."""
     logger.info("Starting up AssetLog API...")
-    # Validate bcrypt cost factor at startup  # ADDED
-    if settings.app_password_hash:  # ADDED
-        _validate_password_hash_cost(settings.app_password_hash)  # ADDED
-    # Use the configured database_url at startup time.
+    if settings.app_password_hash:
+        _validate_password_hash_cost(settings.app_password_hash)
     session_factory = _make_session_factory(settings.database_url)
     try:
         async with session_factory() as session:
             await session.execute(text("SELECT 1"))
         logger.info("Database connection verified.")
-        await _ensure_owner_user(session_factory)  # ADDED
     except Exception as exc:  # noqa: BLE001
         # Log the error but do NOT crash — allows the app to start even when
         # the DB is temporarily unavailable (e.g., during container cold start).

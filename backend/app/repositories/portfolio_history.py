@@ -54,22 +54,11 @@ class PortfolioHistoryRepository:
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
 
-    async def list_user_transactions(
-        self,
-        user_id: int,
-        currency: str,
-    ) -> list[TransactionRow]:
-        """Return all BUY and SELL transactions for *user_id* in *currency*, ordered by traded_at ASC.
+    async def list_transactions(self, currency: str) -> list[TransactionRow]:
+        """Return all BUY and SELL transactions in *currency*, ordered by traded_at ASC.
 
         Joins transactions → user_assets → asset_symbols so the service layer
         can directly compute cumulative quantities and cost basis.
-
-        Args:
-            user_id: Authenticated user's PK.
-            currency: Quote currency filter (e.g. "KRW", "USD").
-
-        Returns:
-            List of TransactionRow sorted by traded_at ascending.
         """
         stmt = (
             select(
@@ -77,15 +66,11 @@ class PortfolioHistoryRepository:
                 Transaction.traded_at,
                 Transaction.quantity,
                 Transaction.price,
-                Transaction.type.label("tx_type"),  # ADDED
+                Transaction.type.label("tx_type"),
             )
             .join(UserAsset, Transaction.user_asset_id == UserAsset.id)
             .join(AssetSymbol, UserAsset.asset_symbol_id == AssetSymbol.id)
-            .where(
-                UserAsset.user_id == user_id,
-                AssetSymbol.currency == currency,
-                # MODIFIED — removed BUY-only filter to include SELL transactions
-            )
+            .where(AssetSymbol.currency == currency)
             .order_by(Transaction.traded_at.asc())
         )
 
@@ -99,13 +84,12 @@ class PortfolioHistoryRepository:
                     traded_at=_to_utc(row.traded_at),
                     quantity=Decimal(str(row.quantity)),
                     price=Decimal(str(row.price)),
-                    tx_type=row.tx_type,  # ADDED
+                    tx_type=row.tx_type,
                 )
             )
 
         logger.debug(
-            "list_user_transactions: user_id=%s currency=%s returned %d rows",
-            user_id,
+            "list_transactions: currency=%s returned %d rows",
             currency,
             len(result),
         )

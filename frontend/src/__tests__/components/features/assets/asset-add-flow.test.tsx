@@ -46,7 +46,6 @@ const fakeSymbol: AssetSymbolResponse = {
 
 const fakeUserAsset: UserAssetResponse = {
   id: 10,
-  userId: 1,
   assetSymbol: fakeSymbol,
   memo: null,
   createdAt: "2024-01-01T00:00:00Z",

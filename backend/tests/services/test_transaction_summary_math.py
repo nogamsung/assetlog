@@ -31,12 +31,10 @@ class TestSummaryDecimalPrecision:
         self,
         db_session: AsyncSession,
         user_asset_factory: Any,
-        user_factory: Any,
         asset_symbol_factory: Any,
     ) -> None:
-        user = await user_factory(email="math_precision@example.com")
         sym = await asset_symbol_factory(symbol="PRECISION_COIN")
-        ua = await user_asset_factory(user=user, asset_symbol=sym)
+        ua = await user_asset_factory(asset_symbol=sym)
 
         repo = TransactionRepository(db_session)
 
@@ -64,12 +62,10 @@ class TestSummaryDecimalPrecision:
         self,
         db_session: AsyncSession,
         user_asset_factory: Any,
-        user_factory: Any,
         asset_symbol_factory: Any,
     ) -> None:
-        user = await user_factory(email="math_weighted@example.com")
         sym = await asset_symbol_factory(symbol="WEIGHTED_COIN")
-        ua = await user_asset_factory(user=user, asset_symbol=sym)
+        ua = await user_asset_factory(asset_symbol=sym)
 
         repo = TransactionRepository(db_session)
 
@@ -90,12 +86,10 @@ class TestSummaryDecimalPrecision:
         self,
         db_session: AsyncSession,
         user_asset_factory: Any,
-        user_factory: Any,
         asset_symbol_factory: Any,
     ) -> None:
-        user = await user_factory(email="math_large@example.com")
         sym = await asset_symbol_factory(symbol="LARGE_COIN")
-        ua = await user_asset_factory(user=user, asset_symbol=sym)
+        ua = await user_asset_factory(asset_symbol=sym)
 
         repo = TransactionRepository(db_session)
 

@@ -87,43 +87,28 @@ class PortfolioHistoryService:
 
     async def get_history(
         self,
-        user_id: int,
         period: HistoryPeriod,
         currency: str,
     ) -> PortfolioHistoryResponse:
-        """Compute the portfolio value time series for *user_id* over *period*.
+        """Compute the portfolio value time series over *period*.
 
         Algorithm (O(N_buckets + N_tx + N_price_points)):
         1. Determine (start_dt, end_dt, bucket) from *period*.
-        2. Load all BUY transactions for user in *currency*.
+        2. Load all transactions in *currency*.
         3. Collect symbol IDs; load price points since start_dt.
         4. Generate bucket timestamps.
-        5. For each bucket T:
-           - Advance a tx pointer to accumulate qty / cost_basis for tx.traded_at ≤ T.
-           - Advance a price pointer per symbol to find price_at(T).
-           - value_at_T = Σ(qty_at_T × price_at_T) across symbols.
+        5. For each bucket T compute qty/cost via tx pointer and price via
+           per-symbol price pointer, then sum value_at_T.
         6. Return PortfolioHistoryResponse.
-
-        Args:
-            user_id: Authenticated user's PK.
-            period: Requested time window.
-            currency: Quote currency (e.g. "KRW").
-
-        Returns:
-            PortfolioHistoryResponse with a list of HistoryPointResponse.
         """
         bucket = PERIOD_BUCKET[period]
         end_dt = datetime.now(UTC)
 
-        # ------------------------------------------------------------------
-        # Step 1 — Load transactions
-        # ------------------------------------------------------------------
-        txs = await self._repo.list_user_transactions(user_id, currency)
+        txs = await self._repo.list_transactions(currency)
 
         if not txs:
             logger.debug(
-                "get_history: user_id=%s currency=%s has no transactions — returning empty",
-                user_id,
+                "get_history: currency=%s has no transactions — returning empty",
                 currency,
             )
             return PortfolioHistoryResponse(
@@ -156,8 +141,7 @@ class PortfolioHistoryService:
         points = self._compute_history_points(txs, price_index, bucket_timestamps)
 
         logger.debug(
-            "get_history: user_id=%s period=%s currency=%s buckets=%d",
-            user_id,
+            "get_history: period=%s currency=%s buckets=%d",
             period,
             currency,
             len(points),

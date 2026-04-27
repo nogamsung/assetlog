@@ -9,7 +9,7 @@ from app.core.config import settings
 from app.db.base import Base
 
 # Import all models here so that Base.metadata is populated for autogenerate.
-from app.models import AssetSymbol, FxRate, LoginAttempt, User, UserAsset  # noqa: F401  # MODIFIED
+from app.models import AssetSymbol, FxRate, LoginAttempt, UserAsset  # noqa: F401
 
 logger = logging.getLogger(__name__)
 

@@ -35,8 +35,6 @@ function renderLoginForm() {
 
 const fakeUser: authApi.UserResponse = {
   id: 1,
-  email: "owner@example.com",
-  createdAt: "2024-01-01T00:00:00Z",
 };
 
 describe("LoginForm", () => {
