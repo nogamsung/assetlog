@@ -19,6 +19,7 @@ from app.schemas.portfolio import (
 )
 
 if TYPE_CHECKING:
+    from app.repositories.cash_account import CashAccountRepository
     from app.services.fx_rate import FxRateService
 
 logger = logging.getLogger(__name__)
@@ -29,15 +30,18 @@ class PortfolioService:
 
     No external API calls — reads only from ``asset_symbol.last_price``.
     Optionally accepts an FxRateService to compute converted totals.
+    Optionally accepts a CashAccountRepository to include cash in aggregation.
     """
 
     def __init__(
         self,
         repository: PortfolioRepository,
         fx_service: FxRateService | None = None,
+        cash_repository: CashAccountRepository | None = None,
     ) -> None:
         self._repo = repository
         self._fx_service = fx_service
+        self._cash_repo = cash_repository
 
     # ------------------------------------------------------------------
     # Public API
@@ -176,6 +180,15 @@ class PortfolioService:
                 allocation_value.get(asset_type, Decimal("0")) + latest_value
             )
 
+        # Cash holdings aggregation.
+        cash_totals: dict[str, Decimal] = {}
+        if self._cash_repo is not None:
+            cash_totals = await self._cash_repo.sum_balance_by_currency()
+
+        # Merge cash into total_value (cash is always "valued" — no pending state).
+        for cur, cash_val in cash_totals.items():
+            total_value[cur] = total_value.get(cur, Decimal("0")) + cash_val
+
         # P&L per currency.
         pnl_by_currency: dict[str, PnlEntry] = {}
         for cur, val in total_value.items():
@@ -187,13 +200,17 @@ class PortfolioService:
                 pnl_pct = 0.0
             pnl_by_currency[cur] = PnlEntry(abs=pnl_abs, pct=round(pnl_pct, 2))
 
-        # Allocation.
-        grand_total = sum(allocation_value.values(), Decimal("0"))
+        # Allocation — include cash as a separate entry when > 0.
+        cash_grand_total = sum(cash_totals.values(), Decimal("0"))
+        grand_total = sum(allocation_value.values(), Decimal("0")) + cash_grand_total
         allocation: list[AllocationEntry] = []
         if grand_total > Decimal("0"):
             for asset_type_str, val in sorted(allocation_value.items()):
                 pct = round(float(val / grand_total * 100), 2)
                 allocation.append(AllocationEntry(asset_type=asset_type_str, pct=pct))
+            if cash_grand_total > Decimal("0"):
+                cash_pct = round(float(cash_grand_total / grand_total * 100), 2)
+                allocation.append(AllocationEntry(asset_type="cash", pct=cash_pct))
 
         # last_price_refreshed_at = max across non-null values.
         last_refreshed: datetime | None = max(refreshed_times) if refreshed_times else None
@@ -202,13 +219,15 @@ class PortfolioService:
         total_value_str: dict[str, str] = {k: str(v) for k, v in total_value.items()}
         total_cost_str: dict[str, str] = {k: str(v) for k, v in total_cost.items()}
         realized_pnl_str: dict[str, str] = {k: str(v) for k, v in realized_pnl_acc.items()}  # ADDED
+        cash_total_str: dict[str, str] = {k: str(v) for k, v in cash_totals.items()}
 
         logger.debug(
-            "get_summary: currencies=%s pending=%d stale=%d convert_to=%s",
+            "get_summary: currencies=%s pending=%d stale=%d convert_to=%s cash_currencies=%s",
             list(total_value.keys()),
             pending_count,
             stale_count,
             convert_to,
+            list(cash_totals.keys()),
         )
 
         # ------------------------------------------------------------------
@@ -259,6 +278,7 @@ class PortfolioService:
             total_cost_by_currency=total_cost_str,
             pnl_by_currency=pnl_by_currency,
             realized_pnl_by_currency=realized_pnl_str,  # ADDED
+            cash_total_by_currency=cash_total_str,
             allocation=allocation,
             last_price_refreshed_at=last_refreshed,
             pending_count=pending_count,

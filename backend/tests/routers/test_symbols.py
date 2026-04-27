@@ -209,9 +209,7 @@ class TestRegisterSymbol:
 class TestSymbolIntegration:
     """Full integration test using real SQLite DB (no mocks)."""
 
-    async def test_등록_후_검색하면_결과에_나타난다(
-        self, async_client: AsyncClient
-    ) -> None:
+    async def test_등록_후_검색하면_결과에_나타난다(self, async_client: AsyncClient) -> None:
         from app.core.principal import OWNER_ID
         from app.core.security import create_access_token
 

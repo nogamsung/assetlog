@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from decimal import Decimal
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_serializer
 
@@ -153,7 +154,9 @@ class PnlEntry(BaseModel):
 class AllocationEntry(BaseModel):
     """Asset-class allocation entry in portfolio summary."""
 
-    asset_type: AssetType = Field(..., description="Asset category", examples=["us_stock"])
+    asset_type: AssetType | Literal["cash"] = Field(
+        ..., description="Asset category or 'cash'", examples=["us_stock"]
+    )
     pct: float = Field(..., description="Portfolio weight 0–100", examples=[48.3])
 
 
@@ -180,6 +183,11 @@ class PortfolioSummaryResponse(BaseModel):
         default_factory=dict,
         description="Realized P&L from SELL transactions per currency (Decimal → string)",
         examples=[{"KRW": "300000.00", "USD": "120.50"}],
+    )
+    cash_total_by_currency: dict[str, str] = Field(
+        default_factory=dict,
+        description="Sum of CashAccount.balance per currency (Decimal → string)",
+        examples=[{"KRW": "1500000.0000"}],
     )
     allocation: list[AllocationEntry] = Field(
         default_factory=list,

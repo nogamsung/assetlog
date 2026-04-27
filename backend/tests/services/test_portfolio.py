@@ -10,6 +10,7 @@ from app.domain.asset_type import AssetType
 from app.domain.portfolio import STALE_THRESHOLD, HoldingRow
 from app.exceptions import FxRateNotAvailableError  # ADDED
 from app.models.asset_symbol import AssetSymbol
+from app.repositories.cash_account import CashAccountRepository
 from app.repositories.portfolio import PortfolioRepository
 from app.services.fx_rate import FxRateService
 from app.services.portfolio import PortfolioService
@@ -63,9 +64,14 @@ def _make_row(
 def _make_service(
     rows: list[HoldingRow],
     fx_service: FxRateService | None = None,
+    cash_totals: dict[str, Decimal] | None = None,
 ) -> PortfolioService:
     mock_repo = AsyncMock(spec=PortfolioRepository)
     mock_repo.list_holdings_with_aggregates.return_value = rows
+    if cash_totals is not None:
+        mock_cash_repo = AsyncMock(spec=CashAccountRepository)
+        mock_cash_repo.sum_balance_by_currency.return_value = cash_totals
+        return PortfolioService(mock_repo, fx_service=fx_service, cash_repository=mock_cash_repo)
     return PortfolioService(mock_repo, fx_service=fx_service)
 
 
@@ -537,3 +543,84 @@ class TestPortfolioServiceGetSummaryConversion:
         summary = await svc.get_summary(convert_to="KRW")
         assert summary.converted_total_value is None
         assert summary.display_currency is None
+
+
+# ---------------------------------------------------------------------------
+# get_summary with cash holdings
+# ---------------------------------------------------------------------------
+
+
+class TestPortfolioServiceGetSummaryWithCash:
+    async def test_현금만_있을때_total_value_by_currency에_현금_표시(self) -> None:
+        svc = _make_service([], cash_totals={"KRW": Decimal("1500000")})
+        summary = await svc.get_summary()
+        assert summary.total_value_by_currency.get("KRW") == str(Decimal("1500000"))
+
+    async def test_현금만_있을때_cash_total_by_currency_정확(self) -> None:
+        svc = _make_service([], cash_totals={"KRW": Decimal("1500000")})
+        summary = await svc.get_summary()
+        assert summary.cash_total_by_currency.get("KRW") == str(Decimal("1500000"))
+
+    async def test_holdings_와_현금_통화별_합산(self) -> None:
+        sym = _make_symbol(
+            1, "BTC", "KRW", AssetType.CRYPTO, Decimal("50000000"), datetime.now(UTC)
+        )
+        row = _make_row(1, "1", "40000000", symbol=sym)
+        svc = _make_service([row], cash_totals={"KRW": Decimal("500000"), "USD": Decimal("1000")})
+        summary = await svc.get_summary()
+        # KRW: holdings(50000000) + cash(500000) = 50500000
+        assert summary.total_value_by_currency.get("KRW") == str(Decimal("50500000"))
+        # USD: only cash
+        assert summary.total_value_by_currency.get("USD") == str(Decimal("1000"))
+
+    async def test_cash_allocation_entry_포함(self) -> None:
+        sym = _make_symbol(1, "BTC", "KRW", AssetType.CRYPTO, Decimal("100"), datetime.now(UTC))
+        # holdings value = 10*100 = 1000 KRW
+        row = _make_row(1, "10", "800", symbol=sym)
+        # cash = 1000 KRW → grand_total = 2000
+        svc = _make_service([row], cash_totals={"KRW": Decimal("1000")})
+        summary = await svc.get_summary()
+
+        cash_entries = [a for a in summary.allocation if a.asset_type == "cash"]
+        assert len(cash_entries) == 1
+        assert abs(cash_entries[0].pct - 50.0) < 0.1
+
+    async def test_현금_없을때_cash_allocation_없음(self) -> None:
+        sym = _make_symbol(1, "BTC", "KRW", AssetType.CRYPTO, Decimal("100"), datetime.now(UTC))
+        row = _make_row(1, "10", "800", symbol=sym)
+        # cash_totals = {} → no cash entry
+        svc = _make_service([row], cash_totals={})
+        summary = await svc.get_summary()
+
+        cash_entries = [a for a in summary.allocation if a.asset_type == "cash"]
+        assert len(cash_entries) == 0
+
+    async def test_allocation_pct_합_100(self) -> None:
+        sym = _make_symbol(1, "BTC", "KRW", AssetType.CRYPTO, Decimal("100"), datetime.now(UTC))
+        row = _make_row(1, "3", "200", symbol=sym)  # value=300
+        svc = _make_service([row], cash_totals={"KRW": Decimal("700")})  # grand=1000
+        summary = await svc.get_summary()
+
+        total_pct = sum(a.pct for a in summary.allocation)
+        assert abs(total_pct - 100.0) < 0.2
+
+    async def test_cash_repository_없으면_빈_cash_totals(self) -> None:
+        sym = _make_symbol(1, "BTC", "KRW", AssetType.CRYPTO, Decimal("100"), datetime.now(UTC))
+        row = _make_row(1, "10", "800", symbol=sym)
+        # No cash_repository injected
+        svc = _make_service([row])
+        summary = await svc.get_summary()
+        assert summary.cash_total_by_currency == {}
+
+    async def test_convert_to_KRW_cash도_환산에_포함(self) -> None:
+        sym_usd = _make_symbol(
+            1, "AAPL", "USD", AssetType.US_STOCK, Decimal("100"), datetime.now(UTC)
+        )
+        row = _make_row(1, "10", "800", symbol=sym_usd)  # value=1000 USD
+        fx = _make_fx_service(rates={("USD", "KRW"): Decimal("1380")})
+        svc = _make_service([row], fx_service=fx, cash_totals={"USD": Decimal("500")})
+        summary = await svc.get_summary(convert_to="KRW")
+
+        # total USD value = 1000 (holdings) + 500 (cash) = 1500 * 1380 = 2070000
+        assert summary.display_currency == "KRW"
+        assert summary.converted_total_value == Decimal("1500") * Decimal("1380")

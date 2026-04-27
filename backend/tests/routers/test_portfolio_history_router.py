@@ -157,9 +157,7 @@ class TestPortfolioHistoryRouterHappyPath:
             app.dependency_overrides.pop(get_current_user, None)
             app.dependency_overrides.pop(get_portfolio_history_service, None)
 
-    async def test_service가_period와_currency로_호출됨(
-        self, async_client: AsyncClient
-    ) -> None:
+    async def test_service가_period와_currency로_호출됨(self, async_client: AsyncClient) -> None:
         user = _make_owner()
         mock_service = AsyncMock(spec=PortfolioHistoryService)
         mock_service.get_history.return_value = _make_history_response()
