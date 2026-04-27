@@ -1,4 +1,4 @@
-"""Crypto price adapter — ccxt async (Binance primary, Upbit fallback)."""
+"""Crypto price adapter — ccxt async (Upbit primary, Binance fallback)."""
 
 from __future__ import annotations
 
@@ -24,7 +24,7 @@ def _guess_currency(pair: str) -> str:
     return "USD"
 
 
-async def _load_markets_async(exchange_name: str = "binance") -> list[SymbolCandidate]:  # ADDED
+async def _load_markets_async(exchange_name: str = "upbit") -> list[SymbolCandidate]:  # ADDED
     """Load all markets from *exchange_name* and convert to SymbolCandidate list.
 
     Runs in the event loop (ccxt.async_support is natively async).
@@ -77,8 +77,8 @@ async def _load_markets_async(exchange_name: str = "binance") -> list[SymbolCand
 class CryptoAdapter:
     """Fetch crypto prices via ccxt async_support.
 
-    Binance is the primary exchange.  If a symbol is not found on Binance
-    (or Binance raises), Upbit is tried as fallback.
+    Upbit is the primary exchange.  If a symbol is not found on Upbit
+    (or Upbit raises), Binance is tried as fallback.
 
     Both exchanges are created on first ``fetch_batch`` call and closed
     after each batch to respect rate limits and avoid stale connections.
@@ -89,7 +89,7 @@ class CryptoAdapter:
 
     def __init__(  # ADDED
         self,
-        exchange_name: str = "binance",
+        exchange_name: str = "upbit",
         cache: SymbolListCache | None = None,
     ) -> None:
         self._exchange_name = exchange_name
@@ -128,10 +128,10 @@ class CryptoAdapter:
         self,
         symbols: Sequence[SymbolRef],
     ) -> FetchBatchResult:
-        """Fetch prices for all crypto symbols, with Upbit fallback.
+        """Fetch prices for all crypto symbols, with Binance fallback.
 
         Each symbol is normalised to ccxt format before querying.
-        If Binance cannot resolve a pair, Upbit is tried individually.
+        If Upbit cannot resolve a pair, Binance is tried individually.
 
         Args:
             symbols: Sequence of SymbolRef with asset_type == CRYPTO.
@@ -154,21 +154,21 @@ class CryptoAdapter:
 
         all_pairs = list(ref_by_pair.keys())
 
-        # --- Primary: Binance ---
-        binance_prices: dict[str, Decimal] = {}
+        # --- Primary: Upbit ---
+        upbit_prices: dict[str, Decimal] = {}
         try:
-            binance_prices = await self._fetch_from_exchange("binance", all_pairs)
+            upbit_prices = await self._fetch_from_exchange("upbit", all_pairs)
         except Exception as exc:  # noqa: BLE001
             logger.warning(
-                "binance bulk fetch failed: %s",
+                "upbit bulk fetch failed: %s",
                 exc,
-                extra={"event": "crypto_binance_bulk_fail", "error_class": type(exc).__name__},
+                extra={"event": "crypto_upbit_bulk_fail", "error_class": type(exc).__name__},
             )
 
         unresolved: list[str] = []
         for pair, ref in ref_by_pair.items():
-            if pair in binance_prices:
-                price = binance_prices[pair]
+            if pair in upbit_prices:
+                price = upbit_prices[pair]
                 successes.append(
                     PriceQuote(
                         ref=ref,
@@ -178,10 +178,10 @@ class CryptoAdapter:
                     )
                 )
                 logger.debug(
-                    "crypto binance fetched",
+                    "crypto upbit fetched",
                     extra={
                         "event": "crypto_fetch_ok",
-                        "exchange": "binance",
+                        "exchange": "upbit",
                         "symbol": pair,
                         "price": str(price),
                     },
@@ -189,22 +189,22 @@ class CryptoAdapter:
             else:
                 unresolved.append(pair)
 
-        # --- Fallback: Upbit for unresolved pairs ---
+        # --- Fallback: Binance for unresolved pairs ---
         if unresolved:
-            upbit_prices: dict[str, Decimal] = {}
+            binance_prices: dict[str, Decimal] = {}
             try:
-                upbit_prices = await self._fetch_from_exchange("upbit", unresolved)
+                binance_prices = await self._fetch_from_exchange("binance", unresolved)
             except Exception as exc:  # noqa: BLE001
                 logger.warning(
-                    "upbit fallback bulk fetch failed: %s",
+                    "binance fallback bulk fetch failed: %s",
                     exc,
-                    extra={"event": "crypto_upbit_bulk_fail", "error_class": type(exc).__name__},
+                    extra={"event": "crypto_binance_bulk_fail", "error_class": type(exc).__name__},
                 )
 
             for pair in unresolved:
                 ref = ref_by_pair[pair]
-                if pair in upbit_prices:
-                    price = upbit_prices[pair]
+                if pair in binance_prices:
+                    price = binance_prices[pair]
                     successes.append(
                         PriceQuote(
                             ref=ref,
@@ -214,17 +214,17 @@ class CryptoAdapter:
                         )
                     )
                     logger.debug(
-                        "crypto upbit fetched",
+                        "crypto binance fetched",
                         extra={
                             "event": "crypto_fetch_ok",
-                            "exchange": "upbit",
+                            "exchange": "binance",
                             "symbol": pair,
                             "price": str(price),
                         },
                     )
                 else:
                     exc_missing: Exception = ValueError(
-                        f"No price from Binance or Upbit for pair {pair}"
+                        f"No price from Upbit or Binance for pair {pair}"
                     )
                     failures.append(_wrap_failure(ref, exc_missing))
                     logger.warning(

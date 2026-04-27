@@ -6,7 +6,7 @@ import logging
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app.adapters.fx import FrankfurterAdapter
+from app.adapters.fx import ChainedFxAdapter, FawazCurrencyApiAdapter, FrankfurterAdapter
 from app.repositories.fx_rate import FxRateRepository
 from app.services.fx_rate import FxRateService
 
@@ -32,7 +32,9 @@ async def fx_refresh_job(
         async with session_factory() as session:
             service = FxRateService(
                 repo=FxRateRepository(session),
-                adapter=FrankfurterAdapter(),
+                adapter=ChainedFxAdapter(
+                    [FrankfurterAdapter(), FawazCurrencyApiAdapter()],
+                ),
             )
             count = await service.refresh_all()
             await session.commit()

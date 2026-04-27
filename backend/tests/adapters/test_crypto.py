@@ -14,7 +14,7 @@ from app.domain.price_refresh import SymbolRef
 
 def _make_ref(
     symbol: str = "BTC/USDT",
-    exchange: str = "binance",
+    exchange: str = "upbit",
     asset_symbol_id: int = 1,
 ) -> SymbolRef:
     return SymbolRef(
@@ -46,74 +46,74 @@ class TestCryptoAdapterFetchBatch:
         assert result.successes == []
         assert result.failures == []
 
-    async def test_successful_binance_fetch(self, adapter: CryptoAdapter) -> None:
-        refs = [_make_ref("BTC/USDT", "binance")]
+    async def test_successful_upbit_fetch(self, adapter: CryptoAdapter) -> None:
+        refs = [_make_ref("BTC/KRW", "upbit")]
 
-        binance_mock = _ccxt_exchange_mock({"BTC/USDT": {"last": 65000.0}})
+        upbit_mock = _ccxt_exchange_mock({"BTC/KRW": {"last": 90000000.0}})
 
-        with patch("ccxt.async_support.binance", return_value=binance_mock):
+        with patch("ccxt.async_support.upbit", return_value=upbit_mock):
             result = await adapter.fetch_batch(refs)
 
         assert len(result.successes) == 1
         assert len(result.failures) == 0
-        assert result.successes[0].price == Decimal("65000.0")
-        assert result.successes[0].currency == "USDT"
+        assert result.successes[0].price == Decimal("90000000.0")
+        assert result.successes[0].currency == "KRW"
 
-    async def test_upbit_fallback_when_binance_misses(self, adapter: CryptoAdapter) -> None:
-        """Symbol not in Binance response → should try Upbit."""
-        refs = [_make_ref("BTC/KRW", "upbit")]
+    async def test_binance_fallback_when_upbit_misses(self, adapter: CryptoAdapter) -> None:
+        """Symbol not in Upbit response should try Binance."""
+        refs = [_make_ref("BTC/USDT", "binance")]
 
-        binance_mock = _ccxt_exchange_mock({})  # no data for BTC/KRW
-        upbit_mock = _ccxt_exchange_mock({"BTC/KRW": {"last": 90000000.0}})
+        upbit_mock = _ccxt_exchange_mock({})  # no data for BTC/USDT
+        binance_mock = _ccxt_exchange_mock({"BTC/USDT": {"last": 65000.0}})
 
         with (
-            patch("ccxt.async_support.binance", return_value=binance_mock),
             patch("ccxt.async_support.upbit", return_value=upbit_mock),
+            patch("ccxt.async_support.binance", return_value=binance_mock),
         ):
             result = await adapter.fetch_batch(refs)
 
         assert len(result.successes) == 1
-        assert result.successes[0].price == Decimal("90000000.0")
-        assert result.successes[0].currency == "KRW"
+        assert result.successes[0].price == Decimal("65000.0")
+        assert result.successes[0].currency == "USDT"
 
     async def test_failure_when_both_exchanges_miss(self, adapter: CryptoAdapter) -> None:
         refs = [_make_ref("UNKNOWN/USDT", "binance")]
 
-        binance_mock = _ccxt_exchange_mock({})
         upbit_mock = _ccxt_exchange_mock({})
+        binance_mock = _ccxt_exchange_mock({})
 
         with (
-            patch("ccxt.async_support.binance", return_value=binance_mock),
             patch("ccxt.async_support.upbit", return_value=upbit_mock),
+            patch("ccxt.async_support.binance", return_value=binance_mock),
         ):
             result = await adapter.fetch_batch(refs)
 
         assert len(result.failures) == 1
         assert result.failures[0].ref.symbol == "UNKNOWN/USDT"
 
-    async def test_binance_bulk_failure_fallback_to_upbit(self, adapter: CryptoAdapter) -> None:
-        """If Binance's fetch_tickers raises, all symbols should try Upbit."""
-        refs = [_make_ref("BTC/KRW", "upbit")]
+    async def test_upbit_bulk_failure_fallback_to_binance(self, adapter: CryptoAdapter) -> None:
+        """If Upbit's fetch_tickers raises, all symbols should try Binance."""
+        refs = [_make_ref("BTC/USDT", "binance")]
 
-        binance_mock = MagicMock()
-        binance_mock.fetch_tickers = AsyncMock(side_effect=RuntimeError("Binance down"))
-        binance_mock.close = AsyncMock()
+        upbit_mock = MagicMock()
+        upbit_mock.fetch_tickers = AsyncMock(side_effect=RuntimeError("Upbit down"))
+        upbit_mock.close = AsyncMock()
 
-        upbit_mock = _ccxt_exchange_mock({"BTC/KRW": {"last": 90000000.0}})
+        binance_mock = _ccxt_exchange_mock({"BTC/USDT": {"last": 65000.0}})
 
         with (
-            patch("ccxt.async_support.binance", return_value=binance_mock),
             patch("ccxt.async_support.upbit", return_value=upbit_mock),
+            patch("ccxt.async_support.binance", return_value=binance_mock),
         ):
             result = await adapter.fetch_batch(refs)
 
         assert len(result.successes) == 1
 
     async def test_price_is_decimal(self, adapter: CryptoAdapter) -> None:
-        refs = [_make_ref("ETH/USDT", "binance")]
-        binance_mock = _ccxt_exchange_mock({"ETH/USDT": {"last": 3500.0}})
+        refs = [_make_ref("ETH/KRW", "upbit")]
+        upbit_mock = _ccxt_exchange_mock({"ETH/KRW": {"last": 4500000.0}})
 
-        with patch("ccxt.async_support.binance", return_value=binance_mock):
+        with patch("ccxt.async_support.upbit", return_value=upbit_mock):
             result = await adapter.fetch_batch(refs)
 
         assert isinstance(result.successes[0].price, Decimal)
@@ -122,7 +122,6 @@ class TestCryptoAdapterFetchBatch:
         """KRW-BTC input should be normalised to BTC/KRW before query."""
         refs = [_make_ref("KRW-BTC", "upbit")]  # legacy format
 
-        binance_mock = _ccxt_exchange_mock({})
         upbit_mock = _ccxt_exchange_mock({"BTC/KRW": {"last": 90000000.0}})
 
         called_with: list[list[str]] = []
@@ -133,10 +132,7 @@ class TestCryptoAdapterFetchBatch:
 
         upbit_mock.fetch_tickers = capture_fetch_tickers
 
-        with (
-            patch("ccxt.async_support.binance", return_value=binance_mock),
-            patch("ccxt.async_support.upbit", return_value=upbit_mock),
-        ):
+        with patch("ccxt.async_support.upbit", return_value=upbit_mock):
             await adapter.fetch_batch(refs)
 
         # The pair passed to upbit should be normalised ccxt format
@@ -144,34 +140,34 @@ class TestCryptoAdapterFetchBatch:
 
     async def test_rate_limit_enabled(self, adapter: CryptoAdapter) -> None:
         """enableRateLimit must be passed when constructing the exchange."""
-        refs = [_make_ref("BTC/USDT", "binance")]
+        refs = [_make_ref("BTC/KRW", "upbit")]
 
         created_with: list[dict[str, object]] = []
 
-        def binance_cls(config: dict[str, object]) -> MagicMock:
+        def upbit_cls(config: dict[str, object]) -> MagicMock:
             created_with.append(config)
-            m = _ccxt_exchange_mock({"BTC/USDT": {"last": 65000.0}})
+            m = _ccxt_exchange_mock({"BTC/KRW": {"last": 90000000.0}})
             return m
 
-        with patch("ccxt.async_support.binance", side_effect=binance_cls):
+        with patch("ccxt.async_support.upbit", side_effect=upbit_cls):
             await adapter.fetch_batch(refs)
 
         assert len(created_with) == 1
         assert created_with[0].get("enableRateLimit") is True
 
-    async def test_multiple_symbols_binance(self, adapter: CryptoAdapter) -> None:
+    async def test_multiple_symbols_upbit(self, adapter: CryptoAdapter) -> None:
         refs = [
-            _make_ref("BTC/USDT", "binance", 1),
-            _make_ref("ETH/USDT", "binance", 2),
+            _make_ref("BTC/KRW", "upbit", 1),
+            _make_ref("ETH/KRW", "upbit", 2),
         ]
-        binance_mock = _ccxt_exchange_mock(
+        upbit_mock = _ccxt_exchange_mock(
             {
-                "BTC/USDT": {"last": 65000.0},
-                "ETH/USDT": {"last": 3500.0},
+                "BTC/KRW": {"last": 90000000.0},
+                "ETH/KRW": {"last": 4500000.0},
             }
         )
 
-        with patch("ccxt.async_support.binance", return_value=binance_mock):
+        with patch("ccxt.async_support.upbit", return_value=upbit_mock):
             result = await adapter.fetch_batch(refs)
 
         assert len(result.successes) == 2
