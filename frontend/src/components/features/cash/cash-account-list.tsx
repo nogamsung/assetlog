@@ -92,7 +92,7 @@ export function CashAccountList() {
           {accounts.map((account) => (
             <div
               key={account.id}
-              className="flex items-center justify-between rounded-lg border bg-card px-4 py-3 shadow-sm"
+              className="flex items-center justify-between rounded-2xl border border-toss-border bg-toss-card px-4 py-3 active:scale-[0.99] transition-transform" /* MODIFIED: toss card */
             >
               <div className="flex items-center gap-3 min-w-0">
                 <Badge variant="secondary" className="shrink-0">
@@ -100,8 +100,8 @@ export function CashAccountList() {
                 </Badge>
                 <div className="min-w-0">
                   <p className="font-medium text-sm truncate">{account.label}</p>
-                  <p className="text-xs text-muted-foreground">
-                    {formatCurrencySafe(account.balance, account.currency)}
+                  <p className="text-xs text-toss-textWeak"> {/* MODIFIED: toss color */}
+                    {formatCurrency(account.balance, account.currency)} {/* MODIFIED: unified formatter */}
                   </p>
                 </div>
               </div>
@@ -110,7 +110,7 @@ export function CashAccountList() {
                 <Button
                   type="button"
                   variant="ghost"
-                  size="icon"
+                  size="icon-touch" /* MODIFIED: 44px tap target */
                   onClick={() => setEditTarget(account)}
                   aria-label={`${account.label} 수정`}
                 >
@@ -119,7 +119,7 @@ export function CashAccountList() {
                 <Button
                   type="button"
                   variant="ghost"
-                  size="icon"
+                  size="icon-touch" /* MODIFIED: 44px tap target */
                   onClick={() => setDeleteTarget(account)}
                   aria-label={`${account.label} 삭제`}
                 >
@@ -156,20 +156,4 @@ export function CashAccountList() {
   );
 }
 
-/**
- * USDT / USDC 등 Intl.NumberFormat 미지원 통화 코드를 안전하게 포맷.
- * try/catch 후 fallback "${formattedNumber} ${code}" 형식.
- * 기존 formatCurrency 시그니처 변경 없이 래핑.
- */
-function formatCurrencySafe(amount: string, currency: string): string {
-  try {
-    return formatCurrency(amount, currency);
-  } catch {
-    const num = Number(amount);
-    const formatted = new Intl.NumberFormat("ko-KR", {
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 4,
-    }).format(num);
-    return `${formatted} ${currency}`;
-  }
-}
+/* REMOVED: formatCurrencySafe — migrated to unified formatCurrency in lib/format.ts */

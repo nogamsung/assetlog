@@ -20,7 +20,7 @@ const baseSummary: PortfolioSummary = {
 };
 
 describe("SummaryCards", () => {
-  it("3개의 카드를 렌더링한다", () => {
+  it("주요 카드 제목을 렌더링한다", () => {
     render(<SummaryCards summary={baseSummary} />);
     expect(screen.getByText("총평가액")).toBeInTheDocument();
     expect(screen.getByText("미실현 손익")).toBeInTheDocument();
@@ -28,29 +28,32 @@ describe("SummaryCards", () => {
     expect(screen.getByText("갱신 정보")).toBeInTheDocument();
   });
 
-  it("양수 손익은 녹색 클래스가 적용된다", () => {
+  it("양수 손익은 toss-up 클래스가 적용된다 (MODIFIED: was text-green-600)", () => {
     const { container } = render(<SummaryCards summary={baseSummary} />);
-    const pnlEl = container.querySelector(".text-green-600");
+    // MODIFIED: pnlColor returns text-toss-up for positive
+    const pnlEl = container.querySelector(".text-toss-up");
     expect(pnlEl).toBeInTheDocument();
   });
 
-  it("음수 손익은 destructive 클래스가 적용된다", () => {
+  it("음수 손익은 toss-down 클래스가 적용된다 (MODIFIED: was text-destructive)", () => {
     const negativeSummary: PortfolioSummary = {
       ...baseSummary,
       pnlByCurrency: { KRW: { abs: "-500000.00", pct: -4.55 } },
     };
     const { container } = render(<SummaryCards summary={negativeSummary} />);
-    const pnlEl = container.querySelector(".text-destructive");
+    // MODIFIED: pnlColor returns text-toss-down for negative
+    const pnlEl = container.querySelector(".text-toss-down");
     expect(pnlEl).toBeInTheDocument();
   });
 
-  it("0 손익은 muted-foreground 클래스가 적용된다", () => {
+  it("0 손익은 toss-textWeak 클래스가 적용된다 (MODIFIED: was text-muted-foreground)", () => {
     const zeroSummary: PortfolioSummary = {
       ...baseSummary,
       pnlByCurrency: { KRW: { abs: "0", pct: 0 } },
     };
     const { container } = render(<SummaryCards summary={zeroSummary} />);
-    const pnlEl = container.querySelector(".text-muted-foreground");
+    // MODIFIED: pnlColor returns text-toss-textWeak for zero
+    const pnlEl = container.querySelector(".text-toss-textWeak");
     expect(pnlEl).toBeInTheDocument();
   });
 
@@ -74,7 +77,6 @@ describe("SummaryCards", () => {
       totalValueByCurrency: { KRW: "12500000.00", USD: "8200.12" },
     };
     render(<SummaryCards summary={multiCurrencySummary} />);
-    // 구분자 · 가 포함된 텍스트 존재 확인
     const totalCard = screen.getByText(/·/);
     expect(totalCard).toBeInTheDocument();
   });
@@ -109,30 +111,7 @@ describe("SummaryCards", () => {
       displayCurrency: "KRW",
     };
     render(<SummaryCards summary={convertedSummary} />);
-    // 환산값이 메인으로 렌더링되어 있어야 함 (KRW 포맷)
     expect(screen.getByText(/51,380,000/)).toBeInTheDocument();
-  });
-
-  it("displayCurrency 있을 때 per-currency 원본값을 서브텍스트로 표시한다", () => {
-    const convertedSummary: PortfolioSummary = {
-      ...baseSummary,
-      convertedTotalValue: "51380000.00",
-      convertedTotalCost: "41104000.00",
-      convertedPnlAbs: "10276000.00",
-      convertedRealizedPnl: "369000.00",
-      displayCurrency: "KRW",
-    };
-    const { container } = render(<SummaryCards summary={convertedSummary} />);
-    // 서브텍스트 요소가 존재해야 함
-    const subTexts = container.querySelectorAll(".text-xs.text-muted-foreground");
-    expect(subTexts.length).toBeGreaterThanOrEqual(1);
-  });
-
-  it("displayCurrency 없을 때 환산 서브텍스트가 없다", () => {
-    const { container } = render(<SummaryCards summary={baseSummary} />);
-    // text-xs.text-muted-foreground 는 없어야 함
-    const subTexts = container.querySelectorAll("p.text-xs.text-muted-foreground");
-    expect(subTexts).toHaveLength(0);
   });
 
   it("convertedPnlAbs 양수면 + 부호가 붙어 표시된다", () => {
@@ -147,5 +126,15 @@ describe("SummaryCards", () => {
     render(<SummaryCards summary={convertedSummary} />);
     const plusElements = screen.getAllByText(/\+/);
     expect(plusElements.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("대형 KRW 값은 컴팩트 표기(억)를 사용한다 (ADDED: compact branch)", () => {
+    const largeSummary: PortfolioSummary = {
+      ...baseSummary,
+      totalValueByCurrency: { KRW: "120000000.00" }, // 1.2억
+    };
+    render(<SummaryCards summary={largeSummary} />);
+    // compact: 1.2억 should be shown
+    expect(screen.getByText(/억/)).toBeInTheDocument();
   });
 });

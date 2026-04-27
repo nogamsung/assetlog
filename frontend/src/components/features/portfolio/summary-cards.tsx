@@ -1,18 +1,27 @@
 "use client";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { formatCurrency, formatPercent, formatRelativeTime } from "@/lib/format";
+import { formatCurrency, formatCompactCurrency, formatPercent, formatRelativeTime, pnlColor } from "@/lib/format"; /* MODIFIED */
+import { tossHeroNumber, tossCardNumber } from "@/lib/toss-tokens"; /* ADDED */
+import { cn } from "@/lib/utils"; /* ADDED */
 import type { PortfolioSummary } from "@/types/portfolio";
 
 interface SummaryCardsProps {
   summary: PortfolioSummary;
 }
 
-function PnlColorClass(abs: string): string {
-  const n = Number(abs);
-  if (n > 0) return "text-green-600 dark:text-green-400";
-  if (n < 0) return "text-destructive";
-  return "text-muted-foreground";
+/** Use compact currency when value (in KRW equivalent approx) is large — ADDED */
+function shouldCompact(amount: string, currency: string): boolean {
+  const n = Math.abs(Number(amount));
+  if (currency === "KRW" || currency === "JPY") return n >= 1e8;
+  return n >= 1e6;
+}
+
+function formatDisplay(amount: string, currency: string): string {
+  if (shouldCompact(amount, currency)) {
+    return formatCompactCurrency(amount, currency);
+  }
+  return formatCurrency(amount, currency);
 }
 
 export function SummaryCards({ summary }: SummaryCardsProps) {
@@ -33,8 +42,10 @@ export function SummaryCards({ summary }: SummaryCardsProps) {
 
   const totalValueMain =
     hasConversion && summary.convertedTotalValue !== null
-      ? formatCurrency(summary.convertedTotalValue, displayCurrency)
-      : perCurrencyTotalText;
+      ? formatDisplay(summary.convertedTotalValue, displayCurrency)
+      : totalValueEntries.length === 1
+        ? formatDisplay(totalValueEntries[0][1], totalValueEntries[0][0])
+        : perCurrencyTotalText;
 
   const totalValueSub =
     hasConversion && summary.convertedTotalValue !== null
@@ -108,110 +119,114 @@ export function SummaryCards({ summary }: SummaryCardsProps) {
   const hasCash = cashEntries.length > 0;
 
   return (
-    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-      {/* 총평가액 카드 */}
+    <div className="space-y-4"> {/* MODIFIED: vertical layout instead of grid for hero card */}
+
+      {/* MODIFIED: Hero card — 총평가액 with big number */}
       <Card>
         <CardHeader className="pb-2">
-          <CardTitle className="text-sm font-medium text-muted-foreground">
+          <CardTitle className="text-sm font-medium text-toss-textWeak"> {/* MODIFIED */}
             총평가액
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <p className="text-2xl font-bold">{totalValueMain}</p>
+          <p className={cn(tossHeroNumber)}>{totalValueMain}</p> {/* MODIFIED: hero number */}
           {totalValueSub !== null && (
-            <p className="mt-1 text-xs text-muted-foreground">{totalValueSub}</p>
+            <p className="mt-1 text-xs text-toss-textWeak">{totalValueSub}</p>
           )}
         </CardContent>
       </Card>
 
-      {/* 미실현 손익 카드 */}
-      <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-sm font-medium text-muted-foreground">
-            미실현 손익
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <p className={`text-2xl font-bold ${PnlColorClass(firstPnlAbs)}`}>
-            {pnlMain}
-          </p>
-          {pnlSub !== null && (
-            <p className="mt-1 text-xs text-muted-foreground">{pnlSub}</p>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* 실현 손익 카드 */}
-      <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-sm font-medium text-muted-foreground">
-            실현 손익
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <p className={`text-2xl font-bold ${PnlColorClass(firstRealizedAbs)}`}>
-            {realizedMain}
-          </p>
-          {realizedSub !== null && (
-            <p className="mt-1 text-xs text-muted-foreground">{realizedSub}</p>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* 현금 카드 */}
-      {hasCash && (
+      {/* MODIFIED: Sub cards — 2 or 3 column grid */}
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-3">
+        {/* 미실현 손익 카드 */}
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              현금
+            <CardTitle className="text-sm font-medium text-toss-textWeak"> {/* MODIFIED */}
+              미실현 손익
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="space-y-1">
-              {cashEntries.map(([currency, amount]) => (
-                <p key={currency} className="text-sm font-medium">
-                  <span className="text-xs text-muted-foreground mr-1">
-                    {currency}
-                  </span>
-                  {formatCurrency(amount, currency)}
-                </p>
-              ))}
-            </div>
+            <p className={cn(tossCardNumber, pnlColor(firstPnlAbs))}> {/* MODIFIED: pnlColor + tossCardNumber */}
+              {pnlMain}
+            </p>
+            {pnlSub !== null && (
+              <p className="mt-1 text-xs text-toss-textWeak">{pnlSub}</p>
+            )}
           </CardContent>
         </Card>
-      )}
 
-      {/* 메타 카드 */}
-      <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-sm font-medium text-muted-foreground">
-            갱신 정보
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <p className="text-sm text-muted-foreground">
-            {formatRelativeTime(summary.lastPriceRefreshedAt)}
-          </p>
-          {summary.pendingCount > 0 && (
-            <p
-              className="mt-1 text-xs text-yellow-700"
-              role="status"
-              aria-live="polite"
-            >
-              현재가 대기 중 {summary.pendingCount}건
+        {/* 실현 손익 카드 */}
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-toss-textWeak"> {/* MODIFIED */}
+              실현 손익
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className={cn(tossCardNumber, pnlColor(firstRealizedAbs))}> {/* MODIFIED: pnlColor */}
+              {realizedMain}
             </p>
-          )}
-          {summary.staleCount > 0 && (
-            <p
-              className="mt-1 text-xs text-orange-700"
-              role="status"
-              aria-live="polite"
-            >
-              지연 {summary.staleCount}건
+            {realizedSub !== null && (
+              <p className="mt-1 text-xs text-toss-textWeak">{realizedSub}</p>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* 현금 카드 */}
+        {hasCash && (
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-toss-textWeak"> {/* MODIFIED */}
+                현금
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-1">
+                {cashEntries.map(([currency, amount]) => (
+                  <p key={currency} className="text-sm font-medium text-toss-text"> {/* MODIFIED */}
+                    <span className="text-xs text-toss-textWeak mr-1"> {/* MODIFIED */}
+                      {currency}
+                    </span>
+                    {formatCurrency(amount, currency)}
+                  </p>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* 메타 카드 */}
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-toss-textWeak"> {/* MODIFIED */}
+              갱신 정보
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-sm text-toss-textWeak"> {/* MODIFIED */}
+              {formatRelativeTime(summary.lastPriceRefreshedAt)}
             </p>
-          )}
-        </CardContent>
-      </Card>
+            {summary.pendingCount > 0 && (
+              <p
+                className="mt-1 text-xs text-yellow-700"
+                role="status"
+                aria-live="polite"
+              >
+                현재가 대기 중 {summary.pendingCount}건
+              </p>
+            )}
+            {summary.staleCount > 0 && (
+              <p
+                className="mt-1 text-xs text-orange-700"
+                role="status"
+                aria-live="polite"
+              >
+                지연 {summary.staleCount}건
+              </p>
+            )}
+          </CardContent>
+        </Card>
+      </div>
     </div>
   );
 }

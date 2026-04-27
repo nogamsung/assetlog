@@ -20,6 +20,11 @@ const badgeVariants = cva(
           "border-transparent bg-blue-100 text-blue-800 hover:bg-blue-100/80",
         us_stock:
           "border-transparent bg-green-100 text-green-800 hover:bg-green-100/80",
+        /* ADDED: Toss PnL pill variants */
+        tossUp:
+          "border-transparent bg-toss-up/10 text-toss-up font-bold rounded-full",
+        tossDown:
+          "border-transparent bg-toss-down/10 text-toss-down font-bold rounded-full",
       },
     },
     defaultVariants: {

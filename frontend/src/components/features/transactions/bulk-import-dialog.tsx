@@ -57,10 +57,10 @@ export function BulkImportDialog({ open, onClose }: BulkImportDialogProps) {
               aria-selected={activeTab === "csv"}
               aria-controls="tabpanel-csv"
               onClick={() => setActiveTab("csv")}
-              className={`border-b-2 px-4 py-3 text-sm font-medium transition-colors ${
+              className={`min-h-11 border-b-2 px-4 py-3 text-sm font-medium transition-colors ${ /* MODIFIED: min-h-11 */
                 activeTab === "csv"
-                  ? "border-primary text-foreground"
-                  : "border-transparent text-muted-foreground hover:text-foreground"
+                  ? "border-toss-blue text-toss-blue"
+                  : "border-transparent text-toss-textWeak hover:text-toss-text"
               }`}
             >
               CSV 업로드
@@ -72,10 +72,10 @@ export function BulkImportDialog({ open, onClose }: BulkImportDialogProps) {
               aria-selected={activeTab === "grid"}
               aria-controls="tabpanel-grid"
               onClick={() => setActiveTab("grid")}
-              className={`border-b-2 px-4 py-3 text-sm font-medium transition-colors ${
+              className={`min-h-11 border-b-2 px-4 py-3 text-sm font-medium transition-colors ${ /* MODIFIED: min-h-11 */
                 activeTab === "grid"
-                  ? "border-primary text-foreground"
-                  : "border-transparent text-muted-foreground hover:text-foreground"
+                  ? "border-toss-blue text-toss-blue"
+                  : "border-transparent text-toss-textWeak hover:text-toss-text"
               }`}
             >
               직접 입력
@@ -105,7 +105,7 @@ export function BulkImportDialog({ open, onClose }: BulkImportDialogProps) {
         </div>
 
         {/* 하단 취소 버튼 */}
-        <div className="sticky bottom-0 border-t bg-background px-6 py-4 flex justify-end">
+        <div className="sticky bottom-0 border-t bg-background px-6 py-4 pb-[env(safe-area-inset-bottom)] flex justify-end"> {/* MODIFIED: safe-area */}
           <Button type="button" variant="outline" size="sm" onClick={onClose}>
             닫기
           </Button>

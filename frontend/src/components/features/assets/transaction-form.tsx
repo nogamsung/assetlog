@@ -126,7 +126,7 @@ export function TransactionForm({
       onSubmit={handleSubmit(onSubmit)}
       className="space-y-4"
       noValidate
-      aria-label={mode === "edit" ? "거래 수정 폼" : "거래 추가 폼"} // MODIFIED
+      aria-label={mode === "edit" ? "거래 수정 폼" : "거래 추가 폼"}
     >
       {conflictError && ( // ADDED
         <p role="alert" className="text-sm font-medium text-destructive">
@@ -144,7 +144,7 @@ export function TransactionForm({
         <select
           id="tx-type"
           {...register("type")}
-          className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+          className="flex h-12 w-full rounded-xl border border-toss-border bg-toss-card px-4 text-base text-toss-textStrong focus:border-toss-blue focus:outline-none focus:ring-2 focus:ring-toss-blue/20" /* MODIFIED: toss style */
           aria-label="거래 유형"
         >
           <option value="buy">매수</option>

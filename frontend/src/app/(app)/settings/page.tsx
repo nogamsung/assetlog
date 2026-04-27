@@ -32,6 +32,7 @@ export default function SettingsPage() {
             disabled={logoutMutation.isPending}
             aria-busy={logoutMutation.isPending}
             aria-label="로그아웃"
+            className="w-full sm:w-auto" /* MODIFIED */
           >
             {logoutMutation.isPending ? "로그아웃 중..." : "로그아웃"}
           </Button>
@@ -60,12 +61,13 @@ export default function SettingsPage() {
           <p className="text-sm text-muted-foreground">
             보유 자산과 거래 내역을 파일로 내려받습니다. 정기적인 백업을 권장합니다.
           </p>
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap"> {/* MODIFIED: mobile stacked */}
             <Button
               variant="outline"
               onClick={() => exportMutation.mutate("json")}
               disabled={exportMutation.isPending}
               aria-label="데이터를 JSON 으로 내려받기"
+              className="w-full sm:w-auto" /* MODIFIED */
             >
               <Download className="h-4 w-4 mr-1" /> JSON 다운로드
             </Button>
@@ -74,6 +76,7 @@ export default function SettingsPage() {
               onClick={() => exportMutation.mutate("csv")}
               disabled={exportMutation.isPending}
               aria-label="데이터를 CSV(ZIP) 로 내려받기"
+              className="w-full sm:w-auto" /* MODIFIED */
             >
               <Download className="h-4 w-4 mr-1" /> CSV (ZIP) 다운로드
             </Button>

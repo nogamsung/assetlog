@@ -160,7 +160,7 @@ export function CashAccountEditDialog({
             )}
           </div>
 
-          <div className="flex justify-end gap-2 pt-2">
+          <div className="flex flex-col-reverse gap-2 pt-2 sm:flex-row sm:justify-end"> {/* MODIFIED */}
             <Button type="button" variant="outline" onClick={onClose}>
               취소
             </Button>

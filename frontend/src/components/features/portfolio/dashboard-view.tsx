@@ -7,6 +7,7 @@ import { useSampleSeed } from "@/hooks/use-sample-seed";
 import { SummaryCards } from "./summary-cards";
 import { AllocationDonut } from "./allocation-donut";
 import { HoldingsTable } from "./holdings-table";
+import { HoldingsList } from "./holdings-list"; /* ADDED */
 import { PortfolioHistoryChart } from "./portfolio-history-chart";
 import { CurrencySwitcher } from "./currency-switcher";
 import { TagBreakdownTable } from "./tag-breakdown-table";
@@ -107,7 +108,7 @@ export function DashboardView() {
     )[0]?.[0] ?? "KRW";
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 sm:space-y-8"> {/* MODIFIED: mobile/desktop spacing */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <span className="text-sm text-muted-foreground">포트폴리오 요약</span>
         <CurrencySwitcher
@@ -131,6 +132,7 @@ export function DashboardView() {
       <AllocationDonut allocation={summary.allocation} />
       <PortfolioHistoryChart currency={defaultCurrency} />
       <TagBreakdownTable />
+      <HoldingsList holdings={holdings} /> {/* ADDED: mobile card list */}
       <HoldingsTable holdings={holdings} />
     </div>
   );

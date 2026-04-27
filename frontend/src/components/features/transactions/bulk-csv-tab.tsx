@@ -143,7 +143,7 @@ export function BulkCsvTab({ onSuccess }: BulkCsvTabProps) {
         <label htmlFor="bulk-csv-file" className="text-sm font-medium">
           CSV 파일 선택
         </label>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 h-32 sm:h-40"> {/* MODIFIED: responsive drop zone height */}
           <input
             id="bulk-csv-file"
             ref={fileInputRef}
@@ -152,7 +152,7 @@ export function BulkCsvTab({ onSuccess }: BulkCsvTabProps) {
             onChange={handleFileChange}
             aria-label="CSV 파일 업로드"
             aria-describedby={clientError ? "csv-client-error" : undefined}
-            className="flex-1 rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm file:border-0 file:bg-transparent file:text-sm file:font-medium focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+            className="flex-1 h-full rounded-xl border border-toss-border bg-toss-card px-3 py-1 text-base file:border-0 file:bg-transparent file:text-sm file:font-medium focus:outline-none focus:ring-2 focus:ring-toss-blue/20" /* MODIFIED: toss tokens + text-base */
           />
         </div>
         <p className="text-xs text-muted-foreground">

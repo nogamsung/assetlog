@@ -1,5 +1,6 @@
 import { format } from "date-fns";
 import { ko } from "date-fns/locale";
+import { formatCurrency } from "@/lib/format"; /* ADDED */
 import type { HistoryPeriod } from "@/types/portfolio-history";
 
 export function formatTimestamp(date: Date, period: HistoryPeriod): string {
@@ -17,13 +18,10 @@ export function formatCompactNumber(value: number): string {
   }).format(value);
 }
 
+/* MODIFIED: delegates to unified formatCurrency with category rules */
 export function formatCurrencyValue(value: unknown, currency: string): string {
-  const num = typeof value === "number" ? value : Number(value);
-  return new Intl.NumberFormat("ko-KR", {
-    style: "currency",
-    currency,
-    maximumFractionDigits: 0,
-  }).format(num);
+  const str = typeof value === "number" ? String(value) : String(value ?? 0);
+  return formatCurrency(str, currency);
 }
 
 export function formatTooltipLabel(label: unknown): string {

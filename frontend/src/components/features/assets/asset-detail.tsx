@@ -16,7 +16,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { formatCurrency, formatQuantity } from "@/lib/format";
+import { formatCurrency, formatQuantity, pnlColor } from "@/lib/format"; /* MODIFIED */
 import type { TransactionResponse } from "@/types/transaction"; // ADDED
 
 interface AssetDetailProps {
@@ -172,15 +172,7 @@ export function AssetDetail({ userAssetId }: AssetDetailProps) {
                   </div>
                   <div>
                     <dt className="text-muted-foreground">실현 손익</dt>
-                    <dd
-                      className={`font-semibold mt-0.5 ${
-                        Number(summaryQuery.data.realizedPnl) > 0
-                          ? "text-emerald-600"
-                          : Number(summaryQuery.data.realizedPnl) < 0
-                            ? "text-rose-600"
-                            : "text-muted-foreground"
-                      }`}
-                    >
+                    <dd className={`font-semibold mt-0.5 ${pnlColor(summaryQuery.data.realizedPnl)}`}> {/* MODIFIED: pnlColor */}
                       {Number(summaryQuery.data.realizedPnl) > 0 ? "+" : ""}
                       {formatCurrency(
                         summaryQuery.data.realizedPnl,
@@ -212,7 +204,7 @@ export function AssetDetail({ userAssetId }: AssetDetailProps) {
       <Card>
         <CardHeader>
           <div className="flex flex-col gap-3">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-wrap items-center justify-between gap-2"> {/* MODIFIED: flex-wrap for mobile */}
             <CardTitle className="text-base">거래 내역</CardTitle>
             <div className="flex items-center gap-2">
               <Button

@@ -8,7 +8,7 @@ import { useSampleSeed } from "@/hooks/use-sample-seed";
 import { AssetTypeBadge } from "./asset-type-badge";
 import { Button } from "@/components/ui/button";
 import { Trash2, Plus } from "lucide-react";
-import { formatCurrency, formatQuantity } from "@/lib/format";
+import { formatCurrency, formatQuantity, pnlColor } from "@/lib/format"; /* MODIFIED */
 
 function AssetListSkeleton() {
   return (
@@ -86,7 +86,7 @@ export function AssetList() {
         return (
           <div
             key={userAssetId}
-            className="flex items-center justify-between rounded-lg border bg-card px-4 py-3 shadow-sm"
+            className="flex items-center justify-between rounded-2xl border border-toss-border bg-toss-card px-4 py-3 active:scale-[0.99] transition-transform" /* MODIFIED: toss card */
           >
             <Link
               href={`/assets/${userAssetId}`}
@@ -133,16 +133,10 @@ export function AssetList() {
                       : "—"}
                   </p>
                 </div>
-                {Number(holding.realizedPnl) !== 0 && ( // ADDED realized_pnl 뱃지
+                {Number(holding.realizedPnl) !== 0 && (
                   <div className="text-right">
-                    <p className="text-muted-foreground">실현</p>
-                    <p
-                      className={`font-medium ${
-                        Number(holding.realizedPnl) > 0
-                          ? "text-emerald-600"
-                          : "text-rose-600"
-                      }`}
-                    >
+                    <p className="text-toss-textWeak text-xs">실현</p> {/* MODIFIED */}
+                    <p className={`font-medium ${pnlColor(holding.realizedPnl)}`}> {/* MODIFIED: pnlColor */}
                       {Number(holding.realizedPnl) > 0 ? "+" : ""}
                       {formatCurrency(holding.realizedPnl, currency)}
                     </p>
@@ -152,7 +146,7 @@ export function AssetList() {
             </Link>
             <Button
               variant="ghost"
-              size="icon"
+              size="icon-touch" /* MODIFIED: 44px tap target */
               onClick={() => handleDelete(userAssetId, assetSymbol.symbol)}
               disabled={deleteMutation.isPending}
               aria-label={`${assetSymbol.symbol} 삭제`}

@@ -45,8 +45,9 @@ describe("AllocationDonut", () => {
     expect(list).toBeInTheDocument();
   });
 
-  it("퍼센트 값이 표시된다", () => {
+  it("퍼센트 값이 표시된다 (MODIFIED: trailing zero trimmed by formatPercent)", () => {
     render(<AllocationDonut allocation={sampleAllocation} />);
-    expect(screen.getByText(/42\.10%/)).toBeInTheDocument();
+    // 42.10 → 42.1% (trailing zero removed)
+    expect(screen.getByText(/42\.1%/)).toBeInTheDocument();
   });
 });
