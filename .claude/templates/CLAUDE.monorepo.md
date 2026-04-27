@@ -63,10 +63,15 @@ prefix 생략 시 — 스택 1개면 자동, 2개 이상이면 확인. `/test`, 
 
 ## 기획 → 구현 워크플로
 ```
-/planner 결제 취소 기능
+/start 결제 취소 기능
+  → worktree(feature/payment-cancel) 자동 생성
   → docs/specs/payment-cancel.md (PRD)
   → docs/specs/payment-cancel/{backend,frontend,mobile}.md (역할별 프롬프트)
-실행: (a) Agent Teams 병렬  또는  (b) 각 역할에서 /new 수동
+  → 1회 확인 후 generator agent 병렬 실행 (단일 스택은 무확인)
+
+# 설계만 (worktree 없이) 원하면:
+/plan 결제 취소 기능              # PRD + 프롬프트만
+/plan 결제 취소 기능 --teams      # PRD 후 즉시 generator 실행
 /review → 3개 역할 일괄 리뷰
 /pr
 ```
@@ -84,3 +89,5 @@ prefix 생략 시 — 스택 1개면 자동, 2개 이상이면 확인. `/test`, 
 - **PR 스코프** — 가능하면 PR 당 1개 스택. 걸치면 커밋 분리
 
 각 스택 `CLAUDE.md` 반드시 읽으세요.
+
+> **CLAUDE.md ≤ 300줄 캡** — 루트 인덱스와 모든 역할별 sub-CLAUDE.md 포함. 초과 시 상세는 `.claude/skills/` 또는 `docs/` 로 이관.

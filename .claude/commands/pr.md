@@ -45,6 +45,63 @@ EXISTING=$(gh pr view --json url 2>/dev/null | jq -r '.url // empty')
 [ -n "$EXISTING" ] && echo "ℹ️  이미 PR 존재: $EXISTING"
 ```
 
+## Step 1.5 — 🔒 보안 리뷰 (자동, 필수)
+
+> **모든 기능 PR 은 보안 리뷰를 통과해야 합니다.** 인자에 `--skip-security` 가 없으면 자동 실행.
+
+### 리뷰 대상 수집
+
+```bash
+# base 대비 diff 생성
+git fetch origin "$BASE_BRANCH" --quiet 2>/dev/null || true
+DIFF=$(git diff "origin/$BASE_BRANCH"..."$BRANCH" 2>/dev/null | head -5000)
+CHANGED_FILES=$(git diff --name-only "origin/$BASE_BRANCH"..."$BRANCH" 2>/dev/null)
+```
+
+### security-reviewer agent 호출
+
+```
+Agent(
+  subagent_type="security-reviewer",
+  prompt="""
+  /pr 커맨드에서 자동 호출. 아래 diff 에 대해 OWASP Top 10 + 스택별 보안 pitfall
+  검사 + 시크릿 유출 + 의존성 CVE 를 검토하고 리포트 반환.
+
+  대상 브랜치: {BRANCH}
+  Base: {BASE_BRANCH}
+  변경 파일 수: {file_count}
+
+  --- staged diff (최대 5000 줄) ---
+  {DIFF}
+  --- end diff ---
+
+  리포트 끝에 반드시 판정값을 포함: PASS / REVIEW / BLOCK
+  """
+)
+```
+
+### 판정별 분기
+
+| 판정 | 동작 |
+|------|------|
+| **PASS** (Critical/High 없음) | 바로 Step 2 로 진행 |
+| **REVIEW** (High 발견) | 리포트 보여주고 "계속 진행? (y/N)" — 기본값 N |
+| **BLOCK** (Critical 발견) | 리포트 보여주고 **exit** — "수정 후 다시 /pr 실행하세요" |
+
+### 예외: `--skip-security` 옵션
+
+긴급 hotfix 등에 사용. 여전히 리뷰는 실행되지만:
+- Critical 도 경고로 강등 (차단 없음)
+- 사용자에게 **이유 입력 요구** (필수)
+- PR 본문에 자동 주입:
+  ```markdown
+  ⚠️ **SECURITY REVIEW SKIPPED** — reason: {사용자 입력}
+  Issues found: Critical {N}, High {N}
+  Reviewer must verify before merge.
+  ```
+
+> **이 옵션은 예외다**. 일반 기능 개발엔 쓰지 말 것. 사용 시 메모리에 자동 기록.
+
 ## Step 2 — push & PR 생성
 
 ```bash

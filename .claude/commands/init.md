@@ -113,18 +113,18 @@ my-project/
 
 | 스택 | 유지 agents | 유지 skills | 유지 templates |
 |------|-------------|-------------|----------------|
-| `kotlin` / `kotlin-multi` | kotlin-{gen,mod,test}, code-reviewer, api-designer, ui-designer¹, github-actions-designer, **planner** | kotlin-patterns, db-patterns, api-design-patterns, github-actions-patterns | CLAUDE.kotlin[-multi], settings.kotlin[-multi], **prd**, **role-prompt** |
-| `go` / `go-multi` | go-{gen,mod,test}, code-reviewer, api-designer, github-actions-designer, **planner** | go-patterns, db-patterns, api-design-patterns, github-actions-patterns | CLAUDE.go[-multi], settings.go[-multi], **prd**, **role-prompt** |
-| `python` / `python-multi` | python-{gen,mod,test}, **ai-{researcher,gen,mod,test}**, code-reviewer, api-designer, github-actions-designer, **planner** | python-patterns, **ai-patterns**, db-patterns, api-design-patterns, github-actions-patterns | CLAUDE.python[-multi], settings.python[-multi], **prd**, **role-prompt** |
-| `nextjs` / `nextjs-multi` | nextjs-{gen,mod,test}, code-reviewer, ui-designer, github-actions-designer, **planner** | nextjs-patterns, ui-design-impl, github-actions-patterns | CLAUDE.nextjs[-multi], settings.nextjs[-multi], **prd**, **role-prompt** |
-| `flutter` | flutter-{gen,mod,test}, code-reviewer, ui-designer, github-actions-designer, **planner** | flutter-patterns, ui-design-impl, github-actions-patterns | CLAUDE.flutter, settings.flutter, **prd**, **role-prompt** |
+| `kotlin` / `kotlin-multi` | kotlin-{gen,mod,test}, code-reviewer, **security-reviewer**, api-designer, ui-designer¹, github-actions-designer, **planner** | kotlin-patterns, db-patterns, api-design-patterns, github-actions-patterns, **security-patterns**, **docker-patterns**, **cache-patterns** | CLAUDE.kotlin[-multi], settings.kotlin[-multi], **prd**, **role-prompt** |
+| `go` / `go-multi` | go-{gen,mod,test}, code-reviewer, **security-reviewer**, api-designer, github-actions-designer, **planner** | go-patterns, db-patterns, api-design-patterns, github-actions-patterns, **security-patterns**, **docker-patterns**, **cache-patterns** | CLAUDE.go[-multi], settings.go[-multi], **prd**, **role-prompt** |
+| `python` / `python-multi` | python-{gen,mod,test}, **ai-{researcher,gen,mod,test}**, code-reviewer, **security-reviewer**, api-designer, github-actions-designer, **planner** | python-patterns, **ai-patterns**, db-patterns, api-design-patterns, github-actions-patterns, **security-patterns**, **docker-patterns**, **cache-patterns** | CLAUDE.python[-multi], settings.python[-multi], **prd**, **role-prompt** |
+| `nextjs` / `nextjs-multi` | nextjs-{gen,mod,test}, code-reviewer, **security-reviewer**, ui-designer, github-actions-designer, **planner** | nextjs-patterns, ui-design-impl, github-actions-patterns, **security-patterns**, **docker-patterns**, **cache-patterns** | CLAUDE.nextjs[-multi], settings.nextjs[-multi], **prd**, **role-prompt** |
+| `flutter` | flutter-{gen,mod,test}, code-reviewer, **security-reviewer**, ui-designer, github-actions-designer, **planner** | flutter-patterns, ui-design-impl, github-actions-patterns, **security-patterns** | CLAUDE.flutter, settings.flutter, **prd**, **role-prompt** |
 | `marketing` | code-reviewer, **planner**, **gtm-planner** | (없음 — marketing-skills 플러그인 의존) | CLAUDE.marketing, settings.marketing, **prd**, **role-prompt**, **marketing-plan**, **gtm-history**, **memory** |
 | `sales` | code-reviewer, **planner**, **gtm-planner** | (없음 — marketing-skills 플러그인 의존) | CLAUDE.sales, settings.sales, **prd**, **role-prompt**, **sales-plan**, **gtm-history**, **memory** |
 | `product` | code-reviewer, **planner**, **gtm-planner** | (없음 — pm-skills 마켓플레이스 + marketing-skills 플러그인 의존) | CLAUDE.product, settings.product, **prd**, **role-prompt**, **marketing-plan**, **sales-plan**, **gtm-history**, **memory** |
 
 ¹ `ui-designer` 는 백엔드 단독일 땐 제거. 모노레포에서는 frontend/mobile 이 있으면 자동 유지.
 
-> `planner` agent 와 `prd`/`role-prompt` 템플릿은 **모든 스택에서 유지**합니다. `/planner` 커맨드가 이들을 사용합니다.
+> `planner` agent 와 `prd`/`role-prompt` 템플릿은 **모든 스택에서 유지**합니다. `/start` · `/plan` 커맨드가 이들을 사용합니다.
 >
 > **marketing/sales/product 모드**: 코드 스택 관련 agent (`kotlin-*`, `go-*`, `python-*`, `nextjs-*`, `flutter-*`, `ui-designer`, `api-designer`, `github-actions-designer`) 와 코드 관련 skills (`*-patterns`, `db-patterns`, `api-design-patterns`, `ui-design-impl`, `github-actions-patterns`) · 템플릿 (`CLAUDE.{코드스택}.md`, `settings.{코드스택}.json`) 을 **모두 제거**합니다. 작업은 marketing/sales 는 `marketing-skills` 플러그인, product 는 `pm-skills` 마켓플레이스 8개 플러그인(+ `marketing-skills`) 로 처리합니다.
 
@@ -132,12 +132,12 @@ my-project/
 
 감지된 스택들의 "유지 대상" **합집합**을 적용:
 
-- **backend (kotlin/kotlin-multi)** 감지 → kotlin-{gen,mod,test}, api-designer, kotlin-patterns, db-patterns, api-design-patterns, CLAUDE.kotlin[-multi], settings.kotlin[-multi]
-- **backend (go/go-multi)** 감지 → go-{gen,mod,test}, api-designer, go-patterns, db-patterns, api-design-patterns, CLAUDE.go[-multi], settings.go[-multi]
-- **backend (python/python-multi)** 감지 → python-{gen,mod,test}, api-designer, python-patterns, db-patterns, api-design-patterns, CLAUDE.python[-multi], settings.python[-multi]
-- **frontend (nextjs/nextjs-multi)** 감지 → nextjs-{gen,mod,test}, ui-designer, nextjs-patterns, ui-design-impl, CLAUDE.nextjs[-multi], settings.nextjs[-multi]
+- **backend (kotlin/kotlin-multi)** 감지 → kotlin-{gen,mod,test}, api-designer, kotlin-patterns, db-patterns, api-design-patterns, **docker-patterns**, **cache-patterns**, CLAUDE.kotlin[-multi], settings.kotlin[-multi]
+- **backend (go/go-multi)** 감지 → go-{gen,mod,test}, api-designer, go-patterns, db-patterns, api-design-patterns, **docker-patterns**, **cache-patterns**, CLAUDE.go[-multi], settings.go[-multi]
+- **backend (python/python-multi)** 감지 → python-{gen,mod,test}, **ai-{researcher,gen,mod,test}**, api-designer, python-patterns, **ai-patterns**, db-patterns, api-design-patterns, **docker-patterns**, **cache-patterns**, CLAUDE.python[-multi], settings.python[-multi]
+- **frontend (nextjs/nextjs-multi)** 감지 → nextjs-{gen,mod,test}, ui-designer, nextjs-patterns, ui-design-impl, **docker-patterns**, **cache-patterns**, CLAUDE.nextjs[-multi], settings.nextjs[-multi]
 - **mobile (flutter)** 감지 → flutter-{gen,mod,test}, ui-designer, flutter-patterns, ui-design-impl, CLAUDE.flutter, settings.flutter
-- **공통 유지**: code-reviewer, github-actions-designer, **planner**, github-actions-patterns, CLAUDE.monorepo.md, settings.monorepo.json, memory.md, **prd.md**, **role-prompt.md**
+- **공통 유지**: code-reviewer, **security-reviewer**, github-actions-designer, **planner**, github-actions-patterns, **security-patterns**, CLAUDE.monorepo.md, settings.monorepo.json, memory.md, **prd.md**, **role-prompt.md**
 
 ### 제거 대상
 
@@ -150,6 +150,8 @@ my-project/
 ---
 
 ## Step 3 — 하네스 파일 설치
+
+> 🔒 **CLAUDE.md ≤ 300줄 캡 (모든 모드 공통)** — 설치하거나 병합한 모든 CLAUDE.md (루트, 역할별 sub-CLAUDE.md 포함) 의 줄 수를 검사합니다. 300줄을 넘으면 초과분을 `.claude/skills/{topic}.md` 또는 `docs/{topic}.md` 로 이관하고 CLAUDE.md 에는 ``상세: `.claude/skills/{topic}.md`` 한 줄로 인덱스만 남깁니다. 사용자에게 이관 결과를 보고하고 확인을 받습니다.
 
 ### 3-A. 단일 스택 모드
 
@@ -218,7 +220,7 @@ cp .claude/templates/settings.{stack}.json ./.claude/settings.json
 - 디렉토리명이 `backend-auth`, `web-admin` 처럼 suffix 가 있으면 → suffix 가 `name`
 - 사용자가 감지 결과를 확인할 때 수정 가능
 
-이 파일은 `/new`, `/plan`, `/planner`, `.claude/hooks/pre-push.sh`, `settings.monorepo.json` hooks 가 모두 읽습니다.
+이 파일은 `/new`, `/start`, `/plan`, `.claude/hooks/pre-push.sh`, `settings.monorepo.json` hooks 가 모두 읽습니다.
 
 **Service 식별자 (통칭 `service-id`)**:
 - `name` 있으면 → `role:name` (예: `backend:auth`, `backend:ml`)
@@ -469,9 +471,9 @@ GitHub 브랜치 보호 안내:
 이제 할 일:
   1. CLAUDE.md 를 열고 프로젝트에 맞게 커스터마이징
   2. GitHub 브랜치 보호 규칙 설정 (main·dev 또는 main만)
-  3. /new worktree {type-name}  → 첫 작업 브랜치
-  4. /planner <기능>             → 기획서(PRD) + 구현 프롬프트 작성
-  5. /plan <기능>                → 코드 수준 구현 설계
+  3. /start <기능>               → 신규 기능 한 번에 시작 (worktree + PRD + 자동 구현)
+  4. /plan <기능>                → 설계만 (worktree 없이 PRD + 역할 프롬프트)
+  5. /plan <기능> --light        → 가벼운 단일 변경 계획
   6. AI 실수 시 /rule            → 규칙 추가
   7. 중요한 결정·교훈은 /memory add
 
@@ -500,7 +502,7 @@ GitHub 브랜치 보호 안내:
   .worktrees/: gitignore 등록됨
 
 남은 agents: code-reviewer, planner, gtm-planner
-핵심 커맨드: /planner, /marketing, /memory, /commit, /pr, /merge, /rule
+핵심 커맨드: /start, /plan, /marketing, /memory, /commit, /pr, /merge, /rule
 
 ⚠️ marketing-skills 플러그인 필요 — 아직 설치되지 않았다면:
     /plugin install marketing-skills@marketingskills
@@ -509,7 +511,7 @@ GitHub 브랜치 보호 안내:
   1. CLAUDE.md 를 열고 프로젝트에 맞게 커스터마이징
   2. (권장) /marketing context         → product-marketing-context 생성
   3. /new worktree {type-name}         → 첫 작업 브랜치
-  4. /planner <기능> [--marketing|--sales|--gtm]  → PRD + 전략 문서 생성
+  4. /plan <기능> [--marketing|--sales|--gtm]  → PRD + 전략 문서 생성
   5. /marketing <카테고리>             → 스킬 기반 작업 (copywriting / seo-audit / cold-email ...)
   6. 중요한 결정·캠페인 결과는 /memory add
 ```
@@ -536,7 +538,7 @@ GitHub 브랜치 보호 안내:
 
 남은 agents: code-reviewer, planner, gtm-planner
 핵심 커맨드: /discover, /strategy, /write-prd, /plan-launch, /north-star,
-            /planner, /marketing, /memory, /commit, /pr, /merge, /rule
+            /start, /plan, /marketing, /memory, /commit, /pr, /merge, /rule
 
 ⚠️ pm-skills 마켓플레이스 + 8개 플러그인 필요 — 아직 설치되지 않았다면:
     /plugin marketplace add phuryn/pm-skills
@@ -558,7 +560,7 @@ GitHub 브랜치 보호 안내:
   5. /write-prd <기능>                      → PRD 작성 (docs/prd/)
   6. /plan-okrs                             → OKR 계획 (docs/okrs/)
   7. /plan-launch <기능>                    → 런치 플랜 (docs/launch/)
-  8. /planner <기능> --gtm                  → PRD + 마케팅 + 세일즈 통합
+  8. /plan <기능> --gtm                     → PRD + 마케팅 + 세일즈 통합
   9. 리서치 인사이트·실패한 가설은 /memory add
 ```
 
@@ -593,10 +595,10 @@ GitHub 브랜치 보호 안내:
 이제 할 일:
   1. 각 역할 CLAUDE.md 를 프로젝트 맞게 커스터마이징
   2. GitHub 브랜치 보호 규칙 설정
-  3. /new worktree {type-name}  → 첫 작업 브랜치
-  4. /planner <기능>            → 기획서(PRD) + 역할별 프롬프트 3세트 생성
-                                  (원하면 --teams 로 활성 스택 agent 병렬 실행)
-  5. /new backend api <Resource>    → backend 스캐폴딩
+  3. /start <기능>              → 신규 기능 한 번에 시작 (worktree + PRD + 자동 병렬 구현)
+  4. /plan <기능>               → 설계만 (PRD + 역할별 프롬프트 3세트)
+                                  (--teams 로 활성 스택 agent 병렬 실행)
+  5. /new backend api <Resource>    → backend 스캐폴딩 (개별)
      /new frontend component <Name> → frontend 컴포넌트
      /new mobile screen <Name>      → mobile 화면
   6. /plan backend <기능>       → 역할 prefix 로 구현 설계

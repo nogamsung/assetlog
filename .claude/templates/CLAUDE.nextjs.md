@@ -13,7 +13,8 @@ Next.js 14+ (App Router) · TypeScript strict · Tailwind + shadcn/ui · TanStac
 | 코드 리뷰 | `code-reviewer` · `/review` |
 | 컴포넌트 생성 | `/new <Name> [--page\|--feature\|--ui]` |
 | 커밋/PR/머지 | `/commit` · `/pr` · `/merge` |
-| 기획 → 프롬프트 | `/planner <기능>` |
+| 신규 기능 시작 | `/start <기능>` (worktree + PRD + 자동 구현) |
+| 설계만 / 추가 PRD | `/plan <기능>` |
 | Second Brain | `/memory [add\|search]` |
 
 ## Git 전략
@@ -71,3 +72,5 @@ npx jest --coverage
 
 ## Memory
 세션 시작 시 `memory/MEMORY.md` 자동 로드. `/plan`, `/rule`, 버그 해결, 라이브러리 도입, 아키텍처·성능 변경 → 자동 기록.
+
+> **CLAUDE.md ≤ 300줄 캡** — 초과 시 상세는 `.claude/skills/` 또는 `docs/` 로 이관, 본문은 인덱스 한 줄로.
