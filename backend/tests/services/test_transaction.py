@@ -143,9 +143,7 @@ def _make_service(
     tx_repo.delete_by_id_for_user_asset.return_value = delete_result
     if update_result is not None:  # ADDED
         tx_repo.update.return_value = update_result
-    tx_repo.list_distinct_tags.return_value = (
-        distinct_tags if distinct_tags is not None else []
-    )
+    tx_repo.list_distinct_tags.return_value = distinct_tags if distinct_tags is not None else []
 
     return TransactionService(transaction_repo=tx_repo, user_asset_repo=ua_repo)
 

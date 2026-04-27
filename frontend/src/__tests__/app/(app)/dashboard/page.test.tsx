@@ -67,6 +67,7 @@ const fakeSummary: PortfolioSummary = {
   convertedPnlAbs: null,
   convertedRealizedPnl: null,
   displayCurrency: null,
+  cashTotalByCurrency: {},
 };
 
 const fakeHolding: HoldingResponse = {

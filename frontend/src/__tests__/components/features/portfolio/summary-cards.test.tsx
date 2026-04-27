@@ -16,6 +16,7 @@ const baseSummary: PortfolioSummary = {
   convertedPnlAbs: null,
   convertedRealizedPnl: null,
   displayCurrency: null,
+  cashTotalByCurrency: {},
 };
 
 describe("SummaryCards", () => {

@@ -8,7 +8,7 @@ export interface PnlEntry {
 }
 
 export interface AllocationEntry {
-  assetType: AssetType;
+  assetType: AssetType | "cash";
   pct: number;
 }
 
@@ -27,6 +27,8 @@ export interface PortfolioSummary {
   convertedPnlAbs: string | null;
   convertedRealizedPnl: string | null;
   displayCurrency: string | null;
+  // 현금 보유 합계 (통화별)
+  cashTotalByCurrency: CurrencyAmountMap;
 }
 
 export interface HoldingResponse {

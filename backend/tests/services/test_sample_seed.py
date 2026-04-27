@@ -99,9 +99,7 @@ def _build_service(
 
     ua_call_count: list[int] = [0]
 
-    async def _ua_create_side_effect(
-        asset_symbol_id: int, memo: Any = None
-    ) -> UserAsset:
+    async def _ua_create_side_effect(asset_symbol_id: int, memo: Any = None) -> UserAsset:
         ua_call_count[0] += 1
         return _make_user_asset(ua_id=ua_call_count[0], sym_id=asset_symbol_id)
 

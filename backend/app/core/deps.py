@@ -15,6 +15,7 @@ from app.db.base import get_db_session
 from app.domain.asset_type import AssetType
 from app.exceptions import UnauthorizedError
 from app.repositories.asset_symbol import AssetSymbolRepository
+from app.repositories.cash_account import CashAccountRepository
 from app.repositories.fx_rate import FxRateRepository
 from app.repositories.login_attempt import LoginAttemptRepository
 from app.repositories.portfolio import PortfolioRepository
@@ -24,6 +25,7 @@ from app.repositories.transaction import TransactionRepository
 from app.repositories.user_asset import UserAssetRepository
 from app.services.auth import AuthService
 from app.services.bulk_transaction import BulkTransactionService
+from app.services.cash_account import CashAccountService
 from app.services.data_export import DataExportService
 from app.services.fx_rate import FxRateService
 from app.services.login_rate_limiter import LoginRateLimiter
@@ -184,12 +186,31 @@ def get_fx_rate_service(repo: FxRateRepositoryDep) -> FxRateService:
 FxRateServiceDep = Annotated[FxRateService, Depends(get_fx_rate_service)]
 
 
+def get_cash_account_repository(session: DbSession) -> CashAccountRepository:
+    """Inject a CashAccountRepository bound to the current request session."""
+    return CashAccountRepository(session)
+
+
+CashAccountRepositoryDep = Annotated[CashAccountRepository, Depends(get_cash_account_repository)]
+
+
+async def get_cash_account_service(
+    session: DbSession,
+) -> CashAccountService:
+    """Inject a CashAccountService bound to the current request session."""
+    return CashAccountService(CashAccountRepository(session))
+
+
+CashAccountServiceDep = Annotated[CashAccountService, Depends(get_cash_account_service)]
+
+
 def get_portfolio_service(
     repo: PortfolioRepositoryDep,
     fx_service: FxRateServiceDep,
+    cash_repo: CashAccountRepositoryDep,
 ) -> PortfolioService:
-    """Inject a PortfolioService with FxRateService for optional currency conversion."""
-    return PortfolioService(repo, fx_service=fx_service)
+    """Inject a PortfolioService with FxRateService and CashAccountRepository."""
+    return PortfolioService(repo, fx_service=fx_service, cash_repository=cash_repo)
 
 
 PortfolioServiceDep = Annotated[PortfolioService, Depends(get_portfolio_service)]

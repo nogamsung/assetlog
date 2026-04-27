@@ -103,6 +103,10 @@ export function SummaryCards({ summary }: SummaryCardsProps) {
         ? realizedEntries[0][1]
         : "0";
 
+  // ── 현금 합계 ─────────────────────────────────────────────────────────────
+  const cashEntries = Object.entries(summary.cashTotalByCurrency);
+  const hasCash = cashEntries.length > 0;
+
   return (
     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
       {/* 총평가액 카드 */}
@@ -153,6 +157,29 @@ export function SummaryCards({ summary }: SummaryCardsProps) {
           )}
         </CardContent>
       </Card>
+
+      {/* 현금 카드 */}
+      {hasCash && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              현금
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-1">
+              {cashEntries.map(([currency, amount]) => (
+                <p key={currency} className="text-sm font-medium">
+                  <span className="text-xs text-muted-foreground mr-1">
+                    {currency}
+                  </span>
+                  {formatCurrency(amount, currency)}
+                </p>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* 메타 카드 */}
       <Card>
