@@ -19,7 +19,6 @@ interface RawAssetSymbolResponse {
 
 interface RawUserAssetResponse {
   id: number;
-  user_id: number;
   asset_symbol: RawAssetSymbolResponse;
   memo: string | null;
   created_at: string;

@@ -2,17 +2,15 @@
 
 from __future__ import annotations
 
-from datetime import datetime
-
 from pydantic import BaseModel, ConfigDict, Field
 
 
 class UserLogin(BaseModel):
-    """Schema for single-owner password login."""  # MODIFIED
+    """Schema for single-owner password login."""
 
     model_config = ConfigDict(str_strip_whitespace=True)
 
-    password: str = Field(  # MODIFIED — email removed
+    password: str = Field(
         ...,
         min_length=1,
         max_length=128,
@@ -22,16 +20,15 @@ class UserLogin(BaseModel):
 
 
 class UserResponse(BaseModel):
-    """Schema for user data returned in API responses.
+    """Schema for owner principal returned after authentication.
 
     Token is never included — it is set via httpOnly cookie only.
+    Single-owner mode: no DB-backed user record, only the static principal id.
     """
 
-    model_config = ConfigDict(from_attributes=True, str_strip_whitespace=True)
+    model_config = ConfigDict(str_strip_whitespace=True)
 
-    id: int = Field(..., description="User ID", examples=[1])
-    email: str = Field(..., description="User email address", examples=["owner@assetlog.local"])
-    created_at: datetime = Field(..., description="Account creation timestamp")
+    id: int = Field(..., description="Owner principal ID", examples=[1])
 
 
 class ErrorResponse(BaseModel):

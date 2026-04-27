@@ -5,9 +5,9 @@ from __future__ import annotations
 from fastapi import APIRouter, Request, Response, status
 
 from app.core.config import settings
-from app.core.deps import AuthServiceDep, CurrentUser, DbSession
+from app.core.deps import AuthServiceDep, CurrentUser
 from app.core.security import create_access_token
-from app.schemas.auth import ErrorResponse, UserLogin, UserResponse  # MODIFIED — UserCreate removed
+from app.schemas.auth import ErrorResponse, UserLogin, UserResponse
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -38,19 +38,18 @@ def _set_auth_cookie(response: Response, token: str) -> None:
         503: {"model": ErrorResponse, "description": "Owner password not configured"},
     },
 )
-async def login(  # MODIFIED
+async def login(
     data: UserLogin,
-    request: Request,  # ADDED
+    request: Request,
     response: Response,
-    session: DbSession,
     auth_service: AuthServiceDep,
 ) -> UserResponse:
     """Verify the owner password and set an httpOnly auth cookie on success."""
-    client_ip: str = request.client.host if request.client else "unknown"  # ADDED
-    user = await auth_service.authenticate(session, data.password, client_ip)  # MODIFIED
-    token = create_access_token(subject=user.id)
+    client_ip: str = request.client.host if request.client else "unknown"
+    principal = await auth_service.authenticate(data.password, client_ip)
+    token = create_access_token(subject=principal.id)
     _set_auth_cookie(response, token)
-    return UserResponse.model_validate(user)
+    return UserResponse(id=principal.id)
 
 
 @router.post(
@@ -68,11 +67,11 @@ async def logout(response: Response) -> None:
     "/me",
     response_model=UserResponse,
     status_code=status.HTTP_200_OK,
-    summary="Return the currently authenticated user",
+    summary="Return the currently authenticated owner principal",
     responses={
         401: {"model": ErrorResponse, "description": "Not authenticated"},
     },
 )
 async def me(current_user: CurrentUser) -> UserResponse:
-    """Return profile information for the bearer of the current auth token."""
-    return UserResponse.model_validate(current_user)
+    """Return identifier for the bearer of the current auth token."""
+    return UserResponse(id=current_user.id)

@@ -5,12 +5,12 @@ from __future__ import annotations
 import io
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
-from typing import Any
 from unittest.mock import AsyncMock
 
 from httpx import AsyncClient
 
 from app.core.deps import get_current_user, get_transaction_service
+from app.core.principal import OwnerPrincipal
 from app.domain.transaction_type import TransactionType
 from app.exceptions import (  # MODIFIED
     CsvImportValidationError,
@@ -19,17 +19,12 @@ from app.exceptions import (  # MODIFIED
 )
 from app.main import app
 from app.models.transaction import Transaction
-from app.models.user import User
 from app.schemas.transaction import UserAssetSummaryResponse
 from app.services.transaction import TransactionService
 
 
-def _make_user(user_id: int = 1, email: str = "test@example.com") -> User:
-    user = User(email=email, password_hash="hashed")
-    user.id = user_id
-    user.created_at = datetime.now(UTC)
-    user.updated_at = datetime.now(UTC)
-    return user
+def _make_owner() -> OwnerPrincipal:
+    return OwnerPrincipal()
 
 
 def _make_transaction(
@@ -81,7 +76,7 @@ class TestAddTransaction:
         assert response.status_code == 401
 
     async def test_매수_성공하면_201_반환(self, async_client: AsyncClient) -> None:
-        user = _make_user()
+        user = _make_owner()
         tx = _make_transaction()
         mock_service = AsyncMock(spec=TransactionService)
         mock_service.add.return_value = tx
@@ -100,7 +95,7 @@ class TestAddTransaction:
             app.dependency_overrides.pop(get_transaction_service, None)
 
     async def test_소유하지_않은_user_asset이면_404(self, async_client: AsyncClient) -> None:
-        user = _make_user()
+        user = _make_owner()
         mock_service = AsyncMock(spec=TransactionService)
         mock_service.add.side_effect = NotFoundError("not found")
 
@@ -117,7 +112,7 @@ class TestAddTransaction:
             app.dependency_overrides.pop(get_transaction_service, None)
 
     async def test_잔여수량_초과_매도시_409(self, async_client: AsyncClient) -> None:  # ADDED
-        user = _make_user()
+        user = _make_owner()
         mock_service = AsyncMock(spec=TransactionService)
         mock_service.add.side_effect = InsufficientHoldingError(
             "Cannot sell 5 units: only 2 units held."
@@ -142,7 +137,7 @@ class TestAddTransaction:
             app.dependency_overrides.pop(get_transaction_service, None)
 
     async def test_user_asset_id가_0이면_422(self, async_client: AsyncClient) -> None:
-        user = _make_user()
+        user = _make_owner()
         app.dependency_overrides[get_current_user] = lambda: user
 
         try:
@@ -152,7 +147,7 @@ class TestAddTransaction:
             app.dependency_overrides.pop(get_current_user, None)
 
     async def test_quantity가_0이면_422(self, async_client: AsyncClient) -> None:
-        user = _make_user()
+        user = _make_owner()
         app.dependency_overrides[get_current_user] = lambda: user
 
         try:
@@ -163,7 +158,7 @@ class TestAddTransaction:
             app.dependency_overrides.pop(get_current_user, None)
 
     async def test_naive_traded_at이면_422(self, async_client: AsyncClient) -> None:
-        user = _make_user()
+        user = _make_owner()
         app.dependency_overrides[get_current_user] = lambda: user
 
         try:
@@ -174,7 +169,7 @@ class TestAddTransaction:
             app.dependency_overrides.pop(get_current_user, None)
 
     async def test_미래_traded_at이면_422(self, async_client: AsyncClient) -> None:
-        user = _make_user()
+        user = _make_owner()
         app.dependency_overrides[get_current_user] = lambda: user
 
         try:
@@ -191,7 +186,7 @@ class TestListTransactions:
         assert response.status_code == 401
 
     async def test_목록_조회_성공(self, async_client: AsyncClient) -> None:
-        user = _make_user()
+        user = _make_owner()
         txs = [_make_transaction(tx_id=1), _make_transaction(tx_id=2)]
         mock_service = AsyncMock(spec=TransactionService)
         mock_service.list.return_value = txs
@@ -210,7 +205,7 @@ class TestListTransactions:
             app.dependency_overrides.pop(get_transaction_service, None)
 
     async def test_타_사용자_user_asset_조회시_404(self, async_client: AsyncClient) -> None:
-        user = _make_user()
+        user = _make_owner()
         mock_service = AsyncMock(spec=TransactionService)
         mock_service.list.side_effect = NotFoundError("not found")
 
@@ -225,7 +220,7 @@ class TestListTransactions:
             app.dependency_overrides.pop(get_transaction_service, None)
 
     async def test_limit_offset_쿼리_파라미터_전달(self, async_client: AsyncClient) -> None:
-        user = _make_user()
+        user = _make_owner()
         mock_service = AsyncMock(spec=TransactionService)
         mock_service.list.return_value = []
 
@@ -236,7 +231,6 @@ class TestListTransactions:
             response = await async_client.get("/api/user-assets/1/transactions?limit=10&offset=20")
             assert response.status_code == 200
             mock_service.list.assert_called_once_with(
-                current_user_id := user.id,  # noqa: F841
                 1,
                 limit=10,
                 offset=20,
@@ -253,7 +247,7 @@ class TestDeleteTransaction:
         assert response.status_code == 401
 
     async def test_삭제_성공하면_204(self, async_client: AsyncClient) -> None:
-        user = _make_user()
+        user = _make_owner()
         mock_service = AsyncMock(spec=TransactionService)
         mock_service.remove.return_value = None
 
@@ -263,13 +257,13 @@ class TestDeleteTransaction:
         try:
             response = await async_client.delete("/api/user-assets/1/transactions/1")
             assert response.status_code == 204
-            mock_service.remove.assert_called_once_with(user.id, 1, 1)
+            mock_service.remove.assert_called_once_with(1, 1)
         finally:
             app.dependency_overrides.pop(get_current_user, None)
             app.dependency_overrides.pop(get_transaction_service, None)
 
     async def test_없는_transaction_삭제시_404(self, async_client: AsyncClient) -> None:
-        user = _make_user()
+        user = _make_owner()
         mock_service = AsyncMock(spec=TransactionService)
         mock_service.remove.side_effect = NotFoundError("not found")
 
@@ -286,7 +280,7 @@ class TestDeleteTransaction:
     async def test_타_사용자_user_asset_트랜잭션_삭제시_404(
         self, async_client: AsyncClient
     ) -> None:
-        user = _make_user()
+        user = _make_owner()
         mock_service = AsyncMock(spec=TransactionService)
         mock_service.remove.side_effect = NotFoundError("user asset not found")
 
@@ -301,7 +295,7 @@ class TestDeleteTransaction:
             app.dependency_overrides.pop(get_transaction_service, None)
 
     async def test_transaction_id가_0이면_422(self, async_client: AsyncClient) -> None:
-        user = _make_user()
+        user = _make_owner()
         app.dependency_overrides[get_current_user] = lambda: user
 
         try:
@@ -317,7 +311,7 @@ class TestGetSummary:
         assert response.status_code == 401
 
     async def test_요약_조회_성공(self, async_client: AsyncClient) -> None:
-        user = _make_user()
+        user = _make_owner()
         summary = _make_summary()
         mock_service = AsyncMock(spec=TransactionService)
         mock_service.summary.return_value = summary
@@ -337,7 +331,7 @@ class TestGetSummary:
             app.dependency_overrides.pop(get_transaction_service, None)
 
     async def test_소유하지_않은_user_asset이면_404(self, async_client: AsyncClient) -> None:
-        user = _make_user()
+        user = _make_owner()
         mock_service = AsyncMock(spec=TransactionService)
         mock_service.summary.side_effect = NotFoundError("not found")
 
@@ -366,7 +360,7 @@ class TestUpdateTransaction:  # ADDED
         assert response.status_code == 401
 
     async def test_수정_성공하면_200_반환(self, async_client: AsyncClient) -> None:
-        user = _make_user()
+        user = _make_owner()
         tx = _make_transaction()
         mock_service = AsyncMock(spec=TransactionService)
         mock_service.edit.return_value = tx
@@ -386,7 +380,7 @@ class TestUpdateTransaction:  # ADDED
             app.dependency_overrides.pop(get_transaction_service, None)
 
     async def test_없는_transaction이면_404(self, async_client: AsyncClient) -> None:
-        user = _make_user()
+        user = _make_owner()
         mock_service = AsyncMock(spec=TransactionService)
         mock_service.edit.side_effect = NotFoundError("not found")
 
@@ -403,7 +397,7 @@ class TestUpdateTransaction:  # ADDED
             app.dependency_overrides.pop(get_transaction_service, None)
 
     async def test_보유_부족_SELL이면_409(self, async_client: AsyncClient) -> None:
-        user = _make_user()
+        user = _make_owner()
         mock_service = AsyncMock(spec=TransactionService)
         mock_service.edit.side_effect = InsufficientHoldingError(
             "Edit would leave negative holding."
@@ -423,7 +417,7 @@ class TestUpdateTransaction:  # ADDED
             app.dependency_overrides.pop(get_transaction_service, None)
 
     async def test_quantity가_0이면_422(self, async_client: AsyncClient) -> None:
-        user = _make_user()
+        user = _make_owner()
         app.dependency_overrides[get_current_user] = lambda: user
 
         try:
@@ -434,7 +428,7 @@ class TestUpdateTransaction:  # ADDED
             app.dependency_overrides.pop(get_current_user, None)
 
     async def test_naive_traded_at이면_422(self, async_client: AsyncClient) -> None:
-        user = _make_user()
+        user = _make_owner()
         app.dependency_overrides[get_current_user] = lambda: user
 
         try:
@@ -445,7 +439,7 @@ class TestUpdateTransaction:  # ADDED
             app.dependency_overrides.pop(get_current_user, None)
 
     async def test_미래_traded_at이면_422(self, async_client: AsyncClient) -> None:
-        user = _make_user()
+        user = _make_owner()
         app.dependency_overrides[get_current_user] = lambda: user
 
         try:
@@ -456,7 +450,7 @@ class TestUpdateTransaction:  # ADDED
             app.dependency_overrides.pop(get_current_user, None)
 
     async def test_transaction_id가_0이면_422(self, async_client: AsyncClient) -> None:
-        user = _make_user()
+        user = _make_owner()
         app.dependency_overrides[get_current_user] = lambda: user
 
         try:
@@ -500,7 +494,7 @@ def _past_iso(hours_ago: int = 1) -> str:
 
 class TestImportTransactionsCsv:
     async def test_200_happy_path(self, async_client: AsyncClient) -> None:
-        user = _make_user()
+        user = _make_owner()
         mock_service = AsyncMock(spec=TransactionService)
         imported_tx = _make_import_tx()
         mock_service.import_csv.return_value = (1, [imported_tx])
@@ -532,7 +526,7 @@ class TestImportTransactionsCsv:
         assert response.status_code == 401
 
     async def test_404_user_asset_없음(self, async_client: AsyncClient) -> None:
-        user = _make_user()
+        user = _make_owner()
         mock_service = AsyncMock(spec=TransactionService)
         mock_service.import_csv.side_effect = NotFoundError("not found")
 
@@ -551,7 +545,7 @@ class TestImportTransactionsCsv:
             app.dependency_overrides.pop(get_transaction_service, None)
 
     async def test_413_1MB_초과(self, async_client: AsyncClient) -> None:
-        user = _make_user()
+        user = _make_owner()
         app.dependency_overrides[get_current_user] = lambda: user
 
         # Slightly over 1 MB
@@ -566,7 +560,7 @@ class TestImportTransactionsCsv:
             app.dependency_overrides.pop(get_current_user, None)
 
     async def test_422_row_errors(self, async_client: AsyncClient) -> None:
-        user = _make_user()
+        user = _make_owner()
         mock_service = AsyncMock(spec=TransactionService)
         mock_service.import_csv.side_effect = CsvImportValidationError(
             [{"row": 1, "field": "type", "message": "Invalid transaction type."}]
@@ -591,7 +585,7 @@ class TestImportTransactionsCsv:
             app.dependency_overrides.pop(get_transaction_service, None)
 
     async def test_빈_CSV_200_imported_count_0(self, async_client: AsyncClient) -> None:
-        user = _make_user()
+        user = _make_owner()
         mock_service = AsyncMock(spec=TransactionService)
         mock_service.import_csv.return_value = (0, [])
 
@@ -613,7 +607,7 @@ class TestImportTransactionsCsv:
             app.dependency_overrides.pop(get_transaction_service, None)
 
     async def test_user_asset_id_0이면_422(self, async_client: AsyncClient) -> None:
-        user = _make_user()
+        user = _make_owner()
         app.dependency_overrides[get_current_user] = lambda: user
 
         csv_content = _csv_bytes([f"buy,1.0,50000,{_past_iso()},"])
@@ -629,7 +623,7 @@ class TestImportTransactionsCsv:
 
 class TestListTransactionsTagFilter:
     async def test_tag_쿼리파라미터_전달된다(self, async_client: AsyncClient) -> None:
-        user = _make_user()
+        user = _make_owner()
         mock_service = AsyncMock(spec=TransactionService)
         mock_service.list.return_value = []
 
@@ -640,7 +634,6 @@ class TestListTransactionsTagFilter:
             response = await async_client.get("/api/user-assets/1/transactions?tag=DCA")
             assert response.status_code == 200
             mock_service.list.assert_called_once_with(
-                user.id,
                 1,
                 limit=100,
                 offset=0,
@@ -651,7 +644,7 @@ class TestListTransactionsTagFilter:
             app.dependency_overrides.pop(get_transaction_service, None)
 
     async def test_tag_없으면_None_전달된다(self, async_client: AsyncClient) -> None:
-        user = _make_user()
+        user = _make_owner()
         mock_service = AsyncMock(spec=TransactionService)
         mock_service.list.return_value = []
 
@@ -662,7 +655,6 @@ class TestListTransactionsTagFilter:
             response = await async_client.get("/api/user-assets/1/transactions")
             assert response.status_code == 200
             mock_service.list.assert_called_once_with(
-                user.id,
                 1,
                 limit=100,
                 offset=0,
@@ -673,7 +665,7 @@ class TestListTransactionsTagFilter:
             app.dependency_overrides.pop(get_transaction_service, None)
 
     async def test_tag_50자_초과면_422(self, async_client: AsyncClient) -> None:
-        user = _make_user()
+        user = _make_owner()
         app.dependency_overrides[get_current_user] = lambda: user
 
         try:
@@ -684,7 +676,7 @@ class TestListTransactionsTagFilter:
             app.dependency_overrides.pop(get_current_user, None)
 
     async def test_response에_tag_포함된다(self, async_client: AsyncClient) -> None:
-        user = _make_user()
+        user = _make_owner()
         tx = _make_transaction(tag="DCA")
         mock_service = AsyncMock(spec=TransactionService)
         mock_service.list.return_value = [tx]
@@ -702,7 +694,7 @@ class TestListTransactionsTagFilter:
             app.dependency_overrides.pop(get_transaction_service, None)
 
     async def test_tag_None인_response는_null(self, async_client: AsyncClient) -> None:
-        user = _make_user()
+        user = _make_owner()
         tx = _make_transaction(tag=None)
         mock_service = AsyncMock(spec=TransactionService)
         mock_service.list.return_value = [tx]
@@ -726,7 +718,7 @@ class TestListUserTags:
         assert response.status_code == 401
 
     async def test_태그_목록_200_반환(self, async_client: AsyncClient) -> None:
-        user = _make_user()
+        user = _make_owner()
         mock_service = AsyncMock(spec=TransactionService)
         mock_service.list_distinct_tags.return_value = ["DCA", "장기보유"]
 
@@ -743,7 +735,7 @@ class TestListUserTags:
             app.dependency_overrides.pop(get_transaction_service, None)
 
     async def test_태그_없으면_빈_배열(self, async_client: AsyncClient) -> None:
-        user = _make_user()
+        user = _make_owner()
         mock_service = AsyncMock(spec=TransactionService)
         mock_service.list_distinct_tags.return_value = []
 
@@ -758,8 +750,8 @@ class TestListUserTags:
             app.dependency_overrides.pop(get_current_user, None)
             app.dependency_overrides.pop(get_transaction_service, None)
 
-    async def test_service_user_id로_호출된다(self, async_client: AsyncClient) -> None:
-        user = _make_user(user_id=42)
+    async def test_service_호출된다(self, async_client: AsyncClient) -> None:
+        user = _make_owner()
         mock_service = AsyncMock(spec=TransactionService)
         mock_service.list_distinct_tags.return_value = []
 
@@ -769,82 +761,7 @@ class TestListUserTags:
         try:
             response = await async_client.get("/api/user-assets/transactions/tags")
             assert response.status_code == 200
-            mock_service.list_distinct_tags.assert_called_once_with(42)
+            mock_service.list_distinct_tags.assert_called_once_with()
         finally:
             app.dependency_overrides.pop(get_current_user, None)
             app.dependency_overrides.pop(get_transaction_service, None)
-
-
-class TestTransactionUserIsolation:
-    """Full integration test: user A's transactions must not be accessible by user B."""
-
-    async def test_사용자_격리_통합_테스트(
-        self, async_client: AsyncClient, user_factory: Any, asset_symbol_factory: Any
-    ) -> None:
-        from app.core.security import create_access_token
-        from app.db.base import AsyncSessionLocal
-        from app.repositories.transaction import TransactionRepository
-        from app.repositories.user_asset import UserAssetRepository
-        from app.schemas.transaction import TransactionCreate
-
-        user_a = await user_factory(email="txiso_a@example.com")
-        user_b = await user_factory(email="txiso_b@example.com")
-
-        async with AsyncSessionLocal() as session:
-            sym = (
-                await asset_symbol_factory.__wrapped__(session)
-                if hasattr(asset_symbol_factory, "__wrapped__")
-                else None
-            )  # type: ignore[attr-defined]  # runtime factory access
-            if sym is None:
-                from app.domain.asset_type import AssetType
-                from app.repositories.asset_symbol import AssetSymbolRepository
-
-                sym_repo = AssetSymbolRepository(session)
-                sym = await sym_repo.create(
-                    asset_type=AssetType.CRYPTO,
-                    symbol="TXISO_COIN",
-                    exchange="test",
-                    name="Isolation Test Coin",
-                    currency="KRW",
-                )
-            await session.commit()
-            sym_id = sym.id
-
-        async with AsyncSessionLocal() as session:
-            ua_repo = UserAssetRepository(session)
-            ua_a = await ua_repo.create(user_id=user_a.id, asset_symbol_id=sym_id)
-            await session.commit()
-            ua_a_id = ua_a.id
-
-        async with AsyncSessionLocal() as session:
-            tx_repo = TransactionRepository(session)
-            from datetime import UTC, datetime
-
-            await tx_repo.create(
-                ua_a_id,
-                TransactionCreate(
-                    type=TransactionType.BUY,
-                    quantity=Decimal("1.0"),
-                    price=Decimal("1000.0"),
-                    traded_at=datetime.now(UTC),
-                ),
-            )
-            await session.commit()
-
-        # User A can access their transaction list
-        token_a = create_access_token(subject=user_a.id)
-        resp_a = await async_client.get(
-            f"/api/user-assets/{ua_a_id}/transactions",
-            cookies={"access_token": token_a},
-        )
-        assert resp_a.status_code == 200
-        assert len(resp_a.json()) >= 1
-
-        # User B gets 404 when trying to access User A's user_asset
-        token_b = create_access_token(subject=user_b.id)
-        resp_b = await async_client.get(
-            f"/api/user-assets/{ua_a_id}/transactions",
-            cookies={"access_token": token_b},
-        )
-        assert resp_b.status_code == 404

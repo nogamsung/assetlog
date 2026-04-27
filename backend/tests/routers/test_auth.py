@@ -2,30 +2,15 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
 from unittest.mock import AsyncMock
 
 from httpx import AsyncClient
 
 from app.core.deps import get_auth_service, get_current_user
+from app.core.principal import OwnerPrincipal
 from app.exceptions import OwnerPasswordNotConfiguredError, TooManyAttemptsError, UnauthorizedError
 from app.main import app
-from app.models.user import User
 from app.services.auth import AuthService
-
-
-def _make_user(
-    *,
-    user_id: int = 1,
-    email: str = "owner+local-1@assetlog.local",
-) -> User:
-    now = datetime.now(UTC)
-    user = User(email=email, password_hash="!disabled")
-    user.id = user_id
-    user.created_at = now
-    user.updated_at = now
-    return user
-
 
 # ---------------------------------------------------------------------------
 # POST /api/auth/signup — removed; must return 404 or 405
@@ -50,7 +35,7 @@ class TestLogin:
     async def test_올바른_비밀번호이면_200과_쿠키를_반환한다(
         self, async_client: AsyncClient
     ) -> None:
-        owner = _make_user(user_id=1)
+        owner = OwnerPrincipal()
         mock_service = AsyncMock(spec=AuthService)
         mock_service.authenticate.return_value = owner
         app.dependency_overrides[get_auth_service] = lambda: mock_service
@@ -144,7 +129,7 @@ class TestLogin:
 
     async def test_email_필드를_보내면_무시된다(self, async_client: AsyncClient) -> None:
         """Extra fields are ignored — Pydantic extra='ignore' default."""
-        owner = _make_user(user_id=1)
+        owner = OwnerPrincipal()
         mock_service = AsyncMock(spec=AuthService)
         mock_service.authenticate.return_value = owner
         app.dependency_overrides[get_auth_service] = lambda: mock_service
@@ -180,7 +165,7 @@ class TestLogout:
 
 class TestMe:
     async def test_쿠키로_인증하면_사용자_정보를_반환한다(self, async_client: AsyncClient) -> None:
-        user = _make_user(user_id=1)
+        user = OwnerPrincipal()
         app.dependency_overrides[get_current_user] = lambda: user
 
         try:
@@ -188,7 +173,6 @@ class TestMe:
             assert response.status_code == 200
             body = response.json()
             assert body["id"] == 1
-            assert body["email"] == "owner+local-1@assetlog.local"
         finally:
             app.dependency_overrides.pop(get_current_user, None)
 

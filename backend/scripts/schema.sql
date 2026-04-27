@@ -5,7 +5,7 @@
 -- Alembic revision under alembic/versions/ in order. After loading this file,
 -- stamp Alembic to the latest head so future revisions apply incrementally:
 --
---   mysql -u root -p < backend/schema.sql
+--   mysql -u root -p < backend/scripts/schema.sql
 --   uv run alembic stamp head
 --
 -- Connection target (see backend/.env.example):
@@ -20,20 +20,6 @@ USE `assetlog`;
 
 SET NAMES utf8mb4;
 SET FOREIGN_KEY_CHECKS = 0;
-
--- ----------------------------------------------------------------------------
--- users — application user (single-owner login + future multi-user)
--- ----------------------------------------------------------------------------
-CREATE TABLE IF NOT EXISTS `users` (
-  `id`            INT          NOT NULL AUTO_INCREMENT,
-  `email`         VARCHAR(255) NOT NULL,
-  `password_hash` VARCHAR(255) NOT NULL,
-  `created_at`    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  `updated_at`    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  PRIMARY KEY (`id`),
-  UNIQUE KEY `uq_users_email` (`email`),
-  UNIQUE KEY `ix_users_email` (`email`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ----------------------------------------------------------------------------
 -- asset_symbols — global master row per (asset_type, symbol, exchange)
@@ -58,21 +44,17 @@ CREATE TABLE IF NOT EXISTS `asset_symbols` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ----------------------------------------------------------------------------
--- user_assets — declared holding linking a user to an asset_symbol
+-- user_assets — declared holding linking the single owner to an asset_symbol
 -- ----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS `user_assets` (
   `id`               INT          NOT NULL AUTO_INCREMENT,
-  `user_id`          INT          NOT NULL,
   `asset_symbol_id`  INT          NOT NULL,
   `memo`             VARCHAR(255) NULL,
   `created_at`       DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at`       DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
-  UNIQUE KEY `uq_user_asset_symbol` (`user_id`, `asset_symbol_id`),
-  KEY `ix_user_assets_user_id`         (`user_id`),
+  UNIQUE KEY `uq_user_asset_symbol` (`asset_symbol_id`),
   KEY `ix_user_assets_asset_symbol_id` (`asset_symbol_id`),
-  CONSTRAINT `fk_user_assets_user_id`
-    FOREIGN KEY (`user_id`)         REFERENCES `users`(`id`)         ON DELETE CASCADE,
   CONSTRAINT `fk_user_assets_asset_symbol_id`
     FOREIGN KEY (`asset_symbol_id`) REFERENCES `asset_symbols`(`id`) ON DELETE RESTRICT
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

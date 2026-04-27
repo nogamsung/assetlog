@@ -8,25 +8,24 @@ from fastapi import Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.adapters import AdapterRegistry, build_default_adapter_registry
-from app.adapters.base import SymbolSearchAdapter  # ADDED
-from app.core.config import settings  # ADDED
+from app.adapters.base import SymbolSearchAdapter
+from app.core.config import settings
+from app.core.principal import OwnerPrincipal
 from app.db.base import get_db_session
-from app.domain.asset_type import AssetType  # ADDED
+from app.domain.asset_type import AssetType
 from app.exceptions import UnauthorizedError
-from app.models.user import User
 from app.repositories.asset_symbol import AssetSymbolRepository
 from app.repositories.fx_rate import FxRateRepository
-from app.repositories.login_attempt import LoginAttemptRepository  # ADDED
+from app.repositories.login_attempt import LoginAttemptRepository
 from app.repositories.portfolio import PortfolioRepository
 from app.repositories.portfolio_history import PortfolioHistoryRepository
 from app.repositories.price_point import PricePointRepository
 from app.repositories.transaction import TransactionRepository
-from app.repositories.user import UserRepository
 from app.repositories.user_asset import UserAssetRepository
 from app.services.auth import AuthService
 from app.services.data_export import DataExportService
 from app.services.fx_rate import FxRateService
-from app.services.login_rate_limiter import LoginRateLimiter  # ADDED
+from app.services.login_rate_limiter import LoginRateLimiter
 from app.services.portfolio import PortfolioService
 from app.services.portfolio_history import PortfolioHistoryService
 from app.services.price_refresh import PriceRefreshService
@@ -45,14 +44,6 @@ DbSession = Annotated[AsyncSession, Depends(get_db_session)]
 # ---------------------------------------------------------------------------
 # Repository factories
 # ---------------------------------------------------------------------------
-
-
-def get_user_repository(session: DbSession) -> UserRepository:
-    """Inject a UserRepository bound to the current request session."""
-    return UserRepository(session)
-
-
-UserRepositoryDep = Annotated[UserRepository, Depends(get_user_repository)]
 
 
 def get_asset_symbol_repository(session: DbSession) -> AssetSymbolRepository:
@@ -75,17 +66,17 @@ UserAssetRepositoryDep = Annotated[UserAssetRepository, Depends(get_user_asset_r
 # ---------------------------------------------------------------------------
 
 
-def get_login_attempt_repository(session: DbSession) -> LoginAttemptRepository:  # ADDED
+def get_login_attempt_repository(session: DbSession) -> LoginAttemptRepository:
     """Inject a LoginAttemptRepository bound to the current request session."""
     return LoginAttemptRepository(session)
 
 
-LoginAttemptRepositoryDep = Annotated[  # ADDED
+LoginAttemptRepositoryDep = Annotated[
     LoginAttemptRepository, Depends(get_login_attempt_repository)
 ]
 
 
-def get_login_rate_limiter(  # MODIFIED — DB-backed, per-request instance
+def get_login_rate_limiter(
     repo: LoginAttemptRepositoryDep,
 ) -> LoginRateLimiter:
     """Return a DB-backed LoginRateLimiter configured from settings."""
@@ -98,15 +89,12 @@ def get_login_rate_limiter(  # MODIFIED — DB-backed, per-request instance
     )
 
 
-LoginRateLimiterDep = Annotated[LoginRateLimiter, Depends(get_login_rate_limiter)]  # ADDED
+LoginRateLimiterDep = Annotated[LoginRateLimiter, Depends(get_login_rate_limiter)]
 
 
-def get_auth_service(  # MODIFIED
-    repo: UserRepositoryDep,
-    rate_limiter: LoginRateLimiterDep,  # ADDED
-) -> AuthService:
-    """Inject an AuthService with UserRepository and LoginRateLimiter."""
-    return AuthService(repo, rate_limiter=rate_limiter, settings=settings)
+def get_auth_service(rate_limiter: LoginRateLimiterDep) -> AuthService:
+    """Inject an AuthService with LoginRateLimiter."""
+    return AuthService(rate_limiter=rate_limiter, settings=settings)
 
 
 AuthServiceDep = Annotated[AuthService, Depends(get_auth_service)]
@@ -114,17 +102,15 @@ AuthServiceDep = Annotated[AuthService, Depends(get_auth_service)]
 
 def get_symbol_service(
     repo: AssetSymbolRepositoryDep,
-    adapter_registry: AdapterRegistryDep,  # ADDED
+    adapter_registry: AdapterRegistryDep,
 ) -> SymbolService:
     """Inject a SymbolService bound to the current request session and adapter registry."""
-    # Build a Mapping[AssetType, SymbolSearchAdapter] from the registry,
-    # filtering to only adapters that satisfy the SymbolSearchAdapter protocol.
     search_adapters: dict[AssetType, SymbolSearchAdapter] = {}
     for at in adapter_registry.all_types():
         adapter = adapter_registry.get(at)
         if isinstance(adapter, SymbolSearchAdapter):
             search_adapters[at] = adapter
-    return SymbolService(repo, adapters=search_adapters)  # MODIFIED
+    return SymbolService(repo, adapters=search_adapters)
 
 
 SymbolServiceDep = Annotated[SymbolService, Depends(get_symbol_service)]
@@ -319,10 +305,9 @@ DataExportServiceDep = Annotated[DataExportService, Depends(get_data_export_serv
 
 async def get_current_user(
     request: Request,
-    session: DbSession,
     auth_service: AuthServiceDep,
-) -> User:
-    """Resolve the authenticated user from cookie or Bearer header.
+) -> OwnerPrincipal:
+    """Resolve the owner principal from cookie or Bearer header.
 
     Priority:
     1. ``access_token`` httpOnly cookie
@@ -341,7 +326,7 @@ async def get_current_user(
     if token is None:
         raise UnauthorizedError("No authentication token provided.")
 
-    return await auth_service.get_user_from_token(session, token)
+    return await auth_service.get_principal_from_token(token)
 
 
-CurrentUser = Annotated[User, Depends(get_current_user)]
+CurrentUser = Annotated[OwnerPrincipal, Depends(get_current_user)]

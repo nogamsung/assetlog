@@ -1,4 +1,4 @@
-"""UserAsset ORM model — links a user to an AssetSymbol they hold."""
+"""UserAsset ORM model — single-owner declared holding for an AssetSymbol."""
 
 from __future__ import annotations
 
@@ -12,27 +12,21 @@ from app.models.asset_symbol import AssetSymbol
 
 
 class UserAsset(Base):
-    """Association between a user and an asset symbol they have declared holding.
+    """Declared holding for an asset symbol in single-owner mode.
 
-    Actual P&L and quantity come from Transaction rows (future PR).
-    The pair (user_id, asset_symbol_id) is unique — no duplicate holdings.
+    Actual P&L and quantity come from Transaction rows.
+    Only one row per asset_symbol_id — duplicate holdings are rejected.
     """
 
     __tablename__ = "user_assets"
     __table_args__ = (
         UniqueConstraint(
-            "user_id",
             "asset_symbol_id",
             name="uq_user_asset_symbol",
         ),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    user_id: Mapped[int] = mapped_column(
-        ForeignKey("users.id", ondelete="CASCADE"),
-        nullable=False,
-        index=True,
-    )
     asset_symbol_id: Mapped[int] = mapped_column(
         ForeignKey("asset_symbols.id", ondelete="RESTRICT"),
         nullable=False,
@@ -51,7 +45,6 @@ class UserAsset(Base):
         nullable=False,
     )
 
-    # Relationship — loaded via selectinload in repositories to avoid N+1.
     asset_symbol: Mapped[AssetSymbol] = relationship(
         "AssetSymbol",
         lazy="raise",  # force explicit loading — never implicit lazy-load

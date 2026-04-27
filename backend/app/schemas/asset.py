@@ -143,7 +143,6 @@ class UserAssetResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True, str_strip_whitespace=True)
 
     id: int = Field(..., description="User asset ID", examples=[1])
-    user_id: int = Field(..., description="Owner user ID", examples=[1])
     asset_symbol: AssetSymbolResponse = Field(..., description="Master symbol data")
     memo: str | None = Field(default=None, description="Personal note", examples=["Long-term hold"])
     created_at: datetime = Field(..., description="Record creation timestamp")

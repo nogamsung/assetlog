@@ -29,7 +29,7 @@ def _make_service(rows: list[RawRow]) -> TagBreakdownService:
 class TestTagBreakdownServiceEmpty:
     async def test_거래없음_빈_entries(self) -> None:
         svc = _make_service([])
-        result = await svc.get_breakdown(user_id=1)
+        result = await svc.get_breakdown()
         assert result.entries == []
 
     async def test_repo가_user_id로_호출됨(self) -> None:
@@ -37,8 +37,8 @@ class TestTagBreakdownServiceEmpty:
         mock_repo.list_tag_breakdown_rows.return_value = []
         svc = TagBreakdownService(repo=mock_repo)
 
-        await svc.get_breakdown(user_id=42)
-        mock_repo.list_tag_breakdown_rows.assert_called_once_with(42)
+        await svc.get_breakdown()
+        mock_repo.list_tag_breakdown_rows.assert_awaited_once()
 
 
 # ---------------------------------------------------------------------------
@@ -52,7 +52,7 @@ class TestTagBreakdownServiceSingleTag:
             ("DCA", "USD", "buy", Decimal("150.00"), 1),
         ]
         svc = _make_service(rows)
-        result = await svc.get_breakdown(user_id=1)
+        result = await svc.get_breakdown()
 
         assert len(result.entries) == 1
         entry = result.entries[0]
@@ -68,7 +68,7 @@ class TestTagBreakdownServiceSingleTag:
             ("DCA", "USD", "sell", Decimal("200.00"), 1),
         ]
         svc = _make_service(rows)
-        result = await svc.get_breakdown(user_id=1)
+        result = await svc.get_breakdown()
 
         entry = result.entries[0]
         assert entry.buy_count == 0
@@ -82,7 +82,7 @@ class TestTagBreakdownServiceSingleTag:
             ("DCA", "USD", "sell", Decimal("100.00"), 2),
         ]
         svc = _make_service(rows)
-        result = await svc.get_breakdown(user_id=1)
+        result = await svc.get_breakdown()
 
         assert len(result.entries) == 1
         entry = result.entries[0]
@@ -106,7 +106,7 @@ class TestTagBreakdownServiceMultiCurrency:
             ("DCA", "USD", "sell", Decimal("100.00"), 2),
         ]
         svc = _make_service(rows)
-        result = await svc.get_breakdown(user_id=1)
+        result = await svc.get_breakdown()
 
         assert len(result.entries) == 1
         entry = result.entries[0]
@@ -126,7 +126,7 @@ class TestTagBreakdownServiceMultiCurrency:
             ("DCA", "USD", "sell", Decimal("100.00"), 2),
         ]
         svc = _make_service(rows)
-        result = await svc.get_breakdown(user_id=1)
+        result = await svc.get_breakdown()
 
         entry = result.entries[0]
         # KRW has no SELL rows — key must not exist
@@ -144,7 +144,7 @@ class TestTagBreakdownServiceUntagged:
             (None, "KRW", "buy", Decimal("1000000.00"), 3),
         ]
         svc = _make_service(rows)
-        result = await svc.get_breakdown(user_id=1)
+        result = await svc.get_breakdown()
 
         assert len(result.entries) == 1
         entry = result.entries[0]
@@ -158,7 +158,7 @@ class TestTagBreakdownServiceUntagged:
             ("Swing", "USD", "sell", Decimal("200.00"), 2),
         ]
         svc = _make_service(rows)
-        result = await svc.get_breakdown(user_id=1)
+        result = await svc.get_breakdown()
 
         # untagged (count=5) has more than tagged entries BUT must still be last
         assert result.entries[-1].tag is None
@@ -168,7 +168,7 @@ class TestTagBreakdownServiceUntagged:
             (None, "USD", "buy", Decimal("300.00"), 2),
         ]
         svc = _make_service(rows)
-        result = await svc.get_breakdown(user_id=1)
+        result = await svc.get_breakdown()
 
         assert len(result.entries) == 1
         assert result.entries[0].tag is None
@@ -187,7 +187,7 @@ class TestTagBreakdownServiceSort:
             ("Mid", "USD", "buy", Decimal("300.00"), 3),
         ]
         svc = _make_service(rows)
-        result = await svc.get_breakdown(user_id=1)
+        result = await svc.get_breakdown()
 
         counts = [e.transaction_count for e in result.entries]
         assert counts == [5, 3, 1]
@@ -199,7 +199,7 @@ class TestTagBreakdownServiceSort:
             ("Mid", "USD", "buy", Decimal("100.00"), 2),
         ]
         svc = _make_service(rows)
-        result = await svc.get_breakdown(user_id=1)
+        result = await svc.get_breakdown()
 
         tags = [e.tag for e in result.entries]
         assert tags == ["Alpha", "Mid", "Zebra"]
@@ -210,7 +210,7 @@ class TestTagBreakdownServiceSort:
             ("A", "USD", "buy", Decimal("10.00"), 1),
         ]
         svc = _make_service(rows)
-        result = await svc.get_breakdown(user_id=1)
+        result = await svc.get_breakdown()
 
         # null wins on count but must be last
         assert result.entries[0].tag == "A"
@@ -224,7 +224,7 @@ class TestTagBreakdownServiceSort:
             ("HODL", "KRW", "buy", Decimal("2000000.00"), 10),
         ]
         svc = _make_service(rows)
-        result = await svc.get_breakdown(user_id=1)
+        result = await svc.get_breakdown()
 
         tags = [e.tag for e in result.entries]
         # DCA and HODL both have 10 → alphabetical → DCA first
@@ -238,7 +238,7 @@ class TestTagBreakdownServiceSort:
             ("DCA", "USD", "buy", Decimal("1500.123456"), 1),
         ]
         svc = _make_service(rows)
-        result = await svc.get_breakdown(user_id=1)
+        result = await svc.get_breakdown()
 
         val = result.entries[0].total_bought_value_by_currency["USD"]
         assert isinstance(val, str)
@@ -251,7 +251,7 @@ class TestTagBreakdownServiceSort:
             ("DCA", "USD", "buy", Decimal("300.00"), 3),  # same tag+currency+type
         ]
         svc = _make_service(rows)
-        result = await svc.get_breakdown(user_id=1)
+        result = await svc.get_breakdown()
 
         entry = result.entries[0]
         # In practice the DB GROUP BY collapses these, but the service must

@@ -39,8 +39,8 @@ def _make_asset_symbol(currency: str = "KRW") -> AssetSymbol:
     return sym
 
 
-def _make_user_asset(user_asset_id: int = 1, user_id: int = 1, currency: str = "KRW") -> UserAsset:
-    ua = UserAsset(user_id=user_id, asset_symbol_id=1)
+def _make_user_asset(user_asset_id: int = 1, currency: str = "KRW") -> UserAsset:
+    ua = UserAsset(asset_symbol_id=1)
     ua.id = user_asset_id
     ua.asset_symbol = _make_asset_symbol(currency=currency)  # type: ignore[assignment]  # mock relationship
     ua.memo = None
@@ -128,7 +128,7 @@ def _make_service(
     distinct_tags: list[str] | None = None,
 ) -> TransactionService:
     ua_repo = AsyncMock(spec=UserAssetRepository)
-    ua_repo.get_by_id_for_user.return_value = ua
+    ua_repo.get_by_id.return_value = ua
 
     tx_repo = AsyncMock(spec=TransactionRepository)
     if tx is not None:
@@ -143,7 +143,7 @@ def _make_service(
     tx_repo.delete_by_id_for_user_asset.return_value = delete_result
     if update_result is not None:  # ADDED
         tx_repo.update.return_value = update_result
-    tx_repo.list_distinct_tags_for_user.return_value = (
+    tx_repo.list_distinct_tags.return_value = (
         distinct_tags if distinct_tags is not None else []
     )
 
@@ -156,14 +156,14 @@ class TestTransactionServiceList:
         txs = [_make_transaction(tx_id=1), _make_transaction(tx_id=2)]
         svc = _make_service(ua=ua, transactions=txs)
 
-        result = await svc.list(user_id=1, user_asset_id=1)
+        result = await svc.list(user_asset_id=1)
         assert len(result) == 2
 
     async def test_소유하지_않은_user_asset이면_NotFoundError(self) -> None:
         svc = _make_service(ua=None)
 
         with pytest.raises(NotFoundError):
-            await svc.list(user_id=1, user_asset_id=999)
+            await svc.list(user_asset_id=999)
 
 
 class TestTransactionServiceAdd:
@@ -172,28 +172,28 @@ class TestTransactionServiceAdd:
         tx = _make_transaction()
         svc = _make_service(ua=ua, tx=tx)
 
-        result = await svc.add(user_id=1, user_asset_id=1, data=_buy_data())
+        result = await svc.add(user_asset_id=1, data=_buy_data())
         assert result.id == tx.id
 
     async def test_소유하지_않은_user_asset이면_NotFoundError(self) -> None:
         svc = _make_service(ua=None)
 
         with pytest.raises(NotFoundError):
-            await svc.add(user_id=1, user_asset_id=999, data=_buy_data())
+            await svc.add(user_asset_id=999, data=_buy_data())
 
-    async def test_타_사용자_user_asset이면_NotFoundError(self) -> None:
-        # ua_repo returns None because user_id does not match
+    async def test_소유하지_않은_user_asset_다시_NotFoundError(self) -> None:
+        # ua_repo returns None
         svc = _make_service(ua=None)
 
         with pytest.raises(NotFoundError):
-            await svc.add(user_id=2, user_asset_id=1, data=_buy_data())
+            await svc.add(user_asset_id=1, data=_buy_data())
 
     async def test_매도_성공_잔여수량_충분(self) -> None:  # ADDED
         ua = _make_user_asset()
         tx = _make_transaction()
         svc = _make_service(ua=ua, tx=tx, remaining_quantity=Decimal("5.0"))
 
-        result = await svc.add(user_id=1, user_asset_id=1, data=_sell_data(quantity="3.0"))
+        result = await svc.add(user_asset_id=1, data=_sell_data(quantity="3.0"))
         assert result.id == tx.id
 
     async def test_매도_잔여수량_초과시_InsufficientHoldingError(self) -> None:  # ADDED
@@ -201,14 +201,14 @@ class TestTransactionServiceAdd:
         svc = _make_service(ua=ua, remaining_quantity=Decimal("2.0"))
 
         with pytest.raises(InsufficientHoldingError):
-            await svc.add(user_id=1, user_asset_id=1, data=_sell_data(quantity="5.0"))
+            await svc.add(user_asset_id=1, data=_sell_data(quantity="5.0"))
 
     async def test_매도_잔여수량이_0일때_InsufficientHoldingError(self) -> None:  # ADDED
         ua = _make_user_asset()
         svc = _make_service(ua=ua, remaining_quantity=Decimal("0"))
 
         with pytest.raises(InsufficientHoldingError):
-            await svc.add(user_id=1, user_asset_id=1, data=_sell_data(quantity="1.0"))
+            await svc.add(user_asset_id=1, data=_sell_data(quantity="1.0"))
 
 
 class TestTransactionServiceSummary:
@@ -224,7 +224,7 @@ class TestTransactionServiceSummary:
         )
         svc = _make_service(ua=ua, summary=agg)
 
-        result = await svc.summary(user_id=1, user_asset_id=1)
+        result = await svc.summary(user_asset_id=1)
         assert result.total_bought_quantity == Decimal("3.0")
         assert result.total_sold_quantity == Decimal("1.0")
         assert result.remaining_quantity == Decimal("2.0")
@@ -241,21 +241,21 @@ class TestTransactionServiceSummary:
         agg = _make_aggregates(bought_qty="1.0", bought_cost="50000.0", tx_count=1)
         svc = _make_service(ua=ua, summary=agg)
 
-        result = await svc.summary(user_id=1, user_asset_id=1)
+        result = await svc.summary(user_asset_id=1)
         assert result.currency == "USD"
 
     async def test_소유하지_않은_user_asset이면_NotFoundError(self) -> None:
         svc = _make_service(ua=None)
 
         with pytest.raises(NotFoundError):
-            await svc.summary(user_id=1, user_asset_id=999)
+            await svc.summary(user_asset_id=999)
 
     async def test_거래_없을때_0값_반환(self) -> None:
         ua = _make_user_asset(currency="KRW")
         agg = _make_aggregates()  # all zeros
         svc = _make_service(ua=ua, summary=agg)
 
-        result = await svc.summary(user_id=1, user_asset_id=1)
+        result = await svc.summary(user_asset_id=1)
         assert result.total_bought_quantity == Decimal("0")
         assert result.remaining_quantity == Decimal("0")
         assert result.avg_buy_price == Decimal("0")
@@ -274,7 +274,7 @@ class TestTransactionServiceSummary:
         )
         svc = _make_service(ua=ua, summary=agg)
 
-        result = await svc.summary(user_id=1, user_asset_id=1)
+        result = await svc.summary(user_asset_id=1)
         # avg_buy = 10000/5 = 2000, realized = 4500 - 2*2000 = 500
         assert result.avg_buy_price == Decimal("2000.0")
         assert result.realized_pnl == Decimal("500.0")
@@ -287,27 +287,27 @@ class TestTransactionServiceRemove:
         svc = _make_service(ua=ua, delete_result=True)
 
         # Should not raise
-        await svc.remove(user_id=1, user_asset_id=1, transaction_id=1)
+        await svc.remove(user_asset_id=1, transaction_id=1)
 
     async def test_소유하지_않은_user_asset이면_NotFoundError(self) -> None:
         svc = _make_service(ua=None)
 
         with pytest.raises(NotFoundError):
-            await svc.remove(user_id=1, user_asset_id=999, transaction_id=1)
+            await svc.remove(user_asset_id=999, transaction_id=1)
 
     async def test_존재하지_않는_transaction이면_NotFoundError(self) -> None:
         ua = _make_user_asset()
         svc = _make_service(ua=ua, delete_result=False)
 
         with pytest.raises(NotFoundError):
-            await svc.remove(user_id=1, user_asset_id=1, transaction_id=9999)
+            await svc.remove(user_asset_id=1, transaction_id=9999)
 
-    async def test_타_사용자_transaction_삭제시_NotFoundError(self) -> None:
-        # The ua_repo returns None when user_id doesn't own the user_asset
+    async def test_없는_user_asset_다시_NotFoundError(self) -> None:
+        # The ua_repo returns None
         svc = _make_service(ua=None)
 
         with pytest.raises(NotFoundError):
-            await svc.remove(user_id=2, user_asset_id=1, transaction_id=1)
+            await svc.remove(user_asset_id=1, transaction_id=1)
 
 
 class TestTransactionServiceEdit:  # ADDED
@@ -322,7 +322,6 @@ class TestTransactionServiceEdit:  # ADDED
         svc = _make_service(ua=ua, tx=tx, summary=agg, update_result=updated_tx)
 
         result = await svc.edit(
-            user_id=1,
             user_asset_id=1,
             transaction_id=1,
             data=_update_data(tx_type=TransactionType.BUY, quantity="2.0"),
@@ -341,7 +340,6 @@ class TestTransactionServiceEdit:  # ADDED
         svc = _make_service(ua=ua, tx=tx, summary=agg, update_result=updated_tx)
 
         result = await svc.edit(
-            user_id=1,
             user_asset_id=1,
             transaction_id=1,
             data=_update_data(tx_type=TransactionType.SELL, quantity="3.0"),
@@ -353,7 +351,6 @@ class TestTransactionServiceEdit:  # ADDED
 
         with pytest.raises(NotFoundError):
             await svc.edit(
-                user_id=1,
                 user_asset_id=999,
                 transaction_id=1,
                 data=_update_data(),
@@ -363,14 +360,13 @@ class TestTransactionServiceEdit:  # ADDED
         ua = _make_user_asset()
         # tx_repo.get_by_id_for_user_asset returns None (tx not found)
         ua_repo = AsyncMock(spec=UserAssetRepository)
-        ua_repo.get_by_id_for_user.return_value = ua
+        ua_repo.get_by_id.return_value = ua
         tx_repo = AsyncMock(spec=TransactionRepository)
         tx_repo.get_by_id_for_user_asset.return_value = None
         svc = TransactionService(transaction_repo=tx_repo, user_asset_repo=ua_repo)
 
         with pytest.raises(NotFoundError):
             await svc.edit(
-                user_id=1,
                 user_asset_id=1,
                 transaction_id=9999,
                 data=_update_data(),
@@ -386,7 +382,6 @@ class TestTransactionServiceEdit:  # ADDED
 
         with pytest.raises(InsufficientHoldingError):
             await svc.edit(
-                user_id=1,
                 user_asset_id=1,
                 transaction_id=1,
                 data=_update_data(tx_type=TransactionType.SELL, quantity="5.0"),
@@ -410,7 +405,6 @@ class TestTransactionServiceEdit:  # ADDED
         svc = _make_service(ua=ua, tx=tx, summary=agg, update_result=updated_tx)
 
         result = await svc.edit(
-            user_id=1,
             user_asset_id=1,
             transaction_id=1,
             data=_update_data(tx_type=TransactionType.BUY, quantity="4.0"),
@@ -422,26 +416,26 @@ class TestTransactionServiceListPagination:
     async def test_limit과_offset이_repo로_전달된다(self) -> None:
         ua = _make_user_asset()
         ua_repo = AsyncMock(spec=UserAssetRepository)
-        ua_repo.get_by_id_for_user.return_value = ua
+        ua_repo.get_by_id.return_value = ua
 
         tx_repo = AsyncMock(spec=TransactionRepository)
         tx_repo.list_for_user_asset.return_value = []
 
         svc = TransactionService(transaction_repo=tx_repo, user_asset_repo=ua_repo)
-        await svc.list(user_id=1, user_asset_id=1, limit=10, offset=20)
+        await svc.list(user_asset_id=1, limit=10, offset=20)
 
         tx_repo.list_for_user_asset.assert_called_once_with(1, limit=10, offset=20, tag=None)
 
     async def test_tag_필터가_repo로_전달된다(self) -> None:
         ua = _make_user_asset()
         ua_repo = AsyncMock(spec=UserAssetRepository)
-        ua_repo.get_by_id_for_user.return_value = ua
+        ua_repo.get_by_id.return_value = ua
 
         tx_repo = AsyncMock(spec=TransactionRepository)
         tx_repo.list_for_user_asset.return_value = []
 
         svc = TransactionService(transaction_repo=tx_repo, user_asset_repo=ua_repo)
-        await svc.list(user_id=1, user_asset_id=1, tag="DCA")
+        await svc.list(user_asset_id=1, tag="DCA")
 
         tx_repo.list_for_user_asset.assert_called_once_with(1, limit=100, offset=0, tag="DCA")
 
@@ -449,23 +443,23 @@ class TestTransactionServiceListPagination:
 class TestTransactionServiceListDistinctTags:
     async def test_태그_목록_반환(self) -> None:
         svc = _make_service(distinct_tags=["DCA", "장기보유"])
-        result = await svc.list_distinct_tags(user_id=1)
+        result = await svc.list_distinct_tags()
         assert result == ["DCA", "장기보유"]
 
     async def test_태그_없으면_빈_리스트(self) -> None:
         svc = _make_service(distinct_tags=[])
-        result = await svc.list_distinct_tags(user_id=1)
+        result = await svc.list_distinct_tags()
         assert result == []
 
     async def test_repo_호출_검증(self) -> None:
         ua_repo = AsyncMock(spec=UserAssetRepository)
         tx_repo = AsyncMock(spec=TransactionRepository)
-        tx_repo.list_distinct_tags_for_user.return_value = ["DCA"]
+        tx_repo.list_distinct_tags.return_value = ["DCA"]
 
         svc = TransactionService(transaction_repo=tx_repo, user_asset_repo=ua_repo)
-        await svc.list_distinct_tags(user_id=42)
+        await svc.list_distinct_tags()
 
-        tx_repo.list_distinct_tags_for_user.assert_called_once_with(42)
+        tx_repo.list_distinct_tags.assert_awaited_once()
 
 
 # Helper for type-checking — ensure service does not use Any from mock
@@ -512,7 +506,7 @@ def _make_import_service(
     the service can call them without a real DB.
     """
     ua_repo = AsyncMock(spec=UserAssetRepository)
-    ua_repo.get_by_id_for_user.return_value = ua
+    ua_repo.get_by_id.return_value = ua
 
     tx_repo = AsyncMock(spec=TransactionRepository)
     tx_repo.list_all_for_user_asset.return_value = existing_txs or []
@@ -560,7 +554,7 @@ class TestTransactionServiceImportCsv:
                 f"buy,2.0,51000,{_past_ts(1)},DCA",
             ]
         )
-        count, preview = await svc.import_csv(user_id=1, user_asset_id=1, csv_text=csv_text)
+        count, preview = await svc.import_csv(user_asset_id=1, csv_text=csv_text)
         assert count == 2
         assert len(preview) <= 10
 
@@ -574,7 +568,7 @@ class TestTransactionServiceImportCsv:
                 f"sell,2.0,55000,{_past_ts(1)},profit",
             ]
         )
-        count, preview = await svc.import_csv(user_id=1, user_asset_id=1, csv_text=csv_text)
+        count, preview = await svc.import_csv(user_asset_id=1, csv_text=csv_text)
         assert count == 2
 
     async def test_헤더_누락시_CsvImportValidationError(self) -> None:
@@ -587,7 +581,7 @@ class TestTransactionServiceImportCsv:
             header="type,quantity,traded_at",
         )
         with pytest.raises(CsvImportValidationError) as exc_info:
-            await svc.import_csv(user_id=1, user_asset_id=1, csv_text=csv_text)
+            await svc.import_csv(user_asset_id=1, csv_text=csv_text)
         errs = exc_info.value.errors
         assert len(errs) == 1
         assert errs[0]["row"] == 0  # header-level error
@@ -604,7 +598,7 @@ class TestTransactionServiceImportCsv:
             ]
         )
         with pytest.raises(CsvImportValidationError) as exc_info:
-            await svc.import_csv(user_id=1, user_asset_id=1, csv_text=csv_text)
+            await svc.import_csv(user_asset_id=1, csv_text=csv_text)
         errs = exc_info.value.errors
         # At least one error for row 2
         row_indices = [e["row"] for e in errs]
@@ -617,7 +611,7 @@ class TestTransactionServiceImportCsv:
         future_ts = (datetime.now(UTC) + timedelta(hours=2)).isoformat()
         csv_text = _csv([f"buy,1.0,50000,{future_ts},"])
         with pytest.raises(CsvImportValidationError) as exc_info:
-            await svc.import_csv(user_id=1, user_asset_id=1, csv_text=csv_text)
+            await svc.import_csv(user_asset_id=1, csv_text=csv_text)
         errs = exc_info.value.errors
         assert any(e["row"] == 1 for e in errs)
 
@@ -632,7 +626,7 @@ class TestTransactionServiceImportCsv:
         # New CSV tries to sell 2.0 — exceeds existing 1.0
         csv_text = _csv([f"sell,2.0,55000,{_past_ts(1)},"])
         with pytest.raises(CsvImportValidationError) as exc_info:
-            await svc.import_csv(user_id=1, user_asset_id=1, csv_text=csv_text)
+            await svc.import_csv(user_asset_id=1, csv_text=csv_text)
         errs = exc_info.value.errors
         assert any("negative" in str(e["message"]).lower() for e in errs)
 
@@ -642,7 +636,7 @@ class TestTransactionServiceImportCsv:
 
         csv_text = _csv([f"sell,1.0,55000,{_past_ts(1)},"])
         with pytest.raises(CsvImportValidationError) as exc_info:
-            await svc.import_csv(user_id=1, user_asset_id=1, csv_text=csv_text)
+            await svc.import_csv(user_asset_id=1, csv_text=csv_text)
         errs = exc_info.value.errors
         assert any("negative" in str(e["message"]).lower() for e in errs)
 
@@ -652,7 +646,7 @@ class TestTransactionServiceImportCsv:
 
         # Header only — no data rows
         csv_text = "type,quantity,price,traded_at,memo\n"
-        count, preview = await svc.import_csv(user_id=1, user_asset_id=1, csv_text=csv_text)
+        count, preview = await svc.import_csv(user_asset_id=1, csv_text=csv_text)
         assert count == 0
         assert preview == []
 
@@ -661,7 +655,7 @@ class TestTransactionServiceImportCsv:
         svc = _make_import_service(ua=ua)
 
         csv_text = _csv([f"매수,1.0,50000,{_past_ts(1)},"])
-        count, _ = await svc.import_csv(user_id=1, user_asset_id=1, csv_text=csv_text)
+        count, _ = await svc.import_csv(user_asset_id=1, csv_text=csv_text)
         assert count == 1
 
     async def test_한글_type_매도_수락(self) -> None:
@@ -674,7 +668,7 @@ class TestTransactionServiceImportCsv:
                 f"매도,2.0,55000,{_past_ts(1)},",
             ]
         )
-        count, _ = await svc.import_csv(user_id=1, user_asset_id=1, csv_text=csv_text)
+        count, _ = await svc.import_csv(user_asset_id=1, csv_text=csv_text)
         assert count == 2
 
     async def test_BOM_포함_CSV_수락(self) -> None:
@@ -684,7 +678,7 @@ class TestTransactionServiceImportCsv:
         # UTF-8 BOM prepended to header
         bom = "﻿"
         csv_text = bom + _csv([f"buy,1.0,50000,{_past_ts(1)},"])
-        count, _ = await svc.import_csv(user_id=1, user_asset_id=1, csv_text=csv_text)
+        count, _ = await svc.import_csv(user_asset_id=1, csv_text=csv_text)
         assert count == 1
 
     async def test_ua_없으면_NotFoundError(self) -> None:
@@ -692,7 +686,7 @@ class TestTransactionServiceImportCsv:
 
         csv_text = _csv([f"buy,1.0,50000,{_past_ts(1)},"])
         with pytest.raises(NotFoundError):
-            await svc.import_csv(user_id=1, user_asset_id=999, csv_text=csv_text)
+            await svc.import_csv(user_asset_id=999, csv_text=csv_text)
 
     async def test_preview는_최대_10건(self) -> None:
         ua = _make_user_asset()
@@ -700,7 +694,7 @@ class TestTransactionServiceImportCsv:
 
         rows = [f"buy,1.0,50000,{_past_ts(i + 1)}," for i in range(15)]
         csv_text = _csv(rows)
-        count, preview = await svc.import_csv(user_id=1, user_asset_id=1, csv_text=csv_text)
+        count, preview = await svc.import_csv(user_asset_id=1, csv_text=csv_text)
         assert count == 15
         assert len(preview) == 10
 
@@ -713,7 +707,7 @@ class TestTransactionServiceImportCsv:
             [f"1.0,50000,{_past_ts(1)},buy,note"],
             header="quantity,price,traded_at,type,memo",
         )
-        count, _ = await svc.import_csv(user_id=1, user_asset_id=1, csv_text=csv_text)
+        count, _ = await svc.import_csv(user_asset_id=1, csv_text=csv_text)
         assert count == 1
 
     async def test_추가_컬럼_무시(self) -> None:
@@ -724,7 +718,7 @@ class TestTransactionServiceImportCsv:
             [f"buy,1.0,50000,{_past_ts(1)},note,EXTRA"],
             header="type,quantity,price,traded_at,memo,extra_col",
         )
-        count, _ = await svc.import_csv(user_id=1, user_asset_id=1, csv_text=csv_text)
+        count, _ = await svc.import_csv(user_asset_id=1, csv_text=csv_text)
         assert count == 1
 
     async def test_memo_빈문자열은_None으로_처리(self) -> None:
@@ -732,7 +726,7 @@ class TestTransactionServiceImportCsv:
         svc = _make_import_service(ua=ua)
 
         csv_text = _csv([f"buy,1.0,50000,{_past_ts(1)},"])
-        count, preview = await svc.import_csv(user_id=1, user_asset_id=1, csv_text=csv_text)
+        count, preview = await svc.import_csv(user_asset_id=1, csv_text=csv_text)
         assert count == 1
         # memo should be None (empty string normalised to None)
         assert preview[0].memo is None
@@ -745,7 +739,7 @@ class TestTransactionServiceImportCsv:
             [f"buy,1.0,50000,{_past_ts(1)},note,DCA"],
             header="type,quantity,price,traded_at,memo,tag",
         )
-        count, preview = await svc.import_csv(user_id=1, user_asset_id=1, csv_text=csv_text)
+        count, preview = await svc.import_csv(user_asset_id=1, csv_text=csv_text)
         assert count == 1
         assert preview[0].tag == "DCA"
 
@@ -755,7 +749,7 @@ class TestTransactionServiceImportCsv:
 
         # Standard CSV without tag column
         csv_text = _csv([f"buy,1.0,50000,{_past_ts(1)},"])
-        count, preview = await svc.import_csv(user_id=1, user_asset_id=1, csv_text=csv_text)
+        count, preview = await svc.import_csv(user_asset_id=1, csv_text=csv_text)
         assert count == 1
         assert preview[0].tag is None
 
@@ -767,6 +761,6 @@ class TestTransactionServiceImportCsv:
             [f"buy,1.0,50000,{_past_ts(1)},note,"],
             header="type,quantity,price,traded_at,memo,tag",
         )
-        count, preview = await svc.import_csv(user_id=1, user_asset_id=1, csv_text=csv_text)
+        count, preview = await svc.import_csv(user_asset_id=1, csv_text=csv_text)
         assert count == 1
         assert preview[0].tag is None

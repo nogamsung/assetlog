@@ -30,7 +30,7 @@ def _buy(
     )
 
 
-def _sell(  # ADDED
+def _sell(
     quantity: str = "1.0",
     price: str = "55000.0",
     hours_ago: int = 0,
@@ -52,12 +52,10 @@ class TestTransactionCreate:
         self,
         db_session: AsyncSession,
         user_asset_factory: Any,
-        user_factory: Any,
         asset_symbol_factory: Any,
     ) -> None:
-        user = await user_factory()
         sym = await asset_symbol_factory()
-        ua = await user_asset_factory(user=user, asset_symbol=sym)
+        ua = await user_asset_factory(asset_symbol=sym)
 
         repo = TransactionRepository(db_session)
         tx = await repo.create(ua.id, _buy())
@@ -67,12 +65,10 @@ class TestTransactionCreate:
         self,
         db_session: AsyncSession,
         user_asset_factory: Any,
-        user_factory: Any,
         asset_symbol_factory: Any,
     ) -> None:
-        user = await user_factory(email="repo_create@example.com")
         sym = await asset_symbol_factory(symbol="ETH")
-        ua = await user_asset_factory(user=user, asset_symbol=sym)
+        ua = await user_asset_factory(asset_symbol=sym)
 
         repo = TransactionRepository(db_session)
         data = _buy(quantity="2.5", price="3000.0")
@@ -87,12 +83,10 @@ class TestTransactionCreate:
         self,
         db_session: AsyncSession,
         user_asset_factory: Any,
-        user_factory: Any,
         asset_symbol_factory: Any,
     ) -> None:
-        user = await user_factory(email="repo_memo@example.com")
         sym = await asset_symbol_factory(symbol="MEMO_COIN")
-        ua = await user_asset_factory(user=user, asset_symbol=sym)
+        ua = await user_asset_factory(asset_symbol=sym)
 
         repo = TransactionRepository(db_session)
         data = TransactionCreate(
@@ -111,36 +105,30 @@ class TestTransactionListForUserAsset:
         self,
         db_session: AsyncSession,
         user_asset_factory: Any,
-        user_factory: Any,
         asset_symbol_factory: Any,
     ) -> None:
-        user = await user_factory(email="repo_list@example.com")
         sym = await asset_symbol_factory(symbol="LIST_COIN")
-        ua = await user_asset_factory(user=user, asset_symbol=sym)
+        ua = await user_asset_factory(asset_symbol=sym)
 
         repo = TransactionRepository(db_session)
-        # Insert older trade first, then newer
         await repo.create(ua.id, _buy(hours_ago=2))
         await repo.create(ua.id, _buy(hours_ago=1))
         await repo.create(ua.id, _buy(hours_ago=0))
 
         result = await repo.list_for_user_asset(ua.id)
         assert len(result) == 3
-        # Most recent first
         assert result[0].traded_at >= result[1].traded_at >= result[2].traded_at
 
     async def test_다른_user_asset_거래는_포함되지_않는다(
         self,
         db_session: AsyncSession,
         user_asset_factory: Any,
-        user_factory: Any,
         asset_symbol_factory: Any,
     ) -> None:
-        user = await user_factory(email="repo_isolate@example.com")
         sym1 = await asset_symbol_factory(symbol="COIN_A")
         sym2 = await asset_symbol_factory(symbol="COIN_B")
-        ua1 = await user_asset_factory(user=user, asset_symbol=sym1)
-        ua2 = await user_asset_factory(user=user, asset_symbol=sym2)
+        ua1 = await user_asset_factory(asset_symbol=sym1)
+        ua2 = await user_asset_factory(asset_symbol=sym2)
 
         repo = TransactionRepository(db_session)
         await repo.create(ua1.id, _buy())
@@ -153,12 +141,10 @@ class TestTransactionListForUserAsset:
         self,
         db_session: AsyncSession,
         user_asset_factory: Any,
-        user_factory: Any,
         asset_symbol_factory: Any,
     ) -> None:
-        user = await user_factory(email="repo_limit@example.com")
         sym = await asset_symbol_factory(symbol="LIMIT_COIN")
-        ua = await user_asset_factory(user=user, asset_symbol=sym)
+        ua = await user_asset_factory(asset_symbol=sym)
 
         repo = TransactionRepository(db_session)
         for i in range(5):
@@ -176,15 +162,13 @@ class TestTransactionGetSummary:
         self,
         db_session: AsyncSession,
         user_asset_factory: Any,
-        user_factory: Any,
         asset_symbol_factory: Any,
     ) -> None:
-        user = await user_factory(email="repo_sum_empty@example.com")
         sym = await asset_symbol_factory(symbol="EMPTY_COIN")
-        ua = await user_asset_factory(user=user, asset_symbol=sym)
+        ua = await user_asset_factory(asset_symbol=sym)
 
         repo = TransactionRepository(db_session)
-        agg = await repo.get_summary(ua.id)  # MODIFIED — SummaryAggregates
+        agg = await repo.get_summary(ua.id)
 
         assert agg.total_bought_qty == Decimal("0")
         assert agg.total_bought_cost == Decimal("0")
@@ -196,17 +180,15 @@ class TestTransactionGetSummary:
         self,
         db_session: AsyncSession,
         user_asset_factory: Any,
-        user_factory: Any,
         asset_symbol_factory: Any,
     ) -> None:
-        user = await user_factory(email="repo_sum_single@example.com")
         sym = await asset_symbol_factory(symbol="SINGLE_COIN")
-        ua = await user_asset_factory(user=user, asset_symbol=sym)
+        ua = await user_asset_factory(asset_symbol=sym)
 
         repo = TransactionRepository(db_session)
         await repo.create(ua.id, _buy(quantity="2.0", price="1000.0"))
 
-        agg = await repo.get_summary(ua.id)  # MODIFIED
+        agg = await repo.get_summary(ua.id)
 
         assert agg.total_bought_qty == Decimal("2.0")
         assert agg.total_bought_cost == Decimal("2000.0")
@@ -217,36 +199,30 @@ class TestTransactionGetSummary:
         self,
         db_session: AsyncSession,
         user_asset_factory: Any,
-        user_factory: Any,
         asset_symbol_factory: Any,
     ) -> None:
-        user = await user_factory(email="repo_sum_multi@example.com")
         sym = await asset_symbol_factory(symbol="MULTI_COIN")
-        ua = await user_asset_factory(user=user, asset_symbol=sym)
+        ua = await user_asset_factory(asset_symbol=sym)
 
         repo = TransactionRepository(db_session)
         await repo.create(ua.id, _buy(quantity="1.0", price="1000.0"))
         await repo.create(ua.id, _buy(quantity="3.0", price="2000.0"))
 
-        agg = await repo.get_summary(ua.id)  # MODIFIED
+        agg = await repo.get_summary(ua.id)
 
-        # total_bought_cost = 1*1000 + 3*2000 = 7000
-        # total_bought_qty = 4
         assert agg.total_bought_qty == Decimal("4.0")
         assert agg.total_bought_cost == Decimal("7000.0")
         assert agg.total_sold_qty == Decimal("0")
         assert agg.tx_count == 2
 
-    async def test_매수_후_매도_집계가_올바르다(  # ADDED
+    async def test_매수_후_매도_집계가_올바르다(
         self,
         db_session: AsyncSession,
         user_asset_factory: Any,
-        user_factory: Any,
         asset_symbol_factory: Any,
     ) -> None:
-        user = await user_factory(email="repo_sum_sell@example.com")
         sym = await asset_symbol_factory(symbol="SELL_COIN")
-        ua = await user_asset_factory(user=user, asset_symbol=sym)
+        ua = await user_asset_factory(asset_symbol=sym)
 
         repo = TransactionRepository(db_session)
         await repo.create(ua.id, _buy(quantity="5.0", price="1000.0"))
@@ -260,16 +236,14 @@ class TestTransactionGetSummary:
         assert agg.total_sold_value == Decimal("2400.0")
         assert agg.tx_count == 2
 
-    async def test_get_remaining_quantity가_올바르다(  # ADDED
+    async def test_get_remaining_quantity가_올바르다(
         self,
         db_session: AsyncSession,
         user_asset_factory: Any,
-        user_factory: Any,
         asset_symbol_factory: Any,
     ) -> None:
-        user = await user_factory(email="repo_remaining@example.com")
         sym = await asset_symbol_factory(symbol="REMAIN_COIN")
-        ua = await user_asset_factory(user=user, asset_symbol=sym)
+        ua = await user_asset_factory(asset_symbol=sym)
 
         repo = TransactionRepository(db_session)
         await repo.create(ua.id, _buy(quantity="5.0", price="1000.0"))
@@ -279,19 +253,17 @@ class TestTransactionGetSummary:
         assert remaining == Decimal("3.0")
 
 
-class TestTransactionUpdate:  # ADDED
+class TestTransactionUpdate:
     async def test_update_필드가_모두_반영된다(
         self,
         db_session: AsyncSession,
         user_asset_factory: Any,
-        user_factory: Any,
         asset_symbol_factory: Any,
     ) -> None:
         from app.schemas.transaction import TransactionUpdate
 
-        user = await user_factory(email="repo_upd@example.com")
         sym = await asset_symbol_factory(symbol="UPD_COIN")
-        ua = await user_asset_factory(user=user, asset_symbol=sym)
+        ua = await user_asset_factory(asset_symbol=sym)
 
         repo = TransactionRepository(db_session)
         tx = await repo.create(ua.id, _buy(quantity="1.0", price="1000.0"))
@@ -315,14 +287,12 @@ class TestTransactionUpdate:  # ADDED
         self,
         db_session: AsyncSession,
         user_asset_factory: Any,
-        user_factory: Any,
         asset_symbol_factory: Any,
     ) -> None:
         from app.schemas.transaction import TransactionUpdate
 
-        user = await user_factory(email="repo_upd_wrong@example.com")
         sym = await asset_symbol_factory(symbol="UPD_WRONG_COIN")
-        ua = await user_asset_factory(user=user, asset_symbol=sym)
+        ua = await user_asset_factory(asset_symbol=sym)
 
         repo = TransactionRepository(db_session)
         tx = await repo.create(ua.id, _buy())
@@ -340,14 +310,12 @@ class TestTransactionUpdate:  # ADDED
         self,
         db_session: AsyncSession,
         user_asset_factory: Any,
-        user_factory: Any,
         asset_symbol_factory: Any,
     ) -> None:
         from app.schemas.transaction import TransactionUpdate
 
-        user = await user_factory(email="repo_upd_missing@example.com")
         sym = await asset_symbol_factory(symbol="UPD_MISS_COIN")
-        ua = await user_asset_factory(user=user, asset_symbol=sym)
+        ua = await user_asset_factory(asset_symbol=sym)
 
         repo = TransactionRepository(db_session)
         new_data = TransactionUpdate(
@@ -365,36 +333,30 @@ class TestListAllForUserAsset:
         self,
         db_session: AsyncSession,
         user_asset_factory: Any,
-        user_factory: Any,
         asset_symbol_factory: Any,
     ) -> None:
-        user = await user_factory(email="all_asc@example.com")
         sym = await asset_symbol_factory(symbol="ALL_ASC_COIN")
-        ua = await user_asset_factory(user=user, asset_symbol=sym)
+        ua = await user_asset_factory(asset_symbol=sym)
 
         repo = TransactionRepository(db_session)
-        # Insert in reverse order — most recent first
         await repo.create(ua.id, _buy(hours_ago=0))
         await repo.create(ua.id, _buy(hours_ago=2))
         await repo.create(ua.id, _buy(hours_ago=1))
 
         result = await repo.list_all_for_user_asset(ua.id)
         assert len(result) == 3
-        # Should be ASC (oldest first)
         assert result[0].traded_at <= result[1].traded_at <= result[2].traded_at
 
     async def test_다른_user_asset_거래는_포함되지_않는다(
         self,
         db_session: AsyncSession,
         user_asset_factory: Any,
-        user_factory: Any,
         asset_symbol_factory: Any,
     ) -> None:
-        user = await user_factory(email="all_iso@example.com")
         sym1 = await asset_symbol_factory(symbol="ALL_ISO_COIN_A")
         sym2 = await asset_symbol_factory(symbol="ALL_ISO_COIN_B")
-        ua1 = await user_asset_factory(user=user, asset_symbol=sym1)
-        ua2 = await user_asset_factory(user=user, asset_symbol=sym2)
+        ua1 = await user_asset_factory(asset_symbol=sym1)
+        ua2 = await user_asset_factory(asset_symbol=sym2)
 
         repo = TransactionRepository(db_session)
         await repo.create(ua1.id, _buy())
@@ -407,12 +369,10 @@ class TestListAllForUserAsset:
         self,
         db_session: AsyncSession,
         user_asset_factory: Any,
-        user_factory: Any,
         asset_symbol_factory: Any,
     ) -> None:
-        user = await user_factory(email="all_empty@example.com")
         sym = await asset_symbol_factory(symbol="ALL_EMPTY_COIN")
-        ua = await user_asset_factory(user=user, asset_symbol=sym)
+        ua = await user_asset_factory(asset_symbol=sym)
 
         repo = TransactionRepository(db_session)
         result = await repo.list_all_for_user_asset(ua.id)
@@ -424,12 +384,10 @@ class TestTransactionTag:
         self,
         db_session: AsyncSession,
         user_asset_factory: Any,
-        user_factory: Any,
         asset_symbol_factory: Any,
     ) -> None:
-        user = await user_factory(email="repo_tag@example.com")
         sym = await asset_symbol_factory(symbol="TAG_COIN")
-        ua = await user_asset_factory(user=user, asset_symbol=sym)
+        ua = await user_asset_factory(asset_symbol=sym)
 
         repo = TransactionRepository(db_session)
         tx = await repo.create(ua.id, _buy(tag="DCA"))
@@ -439,12 +397,10 @@ class TestTransactionTag:
         self,
         db_session: AsyncSession,
         user_asset_factory: Any,
-        user_factory: Any,
         asset_symbol_factory: Any,
     ) -> None:
-        user = await user_factory(email="repo_tag_nofilter@example.com")
         sym = await asset_symbol_factory(symbol="NOTAG_COIN")
-        ua = await user_asset_factory(user=user, asset_symbol=sym)
+        ua = await user_asset_factory(asset_symbol=sym)
 
         repo = TransactionRepository(db_session)
         await repo.create(ua.id, _buy(tag="DCA"))
@@ -458,12 +414,10 @@ class TestTransactionTag:
         self,
         db_session: AsyncSession,
         user_asset_factory: Any,
-        user_factory: Any,
         asset_symbol_factory: Any,
     ) -> None:
-        user = await user_factory(email="repo_tag_filter@example.com")
         sym = await asset_symbol_factory(symbol="FILTER_TAG_COIN")
-        ua = await user_asset_factory(user=user, asset_symbol=sym)
+        ua = await user_asset_factory(asset_symbol=sym)
 
         repo = TransactionRepository(db_session)
         await repo.create(ua.id, _buy(tag="DCA"))
@@ -478,12 +432,10 @@ class TestTransactionTag:
         self,
         db_session: AsyncSession,
         user_asset_factory: Any,
-        user_factory: Any,
         asset_symbol_factory: Any,
     ) -> None:
-        user = await user_factory(email="repo_distinct@example.com")
         sym = await asset_symbol_factory(symbol="DISTINCT_COIN")
-        ua = await user_asset_factory(user=user, asset_symbol=sym)
+        ua = await user_asset_factory(asset_symbol=sym)
 
         repo = TransactionRepository(db_session)
         await repo.create(ua.id, _buy(tag="DCA"))
@@ -491,60 +443,34 @@ class TestTransactionTag:
         await repo.create(ua.id, _buy(tag="장기보유"))
         await repo.create(ua.id, _buy(tag=None))
 
-        tags = await repo.list_distinct_tags_for_user(user.id)
+        tags = await repo.list_distinct_tags()
         assert tags == ["DCA", "장기보유"]
-
-    async def test_list_distinct_tags_다른_유저_태그_제외(
-        self,
-        db_session: AsyncSession,
-        user_asset_factory: Any,
-        user_factory: Any,
-        asset_symbol_factory: Any,
-    ) -> None:
-        user_a = await user_factory(email="repo_dist_a@example.com")
-        user_b = await user_factory(email="repo_dist_b@example.com")
-        sym_a = await asset_symbol_factory(symbol="DIST_COIN_A")
-        sym_b = await asset_symbol_factory(symbol="DIST_COIN_B")
-        ua_a = await user_asset_factory(user=user_a, asset_symbol=sym_a)
-        ua_b = await user_asset_factory(user=user_b, asset_symbol=sym_b)
-
-        repo = TransactionRepository(db_session)
-        await repo.create(ua_a.id, _buy(tag="DCA"))
-        await repo.create(ua_b.id, _buy(tag="OTHER"))
-
-        tags_a = await repo.list_distinct_tags_for_user(user_a.id)
-        assert "OTHER" not in tags_a
-        assert "DCA" in tags_a
 
     async def test_list_distinct_tags_없으면_빈_리스트(
         self,
         db_session: AsyncSession,
         user_asset_factory: Any,
-        user_factory: Any,
         asset_symbol_factory: Any,
     ) -> None:
-        user = await user_factory(email="repo_empty_tags@example.com")
         sym = await asset_symbol_factory(symbol="EMPTY_TAG_COIN")
-        ua = await user_asset_factory(user=user, asset_symbol=sym)
+        ua = await user_asset_factory(asset_symbol=sym)
 
         repo = TransactionRepository(db_session)
         await repo.create(ua.id, _buy(tag=None))
 
-        tags = await repo.list_distinct_tags_for_user(user.id)
+        tags = await repo.list_distinct_tags()
         assert tags == []
 
     async def test_update_tag가_반영된다(
         self,
         db_session: AsyncSession,
         user_asset_factory: Any,
-        user_factory: Any,
         asset_symbol_factory: Any,
     ) -> None:
         from app.schemas.transaction import TransactionUpdate
 
-        user = await user_factory(email="repo_upd_tag@example.com")
         sym = await asset_symbol_factory(symbol="UPD_TAG_COIN")
-        ua = await user_asset_factory(user=user, asset_symbol=sym)
+        ua = await user_asset_factory(asset_symbol=sym)
 
         repo = TransactionRepository(db_session)
         tx = await repo.create(ua.id, _buy(tag="DCA"))
@@ -564,15 +490,12 @@ class TestTransactionTag:
         self,
         db_session: AsyncSession,
         user_asset_factory: Any,
-        user_factory: Any,
         asset_symbol_factory: Any,
     ) -> None:
-        user = await user_factory(email="repo_blank_tag@example.com")
         sym = await asset_symbol_factory(symbol="BLANK_TAG_COIN")
-        ua = await user_asset_factory(user=user, asset_symbol=sym)
+        ua = await user_asset_factory(asset_symbol=sym)
 
         repo = TransactionRepository(db_session)
-        # Schema normalise_tag converts blank → None before reaching DB
         data = TransactionCreate(
             type=TransactionType.BUY,
             quantity=Decimal("1.0"),
@@ -584,26 +507,24 @@ class TestTransactionTag:
         assert tx.tag is None
 
 
-class TestListAllForUser:
-    """Tests for TransactionRepository.list_all_for_user (export bulk query)."""
+class TestListAll:
+    """Tests for TransactionRepository.list_all (export bulk query)."""
 
     async def test_단일_user_asset_모든_거래_반환(
         self,
         db_session: AsyncSession,
         user_asset_factory: Any,
-        user_factory: Any,
         asset_symbol_factory: Any,
     ) -> None:
-        user = await user_factory(email="lau_single@example.com")
         sym = await asset_symbol_factory(symbol="LAU_SINGLE_COIN")
-        ua = await user_asset_factory(user=user, asset_symbol=sym)
+        ua = await user_asset_factory(asset_symbol=sym)
 
         repo = TransactionRepository(db_session)
         await repo.create(ua.id, _buy(hours_ago=3))
         await repo.create(ua.id, _buy(hours_ago=2))
         await repo.create(ua.id, _buy(hours_ago=1))
 
-        result = await repo.list_all_for_user(user.id)
+        result = await repo.list_all()
         assert len(result) == 3
         assert all(tx.user_asset_id == ua.id for tx in result)
 
@@ -611,82 +532,52 @@ class TestListAllForUser:
         self,
         db_session: AsyncSession,
         user_asset_factory: Any,
-        user_factory: Any,
         asset_symbol_factory: Any,
     ) -> None:
-        user = await user_factory(email="lau_multi@example.com")
         sym_a = await asset_symbol_factory(symbol="LAU_MULTI_A")
         sym_b = await asset_symbol_factory(symbol="LAU_MULTI_B")
-        ua_a = await user_asset_factory(user=user, asset_symbol=sym_a)
-        ua_b = await user_asset_factory(user=user, asset_symbol=sym_b)
+        ua_a = await user_asset_factory(asset_symbol=sym_a)
+        ua_b = await user_asset_factory(asset_symbol=sym_b)
 
         repo = TransactionRepository(db_session)
         await repo.create(ua_a.id, _buy(hours_ago=2))
         await repo.create(ua_a.id, _buy(hours_ago=1))
         await repo.create(ua_b.id, _buy(hours_ago=1))
 
-        result = await repo.list_all_for_user(user.id)
+        result = await repo.list_all()
         assert len(result) == 3
-
-    async def test_다른_user_거래_포함_안됨(
-        self,
-        db_session: AsyncSession,
-        user_asset_factory: Any,
-        user_factory: Any,
-        asset_symbol_factory: Any,
-    ) -> None:
-        user_a = await user_factory(email="lau_iso_a@example.com")
-        user_b = await user_factory(email="lau_iso_b@example.com")
-        sym_a = await asset_symbol_factory(symbol="LAU_ISO_COIN_A")
-        sym_b = await asset_symbol_factory(symbol="LAU_ISO_COIN_B")
-        ua_a = await user_asset_factory(user=user_a, asset_symbol=sym_a)
-        ua_b = await user_asset_factory(user=user_b, asset_symbol=sym_b)
-
-        repo = TransactionRepository(db_session)
-        await repo.create(ua_a.id, _buy())
-        await repo.create(ua_b.id, _buy())
-
-        result_a = await repo.list_all_for_user(user_a.id)
-        assert len(result_a) == 1
-        assert result_a[0].user_asset_id == ua_a.id
 
     async def test_거래_없으면_빈_리스트(
         self,
         db_session: AsyncSession,
         user_asset_factory: Any,
-        user_factory: Any,
         asset_symbol_factory: Any,
     ) -> None:
-        user = await user_factory(email="lau_empty@example.com")
         sym = await asset_symbol_factory(symbol="LAU_EMPTY_COIN")
-        await user_asset_factory(user=user, asset_symbol=sym)
+        await user_asset_factory(asset_symbol=sym)
 
         repo = TransactionRepository(db_session)
-        result = await repo.list_all_for_user(user.id)
+        result = await repo.list_all()
         assert result == []
 
     async def test_정렬_user_asset_id_ASC_then_traded_at_ASC(
         self,
         db_session: AsyncSession,
         user_asset_factory: Any,
-        user_factory: Any,
         asset_symbol_factory: Any,
     ) -> None:
-        user = await user_factory(email="lau_order@example.com")
         sym_x = await asset_symbol_factory(symbol="LAU_ORDER_X")
         sym_y = await asset_symbol_factory(symbol="LAU_ORDER_Y")
-        ua_x = await user_asset_factory(user=user, asset_symbol=sym_x)
-        ua_y = await user_asset_factory(user=user, asset_symbol=sym_y)
+        ua_x = await user_asset_factory(asset_symbol=sym_x)
+        ua_y = await user_asset_factory(asset_symbol=sym_y)
 
         repo = TransactionRepository(db_session)
-        # ua_y inserted first but ua_x has lower id → ua_x should come first
         await repo.create(ua_y.id, _buy(hours_ago=1))
         await repo.create(ua_x.id, _buy(hours_ago=2))
         await repo.create(ua_x.id, _buy(hours_ago=1))
 
-        result = await repo.list_all_for_user(user.id)
+        result = await repo.list_all()
 
-        # Group by user_asset_id and verify intra-group ordering
         ua_x_txs = [tx for tx in result if tx.user_asset_id == ua_x.id]
         assert len(ua_x_txs) == 2
         assert ua_x_txs[0].traded_at <= ua_x_txs[1].traded_at
@@ -697,12 +588,10 @@ class TestTransactionDelete:
         self,
         db_session: AsyncSession,
         user_asset_factory: Any,
-        user_factory: Any,
         asset_symbol_factory: Any,
     ) -> None:
-        user = await user_factory(email="repo_del@example.com")
         sym = await asset_symbol_factory(symbol="DEL_COIN")
-        ua = await user_asset_factory(user=user, asset_symbol=sym)
+        ua = await user_asset_factory(asset_symbol=sym)
 
         repo = TransactionRepository(db_session)
         tx = await repo.create(ua.id, _buy())
@@ -717,12 +606,10 @@ class TestTransactionDelete:
         self,
         db_session: AsyncSession,
         user_asset_factory: Any,
-        user_factory: Any,
         asset_symbol_factory: Any,
     ) -> None:
-        user = await user_factory(email="repo_del_wrong@example.com")
         sym = await asset_symbol_factory(symbol="WRONG_DEL_COIN")
-        ua = await user_asset_factory(user=user, asset_symbol=sym)
+        ua = await user_asset_factory(asset_symbol=sym)
 
         repo = TransactionRepository(db_session)
         tx = await repo.create(ua.id, _buy())
@@ -734,12 +621,10 @@ class TestTransactionDelete:
         self,
         db_session: AsyncSession,
         user_asset_factory: Any,
-        user_factory: Any,
         asset_symbol_factory: Any,
     ) -> None:
-        user = await user_factory(email="repo_del_missing@example.com")
         sym = await asset_symbol_factory(symbol="MISS_DEL_COIN")
-        ua = await user_asset_factory(user=user, asset_symbol=sym)
+        ua = await user_asset_factory(asset_symbol=sym)
 
         repo = TransactionRepository(db_session)
         deleted = await repo.delete_by_id_for_user_asset(99999, ua.id)

@@ -10,8 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domain.transaction_type import TransactionType
 from app.models.transaction import Transaction
-from app.models.user_asset import UserAsset
-from app.schemas.transaction import TransactionCreate, TransactionUpdate  # MODIFIED
+from app.schemas.transaction import TransactionCreate, TransactionUpdate
 
 
 class SummaryAggregates(NamedTuple):  # ADDED
@@ -210,37 +209,27 @@ class TransactionRepository:
         await self._session.flush()
         return True
 
-    async def list_all_for_user(self, user_id: int) -> list[Transaction]:
-        """Return all transactions across all user_assets owned by user_id.
+    async def list_all(self) -> list[Transaction]:
+        """Return all transactions across all user_assets in single-owner mode.
 
-        Joins transactions → user_assets on user_id so that a single SQL round-trip
-        collects the full export dataset without N+1 per-asset queries.
         Results are ordered by user_asset_id ASC, then traded_at ASC for reproducible
         export ordering.
         """
-        stmt = (
-            select(Transaction)
-            .join(UserAsset, Transaction.user_asset_id == UserAsset.id)
-            .where(UserAsset.user_id == user_id)
-            .order_by(Transaction.user_asset_id.asc(), Transaction.traded_at.asc())
+        stmt = select(Transaction).order_by(
+            Transaction.user_asset_id.asc(), Transaction.traded_at.asc()
         )
         result = await self._session.execute(stmt)
         return list(result.scalars().all())
 
-    async def list_distinct_tags_for_user(self, user_id: int) -> list[str]:
-        """Return distinct non-null tags across all transactions owned by user_id.
+    async def list_distinct_tags(self) -> list[str]:
+        """Return distinct non-null tags across all transactions.
 
-        Joins transactions → user_assets to enforce user scoping.
         Results are ordered alphabetically (ASC).
         Returns an empty list when no tagged transactions exist.
         """
         stmt = (
             select(Transaction.tag)
-            .join(UserAsset, Transaction.user_asset_id == UserAsset.id)
-            .where(
-                UserAsset.user_id == user_id,
-                Transaction.tag.is_not(None),
-            )
+            .where(Transaction.tag.is_not(None))
             .distinct()
             .order_by(Transaction.tag.asc())
         )

@@ -68,21 +68,15 @@ class DataExportService:
         self._ua_repo = user_asset_repo
         self._tx_repo = transaction_repo
 
-    async def export_json(self, user_id: int) -> ExportEnvelope:
-        """Return a validated ExportEnvelope for the given user.
+    async def export_json(self) -> ExportEnvelope:
+        """Return a validated ExportEnvelope.
 
         Fetches user_assets (with eager-loaded asset_symbol) and all transactions
-        (single JOIN query) in two DB round-trips — no N+1.
-
-        Args:
-            user_id: The authenticated user's ID.
-
-        Returns:
-            ExportEnvelope with a consistent ``exported_at`` UTC timestamp.
+        in two DB round-trips — no N+1.
         """
-        logger.info("export requested: user_id=%s format=json", user_id)
+        logger.info("export requested: format=json")
 
-        user_assets, transactions = await self._fetch_all(user_id)
+        user_assets, transactions = await self._fetch_all()
 
         # Build symbol lookup for transaction enrichment (asset_symbol field)
         # (not needed for JSON envelope — transactions reference user_asset_id)
@@ -132,24 +126,21 @@ class DataExportService:
             transactions=export_transactions,
         )
 
-    async def export_csv_zip(self, user_id: int) -> bytes:
+    async def export_csv_zip(self) -> bytes:
         """Return ZIP bytes containing user_assets.csv + transactions.csv.
 
         Uses stdlib ``csv`` + ``io.BytesIO`` + ``zipfile.ZipFile`` — no
-        external dependencies.  Headers are English-only for Excel compatibility.
+        external dependencies. Headers are English-only for Excel compatibility.
 
         Decimal values are serialised as plain strings (e.g. ``"1.5000000000"``).
         Datetime values are ISO 8601 with UTC offset.
 
-        Args:
-            user_id: The authenticated user's ID.
-
         Returns:
             In-memory ZIP bytes ready to be streamed as ``application/zip``.
         """
-        logger.info("export requested: user_id=%s format=csv", user_id)
+        logger.info("export requested: format=csv")
 
-        user_assets, transactions = await self._fetch_all(user_id)
+        user_assets, transactions = await self._fetch_all()
 
         # Build symbol lookup: user_asset_id → AssetSymbol
         symbol_by_ua_id: dict[int, object] = {ua.id: ua.asset_symbol for ua in user_assets}
@@ -207,11 +198,8 @@ class DataExportService:
     # Internal helpers
     # ---------------------------------------------------------------------------
 
-    async def _fetch_all(
-        self,
-        user_id: int,
-    ) -> tuple[list[UserAsset], list[Transaction]]:
+    async def _fetch_all(self) -> tuple[list[UserAsset], list[Transaction]]:
         """Fetch user_assets (with asset_symbol) and all transactions in two queries."""
-        user_assets = await self._ua_repo.list_for_user(user_id)
-        transactions = await self._tx_repo.list_all_for_user(user_id)
+        user_assets = await self._ua_repo.list_all()
+        transactions = await self._tx_repo.list_all()
         return user_assets, transactions

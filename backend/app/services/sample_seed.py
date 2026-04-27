@@ -1,8 +1,8 @@
-"""SampleSeedService — deterministic portfolio seed for new users.
+"""SampleSeedService — deterministic portfolio seed for the single owner.
 
 Creates 5 sample assets (BTC, ETH, AAPL, 삼성전자, 현대차) with 2-4 BUY
-transactions each, spread across the past 12 months.  Uses a seeded
-random.Random so the same user_id always produces the same data pattern.
+transactions each, spread across the past 12 months. Uses a fixed seed so
+the same data pattern is generated every time.
 """
 
 from __future__ import annotations
@@ -66,30 +66,25 @@ class SampleSeedService:
         self._ua_repo = user_asset_repo
         self._tx_repo = transaction_repo
 
-    async def seed_for_user(self, user_id: int) -> SampleSeedResponse:
-        """Create sample portfolio data for *user_id*.
-
-        Args:
-            user_id: The authenticated user's database ID.
+    async def seed(self) -> SampleSeedResponse:
+        """Create sample portfolio data for the single owner.
 
         Returns:
             SampleSeedResponse with counts of created rows, or
-            ``seeded=False`` when the user already has assets.
+            ``seeded=False`` when assets already exist.
         """
-        # 1. Guard — skip if user already has any holdings.
-        existing = await self._ua_repo.list_for_user(user_id)
+        existing = await self._ua_repo.list_all()
         if existing:
             logger.info(
-                "seed_for_user skipped: user_id=%s already has %s user_assets",
-                user_id,
+                "sample seed skipped: %s user_assets already exist",
                 len(existing),
             )
             return SampleSeedResponse(seeded=False, reason="user_already_has_assets")
 
         now_utc = datetime.now(tz=UTC)
 
-        # Deterministic RNG: same user_id → same pattern every time.
-        rng = random.Random(user_id * 31 + 7)  # noqa: S311  # non-security use
+        # Deterministic RNG — same data pattern every run.
+        rng = random.Random(38)  # noqa: S311  # non-security use
 
         symbols_created = 0
         symbols_reused = 0
@@ -129,11 +124,7 @@ class SampleSeedService:
                     spec.symbol,
                 )
 
-            # 3b. Create the UserAsset linking this user to the symbol.
-            user_asset = await self._ua_repo.create(
-                user_id=user_id,
-                asset_symbol_id=asset_symbol.id,
-            )
+            user_asset = await self._ua_repo.create(asset_symbol_id=asset_symbol.id)
             user_assets_created += 1
 
             # 3c. Generate 2-4 deterministic BUY transactions per asset.
@@ -165,9 +156,8 @@ class SampleSeedService:
                 transactions_created += 1
 
         logger.info(
-            "seed_for_user complete: user_id=%s user_assets=%s transactions=%s "
+            "sample seed complete: user_assets=%s transactions=%s "
             "symbols_created=%s symbols_reused=%s",
-            user_id,
             user_assets_created,
             transactions_created,
             symbols_created,

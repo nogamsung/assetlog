@@ -1,4 +1,4 @@
-"""UserAsset router — user holding declaration, listing, and removal."""
+"""UserAsset router — declared holding listing, creation, and removal."""
 
 from __future__ import annotations
 
@@ -15,17 +15,17 @@ router = APIRouter(prefix="/api/user-assets", tags=["user-assets"])
     "",
     response_model=list[UserAssetResponse],
     status_code=status.HTTP_200_OK,
-    summary="List all asset holdings for the current user",
+    summary="List all declared asset holdings",
     responses={
         401: {"model": ErrorResponse, "description": "Not authenticated"},
     },
 )
 async def list_user_assets(
-    current_user: CurrentUser,
+    _current_user: CurrentUser,
     user_asset_service: UserAssetServiceDep,
 ) -> list[UserAssetResponse]:
-    """Return all declared asset holdings for the authenticated user."""
-    holdings = await user_asset_service.list(current_user.id)
+    """Return all declared asset holdings."""
+    holdings = await user_asset_service.list()
     return [UserAssetResponse.model_validate(h) for h in holdings]
 
 
@@ -43,15 +43,15 @@ async def list_user_assets(
 )
 async def add_user_asset(
     data: UserAssetCreate,
-    current_user: CurrentUser,
+    _current_user: CurrentUser,
     user_asset_service: UserAssetServiceDep,
 ) -> UserAssetResponse:
-    """Declare ownership of an asset symbol for the authenticated user.
+    """Declare ownership of an asset symbol.
 
     Returns 404 if the asset_symbol_id does not exist.
-    Returns 409 if the user already holds the same symbol.
+    Returns 409 if the symbol is already held.
     """
-    holding = await user_asset_service.add(current_user.id, data)
+    holding = await user_asset_service.add(data)
     return UserAssetResponse.model_validate(holding)
 
 
@@ -65,12 +65,9 @@ async def add_user_asset(
     },
 )
 async def remove_user_asset(
-    current_user: CurrentUser,
+    _current_user: CurrentUser,
     user_asset_service: UserAssetServiceDep,
     user_asset_id: int = Path(..., ge=1, description="UserAsset ID to remove"),
 ) -> None:
-    """Hard-delete a declared asset holding.
-
-    Returns 404 if the holding does not exist or is not owned by the current user.
-    """
-    await user_asset_service.remove(current_user.id, user_asset_id)
+    """Hard-delete a declared asset holding."""
+    await user_asset_service.remove(user_asset_id)

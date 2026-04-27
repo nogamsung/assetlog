@@ -13,7 +13,6 @@ export interface AssetSymbolResponse {
 
 export interface UserAssetResponse {
   id: number;
-  userId: number;
   assetSymbol: AssetSymbolResponse;
   memo: string | null;
   createdAt: string;

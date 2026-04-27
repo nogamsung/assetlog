@@ -44,7 +44,6 @@ const expectedSymbol: AssetSymbolResponse = {
 
 const rawUserAsset = {
   id: 10,
-  user_id: 1,
   asset_symbol: rawSymbol,
   memo: "장기보유",
   created_at: "2024-01-01T00:00:00Z",
@@ -52,7 +51,6 @@ const rawUserAsset = {
 
 const expectedUserAsset: UserAssetResponse = {
   id: 10,
-  userId: 1,
   assetSymbol: expectedSymbol,
   memo: "장기보유",
   createdAt: "2024-01-01T00:00:00Z",

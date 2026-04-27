@@ -44,7 +44,7 @@ router = APIRouter(prefix="/api/portfolio", tags=["portfolio"])
     },
 )
 async def get_portfolio_summary(
-    current_user: CurrentUser,
+    _current_user: CurrentUser,
     portfolio_service: PortfolioServiceDep,
     convert_to: str | None = Query(
         default=None,
@@ -54,9 +54,9 @@ async def get_portfolio_summary(
         examples=["KRW"],
     ),
 ) -> PortfolioSummaryResponse:
-    """Return aggregated portfolio summary for the authenticated user."""
+    """Return aggregated portfolio summary."""
     target = convert_to.upper() if convert_to else None
-    return await portfolio_service.get_summary(current_user.id, convert_to=target)
+    return await portfolio_service.get_summary(convert_to=target)
 
 
 @router.get(
@@ -70,16 +70,16 @@ async def get_portfolio_summary(
         "Decimal fields are serialised as strings. "
         "Pass ``convert_to`` (e.g. ``KRW``) to receive per-row converted_* fields. "
         "If the FX rate for a holding's currency is unavailable, that holding's "
-        "converted_* fields are null while others remain converted (partial conversion allowed)."  # MODIFIED
+        "converted_* fields are null while others remain converted (partial conversion allowed)."
     ),
     responses={
         401: {"model": ErrorResponse, "description": "Not authenticated"},
     },
 )
 async def get_portfolio_holdings(
-    current_user: CurrentUser,
+    _current_user: CurrentUser,
     portfolio_service: PortfolioServiceDep,
-    convert_to: str | None = Query(  # ADDED
+    convert_to: str | None = Query(
         default=None,
         min_length=3,
         max_length=10,
@@ -87,10 +87,9 @@ async def get_portfolio_holdings(
         examples=["KRW"],
     ),
 ) -> list[HoldingResponse]:
-    """Return per-holding valuation rows for the authenticated user."""
-    return await portfolio_service.get_holdings(  # MODIFIED
-        current_user.id,
-        convert_to=convert_to.upper() if convert_to else None,  # ADDED
+    """Return per-holding valuation rows."""
+    return await portfolio_service.get_holdings(
+        convert_to=convert_to.upper() if convert_to else None,
     )
 
 
@@ -100,8 +99,7 @@ async def get_portfolio_holdings(
     status_code=status.HTTP_200_OK,
     summary="Get portfolio value time series",
     description=(
-        "Returns a bucketed time series of portfolio value and cost basis "
-        "for the authenticated user. "
+        "Returns a bucketed time series of portfolio value and cost basis. "
         "Bucket granularity is determined by the requested period: "
         "1D → 5MIN, 1W → HOUR, 1M → DAY, 1Y → WEEK, ALL → MONTH. "
         "Points where no price data is available contribute 0 to value."
@@ -115,7 +113,7 @@ async def get_portfolio_holdings(
     },
 )
 async def get_portfolio_history(
-    current_user: CurrentUser,
+    _current_user: CurrentUser,
     history_service: PortfolioHistoryServiceDep,
     period: HistoryPeriod = Query(default=HistoryPeriod.ONE_MONTH, description="Time window"),
     currency: str = Query(
@@ -125,8 +123,8 @@ async def get_portfolio_history(
         description="Quote currency (e.g. KRW, USD)",
     ),
 ) -> PortfolioHistoryResponse:
-    """Return portfolio value time series for the authenticated user."""
-    return await history_service.get_history(current_user.id, period, currency.upper())
+    """Return portfolio value time series."""
+    return await history_service.get_history(period, currency.upper())
 
 
 @router.get(
@@ -135,18 +133,18 @@ async def get_portfolio_history(
     status_code=status.HTTP_200_OK,
     summary="Per-tag transaction flow breakdown",
     description=(
-        "Groups the authenticated user's transactions by tag and returns per-tag "
-        "buy/sell counts and currency-bucketed value totals. "
+        "Groups transactions by tag and returns per-tag buy/sell counts and "
+        "currency-bucketed value totals. "
         "Untagged transactions are grouped under tag=null and always appear last. "
-        "Returns entries=[] when the user has no transactions."
+        "Returns entries=[] when there are no transactions."
     ),
     responses={
         401: {"model": ErrorResponse, "description": "Not authenticated"},
     },
 )
 async def get_tag_breakdown(
-    current_user: CurrentUser,
+    _current_user: CurrentUser,
     service: TagBreakdownServiceDep,
 ) -> TagBreakdownResponse:
-    """Return per-tag transaction flow breakdown for the authenticated user."""
-    return await service.get_breakdown(current_user.id)
+    """Return per-tag transaction flow breakdown."""
+    return await service.get_breakdown()

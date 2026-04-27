@@ -2,28 +2,21 @@
 
 from __future__ import annotations
 
-from typing import Any
 from unittest.mock import AsyncMock
 
 from httpx import AsyncClient
 
 from app.core.deps import get_current_user, get_symbol_service
+from app.core.principal import OwnerPrincipal
 from app.domain.asset_type import AssetType
 from app.exceptions import ConflictError
 from app.main import app
 from app.models.asset_symbol import AssetSymbol
-from app.models.user import User
 from app.services.symbol import SymbolService
 
 
-def _make_user(user_id: int = 1) -> User:
-    from datetime import UTC, datetime
-
-    user = User(email="test@example.com", password_hash="hashed")
-    user.id = user_id
-    user.created_at = datetime.now(UTC)
-    user.updated_at = datetime.now(UTC)
-    return user
+def _make_owner() -> OwnerPrincipal:
+    return OwnerPrincipal()
 
 
 def _make_asset(
@@ -52,7 +45,7 @@ class TestSearchSymbols:
         assert response.status_code == 401
 
     async def test_인증_후_검색하면_200과_목록을_반환한다(self, async_client: AsyncClient) -> None:
-        user = _make_user()
+        user = _make_owner()
         asset = _make_asset()
         mock_service = AsyncMock(spec=SymbolService)
         mock_service.search.return_value = [asset]
@@ -71,7 +64,7 @@ class TestSearchSymbols:
             app.dependency_overrides.pop(get_symbol_service, None)
 
     async def test_빈_검색_결과면_빈_배열을_반환한다(self, async_client: AsyncClient) -> None:
-        user = _make_user()
+        user = _make_owner()
         mock_service = AsyncMock(spec=SymbolService)
         mock_service.search.return_value = []
 
@@ -87,7 +80,7 @@ class TestSearchSymbols:
             app.dependency_overrides.pop(get_symbol_service, None)
 
     async def test_asset_type_필터를_전달한다(self, async_client: AsyncClient) -> None:
-        user = _make_user()
+        user = _make_owner()
         mock_service = AsyncMock(spec=SymbolService)
         mock_service.search.return_value = []
 
@@ -122,7 +115,7 @@ class TestRegisterSymbol:
     async def test_신규_심볼_등록하면_201과_응답을_반환한다(
         self, async_client: AsyncClient
     ) -> None:
-        user = _make_user()
+        user = _make_owner()
         asset = _make_asset()
         mock_service = AsyncMock(spec=SymbolService)
         mock_service.register.return_value = asset
@@ -151,7 +144,7 @@ class TestRegisterSymbol:
             app.dependency_overrides.pop(get_symbol_service, None)
 
     async def test_중복_심볼이면_409를_반환한다(self, async_client: AsyncClient) -> None:
-        user = _make_user()
+        user = _make_owner()
         mock_service = AsyncMock(spec=SymbolService)
         mock_service.register.side_effect = ConflictError("already registered")
 
@@ -175,7 +168,7 @@ class TestRegisterSymbol:
             app.dependency_overrides.pop(get_symbol_service, None)
 
     async def test_잘못된_asset_type이면_422를_반환한다(self, async_client: AsyncClient) -> None:
-        user = _make_user()
+        user = _make_owner()
         app.dependency_overrides[get_current_user] = lambda: user
 
         try:
@@ -194,7 +187,7 @@ class TestRegisterSymbol:
             app.dependency_overrides.pop(get_current_user, None)
 
     async def test_symbol이_빈_문자열이면_422를_반환한다(self, async_client: AsyncClient) -> None:
-        user = _make_user()
+        user = _make_owner()
         app.dependency_overrides[get_current_user] = lambda: user
 
         try:
@@ -217,14 +210,13 @@ class TestSymbolIntegration:
     """Full integration test using real SQLite DB (no mocks)."""
 
     async def test_등록_후_검색하면_결과에_나타난다(
-        self, async_client: AsyncClient, user_factory: Any
+        self, async_client: AsyncClient
     ) -> None:
-        user = await user_factory(email="sym_integration@example.com")
+        from app.core.principal import OWNER_ID
         from app.core.security import create_access_token
 
-        token = create_access_token(subject=user.id)
+        token = create_access_token(subject=OWNER_ID)
 
-        # Register
         reg_resp = await async_client.post(
             "/api/symbols",
             json={
@@ -238,7 +230,6 @@ class TestSymbolIntegration:
         )
         assert reg_resp.status_code == 201
 
-        # Search
         search_resp = await async_client.get(
             "/api/symbols?q=MSFT",
             cookies={"access_token": token},

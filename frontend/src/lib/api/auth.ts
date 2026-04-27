@@ -4,14 +4,10 @@ import type { LoginInput } from "@/lib/schemas/auth"; // {/* MODIFIED */}
 
 export interface UserResponse {
   id: number;
-  email: string;
-  createdAt: string;
 }
 
 interface RawUserResponse {
   id: number;
-  email: string;
-  created_at: string;
 }
 
 function toUserResponse(raw: RawUserResponse): UserResponse {

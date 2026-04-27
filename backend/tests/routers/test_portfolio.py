@@ -9,9 +9,9 @@ from unittest.mock import AsyncMock
 from httpx import AsyncClient
 
 from app.core.deps import get_current_user, get_portfolio_service, get_tag_breakdown_service
+from app.core.principal import OwnerPrincipal
 from app.domain.asset_type import AssetType
 from app.main import app
-from app.models.user import User
 from app.schemas.portfolio import (
     AllocationEntry,
     HoldingResponse,
@@ -28,12 +28,8 @@ from app.services.tag_breakdown import TagBreakdownService
 # ---------------------------------------------------------------------------
 
 
-def _make_user(user_id: int = 1) -> User:
-    user = User(email="test@example.com", password_hash="x")
-    user.id = user_id
-    user.created_at = datetime.now(UTC)
-    user.updated_at = datetime.now(UTC)
-    return user
+def _make_owner() -> OwnerPrincipal:
+    return OwnerPrincipal()
 
 
 def _make_symbol_embedded() -> SymbolEmbedded:
@@ -94,7 +90,7 @@ class TestGetPortfolioSummary:
         assert response.status_code == 401
 
     async def test_정상_200_반환(self, async_client: AsyncClient) -> None:
-        user = _make_user()
+        user = _make_owner()
         mock_service = AsyncMock(spec=PortfolioService)
         mock_service.get_summary.return_value = _make_summary()
 
@@ -115,7 +111,7 @@ class TestGetPortfolioSummary:
             app.dependency_overrides.pop(get_portfolio_service, None)
 
     async def test_빈_포트폴리오_summary_0값_구조(self, async_client: AsyncClient) -> None:
-        user = _make_user()
+        user = _make_owner()
         mock_service = AsyncMock(spec=PortfolioService)
         mock_service.get_summary.return_value = PortfolioSummaryResponse()
 
@@ -134,7 +130,7 @@ class TestGetPortfolioSummary:
 
     async def test_contract_응답_키_일치(self, async_client: AsyncClient) -> None:
         """Contract test: response keys must match the OpenAPI schema."""
-        user = _make_user()
+        user = _make_owner()
         mock_service = AsyncMock(spec=PortfolioService)
         mock_service.get_summary.return_value = _make_summary()
 
@@ -158,8 +154,8 @@ class TestGetPortfolioSummary:
             app.dependency_overrides.pop(get_current_user, None)
             app.dependency_overrides.pop(get_portfolio_service, None)
 
-    async def test_service가_user_id로_호출됨(self, async_client: AsyncClient) -> None:
-        user = _make_user(user_id=42)
+    async def test_service가_호출됨(self, async_client: AsyncClient) -> None:
+        user = _make_owner()
         mock_service = AsyncMock(spec=PortfolioService)
         mock_service.get_summary.return_value = PortfolioSummaryResponse()
 
@@ -168,13 +164,13 @@ class TestGetPortfolioSummary:
 
         try:
             await async_client.get("/api/portfolio/summary")
-            mock_service.get_summary.assert_called_once_with(42, convert_to=None)
+            mock_service.get_summary.assert_called_once()
         finally:
             app.dependency_overrides.pop(get_current_user, None)
             app.dependency_overrides.pop(get_portfolio_service, None)
 
     async def test_convert_to_KRW_파라미터_전달(self, async_client: AsyncClient) -> None:
-        user = _make_user()
+        user = _make_owner()
         mock_service = AsyncMock(spec=PortfolioService)
         mock_service.get_summary.return_value = PortfolioSummaryResponse(
             total_value_by_currency={"USD": "1000.00"},
@@ -194,13 +190,13 @@ class TestGetPortfolioSummary:
             body = response.json()
             assert body["display_currency"] == "KRW"
             assert body["converted_total_value"] is not None
-            mock_service.get_summary.assert_called_once_with(user.id, convert_to="KRW")
+            mock_service.get_summary.assert_called_once_with(convert_to="KRW")
         finally:
             app.dependency_overrides.pop(get_current_user, None)
             app.dependency_overrides.pop(get_portfolio_service, None)
 
     async def test_convert_to_없으면_converted_필드_null(self, async_client: AsyncClient) -> None:
-        user = _make_user()
+        user = _make_owner()
         mock_service = AsyncMock(spec=PortfolioService)
         mock_service.get_summary.return_value = PortfolioSummaryResponse()
 
@@ -218,7 +214,7 @@ class TestGetPortfolioSummary:
             app.dependency_overrides.pop(get_portfolio_service, None)
 
     async def test_convert_to_너무_짧으면_422(self, async_client: AsyncClient) -> None:
-        user = _make_user()
+        user = _make_owner()
         mock_service = AsyncMock(spec=PortfolioService)
         mock_service.get_summary.return_value = PortfolioSummaryResponse()
 
@@ -244,7 +240,7 @@ class TestGetPortfolioHoldings:
         assert response.status_code == 401
 
     async def test_정상_200_반환(self, async_client: AsyncClient) -> None:
-        user = _make_user()
+        user = _make_owner()
         mock_service = AsyncMock(spec=PortfolioService)
         mock_service.get_holdings.return_value = [_make_holding()]
 
@@ -262,7 +258,7 @@ class TestGetPortfolioHoldings:
             app.dependency_overrides.pop(get_portfolio_service, None)
 
     async def test_빈_포트폴리오_빈_배열_반환(self, async_client: AsyncClient) -> None:
-        user = _make_user()
+        user = _make_owner()
         mock_service = AsyncMock(spec=PortfolioService)
         mock_service.get_holdings.return_value = []
 
@@ -279,7 +275,7 @@ class TestGetPortfolioHoldings:
 
     async def test_contract_응답_키_일치(self, async_client: AsyncClient) -> None:
         """Contract test: holding row keys must match the OpenAPI HoldingResponse schema."""
-        user = _make_user()
+        user = _make_owner()
         mock_service = AsyncMock(spec=PortfolioService)
         mock_service.get_holdings.return_value = [_make_holding()]
 
@@ -314,7 +310,7 @@ class TestGetPortfolioHoldings:
             app.dependency_overrides.pop(get_portfolio_service, None)
 
     async def test_asset_symbol_nested_키_존재(self, async_client: AsyncClient) -> None:
-        user = _make_user()
+        user = _make_owner()
         mock_service = AsyncMock(spec=PortfolioService)
         mock_service.get_holdings.return_value = [_make_holding()]
 
@@ -334,8 +330,8 @@ class TestGetPortfolioHoldings:
             app.dependency_overrides.pop(get_current_user, None)
             app.dependency_overrides.pop(get_portfolio_service, None)
 
-    async def test_service가_user_id로_호출됨(self, async_client: AsyncClient) -> None:
-        user = _make_user(user_id=7)
+    async def test_service가_호출됨(self, async_client: AsyncClient) -> None:
+        user = _make_owner()
         mock_service = AsyncMock(spec=PortfolioService)
         mock_service.get_holdings.return_value = []
 
@@ -344,13 +340,13 @@ class TestGetPortfolioHoldings:
 
         try:
             await async_client.get("/api/portfolio/holdings")
-            mock_service.get_holdings.assert_called_once_with(7, convert_to=None)  # MODIFIED
+            mock_service.get_holdings.assert_called_once()
         finally:
             app.dependency_overrides.pop(get_current_user, None)
             app.dependency_overrides.pop(get_portfolio_service, None)
 
     async def test_convert_to_KRW_query_전달(self, async_client: AsyncClient) -> None:  # ADDED
-        user = _make_user()
+        user = _make_owner()
         mock_service = AsyncMock(spec=PortfolioService)
         holding = _make_holding()
         holding.converted_latest_value = Decimal("2418768.00")
@@ -372,7 +368,7 @@ class TestGetPortfolioHoldings:
             assert item["display_currency"] == "KRW"
             assert item["converted_latest_value"] is not None
             assert item["converted_cost_basis"] is not None
-            mock_service.get_holdings.assert_called_once_with(user.id, convert_to="KRW")
+            mock_service.get_holdings.assert_called_once_with(convert_to="KRW")
         finally:
             app.dependency_overrides.pop(get_current_user, None)
             app.dependency_overrides.pop(get_portfolio_service, None)
@@ -380,7 +376,7 @@ class TestGetPortfolioHoldings:
     async def test_convert_to_없으면_converted_필드_null(
         self, async_client: AsyncClient
     ) -> None:  # ADDED
-        user = _make_user()
+        user = _make_owner()
         mock_service = AsyncMock(spec=PortfolioService)
         mock_service.get_holdings.return_value = [_make_holding()]
 
@@ -428,7 +424,7 @@ class TestGetTagBreakdown:
         assert response.status_code == 401
 
     async def test_정상_200_반환_schema_검증(self, async_client: AsyncClient) -> None:
-        user = _make_user()
+        user = _make_owner()
         mock_service = AsyncMock(spec=TagBreakdownService)
         mock_service.get_breakdown.return_value = _make_breakdown_response()
 
@@ -446,7 +442,7 @@ class TestGetTagBreakdown:
             app.dependency_overrides.pop(get_tag_breakdown_service, None)
 
     async def test_거래없음_빈_entries_반환(self, async_client: AsyncClient) -> None:
-        user = _make_user()
+        user = _make_owner()
         mock_service = AsyncMock(spec=TagBreakdownService)
         mock_service.get_breakdown.return_value = TagBreakdownResponse(entries=[])
 
@@ -462,7 +458,7 @@ class TestGetTagBreakdown:
             app.dependency_overrides.pop(get_tag_breakdown_service, None)
 
     async def test_contract_응답_키_일치(self, async_client: AsyncClient) -> None:
-        user = _make_user()
+        user = _make_owner()
         mock_service = AsyncMock(spec=TagBreakdownService)
         mock_service.get_breakdown.return_value = _make_breakdown_response()
 
@@ -486,7 +482,7 @@ class TestGetTagBreakdown:
             app.dependency_overrides.pop(get_tag_breakdown_service, None)
 
     async def test_entry_통화별_금액_str_타입(self, async_client: AsyncClient) -> None:
-        user = _make_user()
+        user = _make_owner()
         mock_service = AsyncMock(spec=TagBreakdownService)
         mock_service.get_breakdown.return_value = _make_breakdown_response()
 
@@ -505,7 +501,7 @@ class TestGetTagBreakdown:
             app.dependency_overrides.pop(get_tag_breakdown_service, None)
 
     async def test_untagged_entry_tag_null(self, async_client: AsyncClient) -> None:
-        user = _make_user()
+        user = _make_owner()
         mock_service = AsyncMock(spec=TagBreakdownService)
         mock_service.get_breakdown.return_value = TagBreakdownResponse(
             entries=[
@@ -532,8 +528,8 @@ class TestGetTagBreakdown:
             app.dependency_overrides.pop(get_current_user, None)
             app.dependency_overrides.pop(get_tag_breakdown_service, None)
 
-    async def test_service가_user_id로_호출됨(self, async_client: AsyncClient) -> None:
-        user = _make_user(user_id=99)
+    async def test_service가_호출됨(self, async_client: AsyncClient) -> None:
+        user = _make_owner()
         mock_service = AsyncMock(spec=TagBreakdownService)
         mock_service.get_breakdown.return_value = TagBreakdownResponse(entries=[])
 
@@ -542,7 +538,7 @@ class TestGetTagBreakdown:
 
         try:
             await async_client.get("/api/portfolio/tags/breakdown")
-            mock_service.get_breakdown.assert_called_once_with(99)
+            mock_service.get_breakdown.assert_called_once_with()
         finally:
             app.dependency_overrides.pop(get_current_user, None)
             app.dependency_overrides.pop(get_tag_breakdown_service, None)

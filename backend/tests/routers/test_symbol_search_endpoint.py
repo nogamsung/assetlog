@@ -9,19 +9,15 @@ import pytest
 from httpx import AsyncClient
 
 from app.core.deps import get_current_user, get_symbol_service
+from app.core.principal import OwnerPrincipal
 from app.domain.asset_type import AssetType
 from app.main import app
 from app.models.asset_symbol import AssetSymbol
-from app.models.user import User
 from app.services.symbol import SymbolService
 
 
-def _fake_user() -> User:
-    user = User(email="test@example.com", password_hash="hashed")
-    user.id = 1
-    user.created_at = datetime.now(UTC)
-    user.updated_at = datetime.now(UTC)
-    return user
+def _fake_owner() -> OwnerPrincipal:
+    return OwnerPrincipal()
 
 
 def _make_asset(
@@ -45,7 +41,7 @@ def _make_asset(
 
 
 def _override_service(mock_service: SymbolService) -> None:
-    app.dependency_overrides[get_current_user] = _fake_user
+    app.dependency_overrides[get_current_user] = _fake_owner
     app.dependency_overrides[get_symbol_service] = lambda: mock_service
 
 

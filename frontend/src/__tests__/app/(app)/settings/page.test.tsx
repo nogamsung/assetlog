@@ -34,8 +34,6 @@ const mockedUseExportData = jest.mocked(useExportModule.useExportData); // ADDED
 
 const fakeUser: UserResponse = {
   id: 1,
-  email: "test@example.com",
-  createdAt: "2024-01-01T00:00:00Z",
 };
 
 function setupMocks({
@@ -91,14 +89,6 @@ describe("SettingsPage", () => {
     render(<SettingsPage />);
     expect(screen.getByText("계정")).toBeInTheDocument();
     expect(screen.getByText("단일 사용자 계정")).toBeInTheDocument();
-  });
-
-  it("유저 이메일과 가입일을 표시한다", () => {
-    setupMocks({ user: fakeUser });
-    render(<SettingsPage />);
-    expect(screen.getByText("test@example.com")).toBeInTheDocument();
-    // createdAt 포맷팅 확인 (한국 날짜 포맷)
-    expect(screen.getByText(/2024/)).toBeInTheDocument();
   });
 
   it("로그아웃 버튼이 렌더링된다", () => {

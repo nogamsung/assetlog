@@ -65,7 +65,7 @@ def _make_service(
     fx_service: FxRateService | None = None,
 ) -> PortfolioService:
     mock_repo = AsyncMock(spec=PortfolioRepository)
-    mock_repo.list_user_holdings_with_aggregates.return_value = rows
+    mock_repo.list_holdings_with_aggregates.return_value = rows
     return PortfolioService(mock_repo, fx_service=fx_service)
 
 
@@ -121,7 +121,7 @@ class TestPortfolioServiceGetHoldings:
         row = _make_row(symbol=sym)
         svc = _make_service([row])
 
-        holdings = await svc.get_holdings(user_id=1)
+        holdings = await svc.get_holdings()
         assert len(holdings) == 1
         h = holdings[0]
         assert h.is_pending is True
@@ -133,7 +133,7 @@ class TestPortfolioServiceGetHoldings:
         row = _make_row(total_qty="5", total_cost="800", symbol=sym)
         svc = _make_service([row])
 
-        holdings = await svc.get_holdings(user_id=1)
+        holdings = await svc.get_holdings()
         h = holdings[0]
         assert h.latest_price == Decimal("200")
         assert h.latest_value == Decimal("1000")  # 5 * 200
@@ -149,7 +149,7 @@ class TestPortfolioServiceGetHoldings:
         ]
         svc = _make_service(rows)
 
-        holdings = await svc.get_holdings(user_id=1)
+        holdings = await svc.get_holdings()
         total_weight = sum(h.weight_pct for h in holdings)
         assert abs(total_weight - 100.0) < 0.01
 
@@ -164,7 +164,7 @@ class TestPortfolioServiceGetHoldings:
         ]
         svc = _make_service(rows)
 
-        holdings = await svc.get_holdings(user_id=1)
+        holdings = await svc.get_holdings()
         pending_h = next(h for h in holdings if h.is_pending)
         assert pending_h.weight_pct == 0.0
 
@@ -174,7 +174,7 @@ class TestPortfolioServiceGetHoldings:
         row = _make_row(symbol=sym)
         svc = _make_service([row])
 
-        holdings = await svc.get_holdings(user_id=1)
+        holdings = await svc.get_holdings()
         assert holdings[0].is_stale is True
 
     async def test_stale_판정_정확히_3h_이하_아님(self) -> None:
@@ -183,12 +183,12 @@ class TestPortfolioServiceGetHoldings:
         row = _make_row(symbol=sym)
         svc = _make_service([row])
 
-        holdings = await svc.get_holdings(user_id=1)
+        holdings = await svc.get_holdings()
         assert holdings[0].is_stale is False
 
     async def test_빈_포트폴리오(self) -> None:
         svc = _make_service([])
-        holdings = await svc.get_holdings(user_id=1)
+        holdings = await svc.get_holdings()
         assert holdings == []
 
 
@@ -203,7 +203,7 @@ class TestPortfolioServiceGetHoldingsConversion:  # ADDED
         row = _make_row(total_qty="5", total_cost="800", symbol=sym)
         svc = _make_service([row])
 
-        holdings = await svc.get_holdings(user_id=1)
+        holdings = await svc.get_holdings()
         h = holdings[0]
         assert h.converted_latest_value is None
         assert h.converted_cost_basis is None
@@ -218,7 +218,7 @@ class TestPortfolioServiceGetHoldingsConversion:  # ADDED
         fx = _make_fx_service(rates={("USD", "KRW"): Decimal("1380")})
         svc = _make_service([row], fx_service=fx)
 
-        holdings = await svc.get_holdings(user_id=1, convert_to="KRW")
+        holdings = await svc.get_holdings(convert_to="KRW")
         h = holdings[0]
         assert h.display_currency == "KRW"
         assert h.converted_latest_value == Decimal("1000") * Decimal("1380")
@@ -241,7 +241,7 @@ class TestPortfolioServiceGetHoldingsConversion:  # ADDED
         fx = _make_fx_service(rates={("USD", "KRW"): Decimal("1380")})
         svc = _make_service(rows, fx_service=fx)
 
-        holdings = await svc.get_holdings(user_id=1, convert_to="KRW")
+        holdings = await svc.get_holdings(convert_to="KRW")
         usd_h = next(h for h in holdings if h.asset_symbol.currency == "USD")
         eur_h = next(h for h in holdings if h.asset_symbol.currency == "EUR")
 
@@ -264,7 +264,7 @@ class TestPortfolioServiceGetHoldingsConversion:  # ADDED
         fx = _make_fx_service(rates={})
         svc = _make_service([row], fx_service=fx)
 
-        holdings = await svc.get_holdings(user_id=1, convert_to="KRW")
+        holdings = await svc.get_holdings(convert_to="KRW")
         h = holdings[0]
         assert h.display_currency == "KRW"
         assert h.converted_latest_value == Decimal("50000000")
@@ -280,7 +280,7 @@ class TestPortfolioServiceGetHoldingsConversion:  # ADDED
         fx = _make_fx_service(rates={("USD", "KRW"): Decimal("1380")})
         svc = _make_service([row], fx_service=fx)
 
-        holdings = await svc.get_holdings(user_id=1, convert_to="KRW")
+        holdings = await svc.get_holdings(convert_to="KRW")
         h = holdings[0]
         assert h.display_currency == "KRW"
         # pending → latest_value/pnl_abs null → converted도 null
@@ -302,7 +302,7 @@ class TestPortfolioServiceGetSummary:
         row = _make_row(symbol=sym)
         svc = _make_service([row])
 
-        summary = await svc.get_summary(user_id=1)
+        summary = await svc.get_summary()
         assert summary.total_value_by_currency == {}
         assert summary.pending_count == 1
 
@@ -319,7 +319,7 @@ class TestPortfolioServiceGetSummary:
         ]
         svc = _make_service(rows)
 
-        summary = await svc.get_summary(user_id=1)
+        summary = await svc.get_summary()
         assert "KRW" in summary.total_value_by_currency
         assert "USD" in summary.total_value_by_currency
         assert summary.total_value_by_currency["KRW"] == str(Decimal("50000000"))
@@ -331,7 +331,7 @@ class TestPortfolioServiceGetSummary:
         row = _make_row(symbol=sym)
         svc = _make_service([row])
 
-        summary = await svc.get_summary(user_id=1)
+        summary = await svc.get_summary()
         assert summary.stale_count == 1
 
     async def test_stale_판정_경계_3h_미만(self) -> None:
@@ -340,7 +340,7 @@ class TestPortfolioServiceGetSummary:
         row = _make_row(symbol=sym)
         svc = _make_service([row])
 
-        summary = await svc.get_summary(user_id=1)
+        summary = await svc.get_summary()
         assert summary.stale_count == 0
 
     async def test_allocation_합_100_근사(self) -> None:
@@ -352,7 +352,7 @@ class TestPortfolioServiceGetSummary:
         ]
         svc = _make_service(rows)
 
-        summary = await svc.get_summary(user_id=1)
+        summary = await svc.get_summary()
         total_pct = sum(a.pct for a in summary.allocation)
         assert abs(total_pct - 100.0) < 0.1
 
@@ -364,19 +364,19 @@ class TestPortfolioServiceGetSummary:
         rows = [_make_row(1, symbol=sym1), _make_row(2, symbol=sym2)]
         svc = _make_service(rows)
 
-        summary = await svc.get_summary(user_id=1)
+        summary = await svc.get_summary()
         assert summary.last_price_refreshed_at == newer
 
     async def test_모두_pending이면_last_refreshed_null(self) -> None:
         sym = _make_symbol(last_price=None, refreshed_at=None)
         svc = _make_service([_make_row(symbol=sym)])
 
-        summary = await svc.get_summary(user_id=1)
+        summary = await svc.get_summary()
         assert summary.last_price_refreshed_at is None
 
     async def test_빈_포트폴리오_empty_summary(self) -> None:
         svc = _make_service([])
-        summary = await svc.get_summary(user_id=1)
+        summary = await svc.get_summary()
         assert summary.total_value_by_currency == {}
         assert summary.pending_count == 0
         assert summary.stale_count == 0
@@ -387,7 +387,7 @@ class TestPortfolioServiceGetSummary:
         row = _make_row(total_qty="10", total_cost="1000", symbol=sym)  # value=1100, pnl=100
         svc = _make_service([row])
 
-        summary = await svc.get_summary(user_id=1)
+        summary = await svc.get_summary()
         krw_pnl = summary.pnl_by_currency["KRW"]
         assert krw_pnl.abs == Decimal("100")
         assert round(krw_pnl.pct, 2) == 10.0
@@ -405,7 +405,7 @@ class TestPortfolioServiceGetSummary:
         ]
         svc = _make_service(rows)
 
-        summary = await svc.get_summary(user_id=1)
+        summary = await svc.get_summary()
         assert summary.realized_pnl_by_currency.get("KRW") == "300000"
         assert summary.realized_pnl_by_currency.get("USD") == "50"
 
@@ -414,7 +414,7 @@ class TestPortfolioServiceGetSummary:
         row = _make_row(realized_pnl="1000", symbol=sym)
         svc = _make_service([row])
 
-        summary = await svc.get_summary(user_id=1)
+        summary = await svc.get_summary()
         assert summary.realized_pnl_by_currency.get("KRW") == "1000"
 
 
@@ -434,7 +434,7 @@ class TestPortfolioServiceGetSummaryConversion:
         fx = _make_fx_service(rates={("USD", "KRW"): Decimal("1380")})
         svc = _make_service([row], fx_service=fx)
 
-        summary = await svc.get_summary(user_id=1, convert_to="KRW")
+        summary = await svc.get_summary(convert_to="KRW")
 
         assert summary.display_currency == "KRW"
         assert summary.converted_total_value == Decimal("1000") * Decimal("1380")
@@ -454,7 +454,7 @@ class TestPortfolioServiceGetSummaryConversion:
         fx = _make_fx_service(rates=None)
         svc = _make_service([row], fx_service=fx)
 
-        summary = await svc.get_summary(user_id=1, convert_to="KRW")
+        summary = await svc.get_summary(convert_to="KRW")
 
         assert summary.converted_total_value is None
         assert summary.converted_total_cost is None
@@ -469,7 +469,7 @@ class TestPortfolioServiceGetSummaryConversion:
         row = _make_row(1, "1", "40000000", symbol=sym)
         svc = _make_service([row])
 
-        summary = await svc.get_summary(user_id=1)  # no convert_to
+        summary = await svc.get_summary()  # no convert_to
 
         assert summary.converted_total_value is None
         assert summary.display_currency is None
@@ -485,7 +485,7 @@ class TestPortfolioServiceGetSummaryConversion:
         fx = _make_fx_service(rates={})  # same currency — no key needed
         svc = _make_service([row], fx_service=fx)
 
-        summary = await svc.get_summary(user_id=1, convert_to="KRW")
+        summary = await svc.get_summary(convert_to="KRW")
 
         assert summary.display_currency == "KRW"
         assert summary.converted_total_value == Decimal("50000000")
@@ -510,7 +510,7 @@ class TestPortfolioServiceGetSummaryConversion:
         )
         svc = _make_service(rows, fx_service=fx)
 
-        summary = await svc.get_summary(user_id=1, convert_to="KRW")
+        summary = await svc.get_summary(convert_to="KRW")
 
         assert summary.display_currency == "KRW"
         expected_value = Decimal("1000") * Decimal("1380") + Decimal("50000000")
@@ -525,7 +525,7 @@ class TestPortfolioServiceGetSummaryConversion:
         fx = _make_fx_service(rates={("USD", "KRW"): Decimal("1380")})
         svc = _make_service([row], fx_service=fx)
 
-        summary = await svc.get_summary(user_id=1, convert_to="KRW")
+        summary = await svc.get_summary(convert_to="KRW")
         assert summary.converted_realized_pnl == Decimal("50") * Decimal("1380")
 
     async def test_fx_service_없으면_convert_to_무시(self) -> None:
@@ -534,6 +534,6 @@ class TestPortfolioServiceGetSummaryConversion:
         # No fx_service injected
         svc = _make_service([row])
 
-        summary = await svc.get_summary(user_id=1, convert_to="KRW")
+        summary = await svc.get_summary(convert_to="KRW")
         assert summary.converted_total_value is None
         assert summary.display_currency is None

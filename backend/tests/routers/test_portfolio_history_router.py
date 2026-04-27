@@ -9,9 +9,9 @@ from unittest.mock import AsyncMock
 from httpx import AsyncClient
 
 from app.core.deps import get_current_user, get_portfolio_history_service
+from app.core.principal import OwnerPrincipal
 from app.domain.portfolio_history import HistoryBucket, HistoryPeriod
 from app.main import app
-from app.models.user import User
 from app.schemas.portfolio import HistoryPointResponse, PortfolioHistoryResponse
 from app.services.portfolio_history import PortfolioHistoryService
 
@@ -22,12 +22,8 @@ from app.services.portfolio_history import PortfolioHistoryService
 NOW = datetime(2026, 4, 24, 12, 0, 0, tzinfo=UTC)
 
 
-def _make_user(user_id: int = 1) -> User:
-    user = User(email="hist@example.com", password_hash="x")
-    user.id = user_id
-    user.created_at = NOW
-    user.updated_at = NOW
-    return user
+def _make_owner() -> OwnerPrincipal:
+    return OwnerPrincipal()
 
 
 def _make_history_response(
@@ -71,7 +67,7 @@ class TestPortfolioHistoryRouterUnauth:
 
 class TestPortfolioHistoryRouterHappyPath:
     async def test_정상_200_반환(self, async_client: AsyncClient) -> None:
-        user = _make_user()
+        user = _make_owner()
         mock_service = AsyncMock(spec=PortfolioHistoryService)
         mock_service.get_history.return_value = _make_history_response()
 
@@ -89,7 +85,7 @@ class TestPortfolioHistoryRouterHappyPath:
             app.dependency_overrides.pop(get_portfolio_history_service, None)
 
     async def test_응답_스키마_키_존재(self, async_client: AsyncClient) -> None:
-        user = _make_user()
+        user = _make_owner()
         mock_service = AsyncMock(spec=PortfolioHistoryService)
         mock_service.get_history.return_value = _make_history_response()
 
@@ -112,7 +108,7 @@ class TestPortfolioHistoryRouterHappyPath:
             app.dependency_overrides.pop(get_portfolio_history_service, None)
 
     async def test_points_항목_스키마(self, async_client: AsyncClient) -> None:
-        user = _make_user()
+        user = _make_owner()
         mock_service = AsyncMock(spec=PortfolioHistoryService)
         mock_service.get_history.return_value = _make_history_response(num_points=1)
 
@@ -138,7 +134,7 @@ class TestPortfolioHistoryRouterHappyPath:
             app.dependency_overrides.pop(get_portfolio_history_service, None)
 
     async def test_빈_points_200_반환(self, async_client: AsyncClient) -> None:
-        user = _make_user()
+        user = _make_owner()
         mock_service = AsyncMock(spec=PortfolioHistoryService)
         mock_service.get_history.return_value = PortfolioHistoryResponse(
             currency="KRW",
@@ -161,10 +157,10 @@ class TestPortfolioHistoryRouterHappyPath:
             app.dependency_overrides.pop(get_current_user, None)
             app.dependency_overrides.pop(get_portfolio_history_service, None)
 
-    async def test_service가_user_id와_period와_currency로_호출됨(
+    async def test_service가_period와_currency로_호출됨(
         self, async_client: AsyncClient
     ) -> None:
-        user = _make_user(user_id=42)
+        user = _make_owner()
         mock_service = AsyncMock(spec=PortfolioHistoryService)
         mock_service.get_history.return_value = _make_history_response()
 
@@ -176,13 +172,13 @@ class TestPortfolioHistoryRouterHappyPath:
                 "/api/portfolio/history",
                 params={"currency": "usd", "period": "1Y"},
             )
-            mock_service.get_history.assert_called_once_with(42, HistoryPeriod.ONE_YEAR, "USD")
+            mock_service.get_history.assert_called_once_with(HistoryPeriod.ONE_YEAR, "USD")
         finally:
             app.dependency_overrides.pop(get_current_user, None)
             app.dependency_overrides.pop(get_portfolio_history_service, None)
 
     async def test_period_기본값_1M(self, async_client: AsyncClient) -> None:
-        user = _make_user()
+        user = _make_owner()
         mock_service = AsyncMock(spec=PortfolioHistoryService)
         mock_service.get_history.return_value = _make_history_response()
 
@@ -190,13 +186,12 @@ class TestPortfolioHistoryRouterHappyPath:
         app.dependency_overrides[get_portfolio_history_service] = lambda: mock_service
 
         try:
-            # period 쿼리 파라미터 없이 호출
             await async_client.get(
                 "/api/portfolio/history",
                 params={"currency": "KRW"},
             )
             call_args = mock_service.get_history.call_args
-            assert call_args[0][1] == HistoryPeriod.ONE_MONTH
+            assert call_args[0][0] == HistoryPeriod.ONE_MONTH
         finally:
             app.dependency_overrides.pop(get_current_user, None)
             app.dependency_overrides.pop(get_portfolio_history_service, None)
@@ -209,7 +204,7 @@ class TestPortfolioHistoryRouterHappyPath:
 
 class TestPortfolioHistoryRouterValidation:
     async def test_currency_누락_422(self, async_client: AsyncClient) -> None:
-        user = _make_user()
+        user = _make_owner()
         mock_service = AsyncMock(spec=PortfolioHistoryService)
 
         app.dependency_overrides[get_current_user] = lambda: user
@@ -223,7 +218,7 @@ class TestPortfolioHistoryRouterValidation:
             app.dependency_overrides.pop(get_portfolio_history_service, None)
 
     async def test_잘못된_period_422(self, async_client: AsyncClient) -> None:
-        user = _make_user()
+        user = _make_owner()
         mock_service = AsyncMock(spec=PortfolioHistoryService)
 
         app.dependency_overrides[get_current_user] = lambda: user

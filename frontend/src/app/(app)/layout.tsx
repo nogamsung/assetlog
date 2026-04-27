@@ -2,11 +2,10 @@
 
 import Link from "next/link";
 import { Settings } from "lucide-react";
-import { useCurrentUser, useLogout } from "@/hooks/use-auth";
+import { useLogout } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
 
 function AppHeader() {
-  const { data: user } = useCurrentUser();
   const logoutMutation = useLogout();
 
   return (
@@ -34,9 +33,6 @@ function AppHeader() {
         </nav>
       </div>
       <div className="flex items-center gap-4">
-        {user && (
-          <span className="text-sm text-muted-foreground">{user.email}님</span>
-        )}
         <Link
           href="/settings"
           className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"

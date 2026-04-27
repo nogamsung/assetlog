@@ -18,17 +18,17 @@ from sqlalchemy.pool import StaticPool
 
 import app.db.base as db_base
 from app.core.config import Settings, get_settings
-from app.core.security import create_access_token, hash_password
+from app.core.principal import OWNER_ID
+from app.core.security import create_access_token
 from app.db.base import Base, get_db_session
 from app.main import app
 from app.models.asset_symbol import AssetSymbol
-from app.models.user import User
 from app.models.user_asset import UserAsset
 
 TEST_DATABASE_URL = "sqlite+aiosqlite:///:memory:"
 
 
-@pytest_asyncio.fixture(scope="session")  # type: ignore[misc]  # pytest-asyncio fixture typing
+@pytest_asyncio.fixture(scope="session")  # type: ignore[misc]
 async def test_engine() -> AsyncGenerator[AsyncEngine, None]:
     """Create a shared in-memory SQLite engine for the test session."""
     engine = create_async_engine(
@@ -42,7 +42,7 @@ async def test_engine() -> AsyncGenerator[AsyncEngine, None]:
     await engine.dispose()
 
 
-@pytest_asyncio.fixture  # type: ignore[misc]  # pytest-asyncio fixture typing
+@pytest_asyncio.fixture  # type: ignore[misc]
 async def db_session(test_engine: AsyncEngine) -> AsyncGenerator[AsyncSession, None]:
     """Provide a transactional AsyncSession per test — rolls back after each test."""
     session_factory: async_sessionmaker[AsyncSession] = async_sessionmaker(
@@ -57,7 +57,7 @@ async def db_session(test_engine: AsyncEngine) -> AsyncGenerator[AsyncSession, N
         await session.rollback()
 
 
-@pytest_asyncio.fixture  # type: ignore[misc]  # pytest-asyncio fixture typing
+@pytest_asyncio.fixture  # type: ignore[misc]
 async def async_client(
     db_session: AsyncSession,
     test_engine: AsyncEngine,
@@ -77,62 +77,36 @@ async def async_client(
             jwt_secret_key="test-secret",
         )
 
-    # Patch the module-level AsyncSessionLocal used by /health endpoint
     original_session_local = db_base.AsyncSessionLocal
     test_session_factory: async_sessionmaker[AsyncSession] = async_sessionmaker(
         bind=test_engine,
         class_=AsyncSession,
         expire_on_commit=False,
     )
-    db_base.AsyncSessionLocal = test_session_factory  # type: ignore[assignment]  # module-level patch
+    db_base.AsyncSessionLocal = test_session_factory  # type: ignore[assignment]
 
     app.dependency_overrides[get_db_session] = override_get_db_session
     app.dependency_overrides[get_settings] = override_get_settings
 
-    transport = ASGITransport(app=app)  # type: ignore[arg-type]  # httpx/starlette type mismatch
+    transport = ASGITransport(app=app)  # type: ignore[arg-type]
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         yield client
 
     app.dependency_overrides.clear()
-    db_base.AsyncSessionLocal = original_session_local  # type: ignore[assignment]  # restoring original
+    db_base.AsyncSessionLocal = original_session_local  # type: ignore[assignment]
 
 
-@pytest_asyncio.fixture  # type: ignore[misc]  # pytest-asyncio fixture typing
-async def user_factory(
-    db_session: AsyncSession,
-) -> AsyncGenerator[Any, None]:
-    """Factory fixture that creates User rows in the test DB.
-
-    Usage::
-
-        async def test_something(user_factory):
-            user = await user_factory(email="a@example.com", password="Pass1234")
-    """
-
-    async def _make(
-        email: str = "factory@example.com",
-        password: str = "Factory1Pass",
-    ) -> User:
-        from app.repositories.user import UserRepository
-
-        repo = UserRepository(db_session)
-        return await repo.create(email=email, password_hash=hash_password(password))
-
-    yield _make
-
-
-@pytest_asyncio.fixture  # type: ignore[misc]  # pytest-asyncio fixture typing
+@pytest_asyncio.fixture  # type: ignore[misc]
 async def authenticated_client(
     db_session: AsyncSession,
     test_engine: AsyncEngine,
 ) -> AsyncGenerator[Any, None]:
-    """Factory fixture that returns an AsyncClient already authenticated as a given user.
+    """Factory fixture that returns an AsyncClient already authenticated as the owner.
 
     Usage::
 
-        async def test_something(authenticated_client, user_factory):
-            user = await user_factory(email="a@example.com")
-            client = await authenticated_client(user)
+        async def test_something(authenticated_client):
+            client = await authenticated_client()
             response = await client.get("/api/user-assets")
     """
 
@@ -151,15 +125,15 @@ async def authenticated_client(
         class_=AsyncSession,
         expire_on_commit=False,
     )
-    db_base.AsyncSessionLocal = test_session_factory  # type: ignore[assignment]  # module-level patch
+    db_base.AsyncSessionLocal = test_session_factory  # type: ignore[assignment]
 
     app.dependency_overrides[get_db_session] = override_get_db_session
     app.dependency_overrides[get_settings] = override_get_settings
 
-    transport = ASGITransport(app=app)  # type: ignore[arg-type]  # httpx/starlette type mismatch
+    transport = ASGITransport(app=app)  # type: ignore[arg-type]
 
-    async def _make_client(user: User) -> AsyncClient:
-        token = create_access_token(subject=user.id)
+    async def _make_client() -> AsyncClient:
+        token = create_access_token(subject=OWNER_ID)
         client = AsyncClient(
             transport=transport,
             base_url="http://test",
@@ -171,10 +145,10 @@ async def authenticated_client(
     yield _make_client
 
     app.dependency_overrides.clear()
-    db_base.AsyncSessionLocal = original_session_local  # type: ignore[assignment]  # restoring original
+    db_base.AsyncSessionLocal = original_session_local  # type: ignore[assignment]
 
 
-@pytest_asyncio.fixture  # type: ignore[misc]  # pytest-asyncio fixture typing
+@pytest_asyncio.fixture  # type: ignore[misc]
 async def asset_symbol_factory(
     db_session: AsyncSession,
 ) -> AsyncGenerator[Any, None]:
@@ -209,7 +183,7 @@ async def asset_symbol_factory(
     yield _make
 
 
-@pytest_asyncio.fixture  # type: ignore[misc]  # pytest-asyncio fixture typing
+@pytest_asyncio.fixture  # type: ignore[misc]
 async def user_asset_factory(
     db_session: AsyncSession,
 ) -> AsyncGenerator[Any, None]:
@@ -217,14 +191,12 @@ async def user_asset_factory(
 
     Usage::
 
-        async def test_something(user_asset_factory, user_factory, asset_symbol_factory):
-            user = await user_factory()
+        async def test_something(user_asset_factory, asset_symbol_factory):
             sym = await asset_symbol_factory()
-            ua = await user_asset_factory(user=user, asset_symbol=sym)
+            ua = await user_asset_factory(asset_symbol=sym)
     """
 
     async def _make(
-        user: User,
         asset_symbol: AssetSymbol,
         memo: str | None = None,
     ) -> UserAsset:
@@ -232,7 +204,6 @@ async def user_asset_factory(
 
         repo = UserAssetRepository(db_session)
         return await repo.create(
-            user_id=user.id,
             asset_symbol_id=asset_symbol.id,
             memo=memo,
         )

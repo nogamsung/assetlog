@@ -43,10 +43,9 @@ class PortfolioService:
     # Public API
     # ------------------------------------------------------------------
 
-    async def get_holdings(  # MODIFIED
+    async def get_holdings(
         self,
-        user_id: int,
-        convert_to: str | None = None,  # ADDED
+        convert_to: str | None = None,
     ) -> list[HoldingResponse]:
         """Return per-holding rows with derived valuation fields.
 
@@ -54,15 +53,8 @@ class PortfolioService:
         holding's currency, the converted_* fields are populated.  If any rate
         is missing only that holding's converted_* fields are null — other
         holdings are still converted (partial conversion allowed, row-level).
-
-        Args:
-            user_id: Authenticated user's PK.
-            convert_to: Optional target currency code (e.g. "KRW").
-
-        Returns:
-            List of HoldingResponse — one entry per UserAsset row.
         """
-        rows = await self._repo.list_user_holdings_with_aggregates(user_id)
+        rows = await self._repo.list_holdings_with_aggregates()
         holdings = [self._compute_holding(row) for row in rows]
 
         # Compute total value for weight_pct denominator (pending excluded).
@@ -124,7 +116,6 @@ class PortfolioService:
 
     async def get_summary(
         self,
-        user_id: int,
         convert_to: str | None = None,
     ) -> PortfolioSummaryResponse:
         """Return currency-bucketed totals, P&L, allocation, and metadata.
@@ -134,15 +125,8 @@ class PortfolioService:
         ``converted_pnl_abs``, ``converted_realized_pnl``, and ``display_currency``.
         If any required rate is missing, all converted fields are left null
         to prevent partial / misleading totals.
-
-        Args:
-            user_id: Authenticated user's PK.
-            convert_to: Optional 3-letter currency code to convert totals into.
-
-        Returns:
-            PortfolioSummaryResponse — never raises on empty portfolio.
         """
-        rows = await self._repo.list_user_holdings_with_aggregates(user_id)
+        rows = await self._repo.list_holdings_with_aggregates()
 
         total_value: dict[str, Decimal] = {}
         total_cost: dict[str, Decimal] = {}
@@ -220,8 +204,7 @@ class PortfolioService:
         realized_pnl_str: dict[str, str] = {k: str(v) for k, v in realized_pnl_acc.items()}  # ADDED
 
         logger.debug(
-            "get_summary: user_id=%s currencies=%s pending=%d stale=%d convert_to=%s",
-            user_id,
+            "get_summary: currencies=%s pending=%d stale=%d convert_to=%s",
             list(total_value.keys()),
             pending_count,
             stale_count,

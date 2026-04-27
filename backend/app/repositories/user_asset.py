@@ -13,81 +13,58 @@ from app.models.user_asset import UserAsset
 class UserAssetRepository:
     """Async CRUD operations for the UserAsset model.
 
-    All queries are scoped to a specific user_id to enforce data isolation.
+    Single-owner mode: queries are not user-scoped.
     """
 
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
 
-    async def get_by_id_for_user(self, user_asset_id: int, user_id: int) -> UserAsset | None:
-        """Return a UserAsset owned by the given user, or None.
-
-        Uses selectinload to avoid N+1 when accessing asset_symbol.
-        """
+    async def get_by_id(self, user_asset_id: int) -> UserAsset | None:
+        """Return a UserAsset, eagerly loading AssetSymbol, or None."""
         stmt = (
             select(UserAsset)
             .options(selectinload(UserAsset.asset_symbol))
-            .where(
-                UserAsset.id == user_asset_id,
-                UserAsset.user_id == user_id,
-            )
+            .where(UserAsset.id == user_asset_id)
         )
         result = await self._session.execute(stmt)
         return result.scalar_one_or_none()
 
-    async def list_for_user(self, user_id: int) -> list[UserAsset]:
-        """Return all UserAsset rows for a user, eagerly loading AssetSymbol."""
+    async def list_all(self) -> list[UserAsset]:
+        """Return all UserAsset rows, eagerly loading AssetSymbol."""
         stmt = (
             select(UserAsset)
             .options(selectinload(UserAsset.asset_symbol))
-            .where(UserAsset.user_id == user_id)
             .order_by(UserAsset.created_at)
         )
         result = await self._session.execute(stmt)
         return list(result.scalars().all())
 
-    async def get_by_user_and_symbol(
-        self,
-        user_id: int,
-        asset_symbol_id: int,
-    ) -> UserAsset | None:
-        """Return the UserAsset for a specific (user, symbol) pair, or None."""
-        stmt = select(UserAsset).where(
-            UserAsset.user_id == user_id,
-            UserAsset.asset_symbol_id == asset_symbol_id,
-        )
+    async def get_by_symbol(self, asset_symbol_id: int) -> UserAsset | None:
+        """Return the UserAsset for a given asset symbol, or None."""
+        stmt = select(UserAsset).where(UserAsset.asset_symbol_id == asset_symbol_id)
         result = await self._session.execute(stmt)
         return result.scalar_one_or_none()
 
     async def create(
         self,
-        user_id: int,
         asset_symbol_id: int,
         memo: str | None = None,
     ) -> UserAsset:
         """Persist a new UserAsset row and return the refreshed instance with AssetSymbol."""
         user_asset = UserAsset(
-            user_id=user_id,
             asset_symbol_id=asset_symbol_id,
             memo=memo,
         )
         self._session.add(user_asset)
         await self._session.flush()
 
-        # Reload with relationship so callers can access asset_symbol without N+1.
-        loaded = await self.get_by_id_for_user(user_asset.id, user_id)
+        loaded = await self.get_by_id(user_asset.id)
         assert loaded is not None  # just flushed — must exist
         return loaded
 
-    async def delete_by_id_for_user(self, user_asset_id: int, user_id: int) -> bool:
-        """Delete a UserAsset owned by the given user.
-
-        Returns True if a row was deleted, False if not found.
-        """
-        stmt = select(UserAsset).where(
-            UserAsset.id == user_asset_id,
-            UserAsset.user_id == user_id,
-        )
+    async def delete_by_id(self, user_asset_id: int) -> bool:
+        """Delete a UserAsset by id. Returns True if a row was deleted, False otherwise."""
+        stmt = select(UserAsset).where(UserAsset.id == user_asset_id)
         result = await self._session.execute(stmt)
         user_asset = result.scalar_one_or_none()
         if user_asset is None:

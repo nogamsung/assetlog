@@ -9,10 +9,10 @@ from decimal import Decimal
 from unittest.mock import AsyncMock
 
 from app.core.deps import get_current_user, get_data_export_service
+from app.core.principal import OwnerPrincipal
 from app.domain.asset_type import AssetType
 from app.domain.transaction_type import TransactionType
 from app.main import app
-from app.models.user import User
 from app.schemas.export import (
     ExportAssetSymbol,
     ExportEnvelope,
@@ -26,12 +26,8 @@ from app.services.data_export import DataExportService
 # ---------------------------------------------------------------------------
 
 
-def _make_user(user_id: int = 1) -> User:
-    user = User(email="export@example.com", password_hash="hashed")
-    user.id = user_id
-    user.created_at = datetime.now(UTC)
-    user.updated_at = datetime.now(UTC)
-    return user
+def _make_owner() -> OwnerPrincipal:
+    return OwnerPrincipal()
 
 
 def _make_envelope(
@@ -97,7 +93,7 @@ class TestExportJson:
 
         client: AsyncClient = async_client  # type: ignore[assignment]
 
-        user = _make_user()
+        user = _make_owner()
         envelope = _make_envelope()
 
         mock_service = AsyncMock(spec=DataExportService)
@@ -120,7 +116,7 @@ class TestExportJson:
 
         client: AsyncClient = async_client  # type: ignore[assignment]
 
-        user = _make_user()
+        user = _make_owner()
         envelope = _make_envelope()
 
         mock_service = AsyncMock(spec=DataExportService)
@@ -145,7 +141,7 @@ class TestExportJson:
 
         client: AsyncClient = async_client  # type: ignore[assignment]
 
-        user = _make_user()
+        user = _make_owner()
         envelope = _make_envelope()
 
         mock_service = AsyncMock(spec=DataExportService)
@@ -171,7 +167,7 @@ class TestExportJson:
 
         client: AsyncClient = async_client  # type: ignore[assignment]
 
-        user = _make_user()
+        user = _make_owner()
         envelope = _make_envelope()
 
         mock_service = AsyncMock(spec=DataExportService)
@@ -194,7 +190,7 @@ class TestExportJson:
 
         client: AsyncClient = async_client  # type: ignore[assignment]
 
-        user = _make_user()
+        user = _make_owner()
         envelope = _make_envelope()
 
         mock_service = AsyncMock(spec=DataExportService)
@@ -227,7 +223,7 @@ class TestExportCsv:
 
         client: AsyncClient = async_client  # type: ignore[assignment]
 
-        user = _make_user()
+        user = _make_owner()
         mock_service = AsyncMock(spec=DataExportService)
         mock_service.export_csv_zip.return_value = _make_minimal_zip()
 
@@ -247,7 +243,7 @@ class TestExportCsv:
 
         client: AsyncClient = async_client  # type: ignore[assignment]
 
-        user = _make_user()
+        user = _make_owner()
         mock_service = AsyncMock(spec=DataExportService)
         mock_service.export_csv_zip.return_value = _make_minimal_zip()
 
@@ -267,7 +263,7 @@ class TestExportCsv:
 
         client: AsyncClient = async_client  # type: ignore[assignment]
 
-        user = _make_user()
+        user = _make_owner()
         mock_service = AsyncMock(spec=DataExportService)
         mock_service.export_csv_zip.return_value = _make_minimal_zip()
 
@@ -290,7 +286,7 @@ class TestExportCsv:
 
         client: AsyncClient = async_client  # type: ignore[assignment]
 
-        user = _make_user()
+        user = _make_owner()
         mock_service = AsyncMock(spec=DataExportService)
         mock_service.export_csv_zip.return_value = _make_minimal_zip()
 
@@ -317,7 +313,7 @@ class TestExportInvalidFormat:
 
         client: AsyncClient = async_client  # type: ignore[assignment]
 
-        user = _make_user()
+        user = _make_owner()
         mock_service = AsyncMock(spec=DataExportService)
 
         app.dependency_overrides[get_current_user] = lambda: user
@@ -336,7 +332,7 @@ class TestExportInvalidFormat:
 
         client: AsyncClient = async_client  # type: ignore[assignment]
 
-        user = _make_user()
+        user = _make_owner()
         mock_service = AsyncMock(spec=DataExportService)
 
         app.dependency_overrides[get_current_user] = lambda: user

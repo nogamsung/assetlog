@@ -10,7 +10,7 @@ from app.schemas.transaction import (
     TransactionCreate,
     TransactionImportResponse,
     TransactionResponse,
-    TransactionUpdate,  # ADDED
+    TransactionUpdate,
     UserAssetSummaryResponse,
 )
 
@@ -29,51 +29,50 @@ router = APIRouter(prefix="/api/user-assets", tags=["transactions"])
     "/transactions/tags",
     response_model=list[str],
     status_code=status.HTTP_200_OK,
-    summary="List distinct tags used by the current user",
+    summary="List distinct tags",
     responses={
         401: {"model": ErrorResponse, "description": "Not authenticated"},
     },
 )
 async def list_user_tags(
-    current_user: CurrentUser,
+    _current_user: CurrentUser,
     transaction_service: TransactionServiceDep,
 ) -> list[str]:
-    """Return a deduplicated, alphabetically sorted list of all tags the
-    authenticated user has attached to their transactions.
+    """Return a deduplicated, alphabetically sorted list of all transaction tags.
 
     Useful for autocomplete suggestions in the UI.  Returns an empty list
     when no transactions have been tagged yet.
     """
-    return await transaction_service.list_distinct_tags(current_user.id)
+    return await transaction_service.list_distinct_tags()
 
 
 @router.post(
     "/{user_asset_id}/transactions",
     response_model=TransactionResponse,
     status_code=status.HTTP_201_CREATED,
-    summary="Record a new BUY or SELL transaction for an asset holding",  # MODIFIED
+    summary="Record a new BUY or SELL transaction for an asset holding",
     responses={
         401: {"model": ErrorResponse, "description": "Not authenticated"},
-        404: {"model": ErrorResponse, "description": "UserAsset not found or not owned"},
+        404: {"model": ErrorResponse, "description": "UserAsset not found"},
         409: {
             "model": ErrorResponse,
             "description": "Insufficient holding quantity for SELL",
-        },  # ADDED
+        },
         422: {"model": ErrorResponse, "description": "Validation error"},
     },
 )
 async def add_transaction(
     data: TransactionCreate,
-    current_user: CurrentUser,
+    _current_user: CurrentUser,
     transaction_service: TransactionServiceDep,
     user_asset_id: int = Path(..., ge=1, description="UserAsset ID to record a transaction for"),
 ) -> TransactionResponse:
-    """Record a BUY or SELL transaction for the authenticated user's asset holding.
+    """Record a BUY or SELL transaction for an asset holding.
 
-    Returns 404 if the user_asset_id does not exist or is not owned by the caller.
+    Returns 404 if the user_asset_id does not exist.
     Returns 409 if a SELL transaction exceeds the current remaining quantity.
-    """  # MODIFIED
-    tx = await transaction_service.add(current_user.id, user_asset_id, data)
+    """
+    tx = await transaction_service.add(user_asset_id, data)
     return TransactionResponse.model_validate(tx)
 
 
@@ -84,11 +83,11 @@ async def add_transaction(
     summary="List transactions for an asset holding",
     responses={
         401: {"model": ErrorResponse, "description": "Not authenticated"},
-        404: {"model": ErrorResponse, "description": "UserAsset not found or not owned"},
+        404: {"model": ErrorResponse, "description": "UserAsset not found"},
     },
 )
 async def list_transactions(
-    current_user: CurrentUser,
+    _current_user: CurrentUser,
     transaction_service: TransactionServiceDep,
     user_asset_id: int = Path(..., ge=1, description="UserAsset ID to query"),
     limit: int = Query(default=100, ge=1, le=500, description="Maximum number of results"),
@@ -98,15 +97,15 @@ async def list_transactions(
     """Return paginated transactions for an asset holding (most recent first).
 
     Pass ``?tag=DCA`` to filter to only transactions with that exact tag.
-    Returns 404 if the user_asset_id does not exist or is not owned by the caller.
+    Returns 404 if the user_asset_id does not exist.
     """
     transactions = await transaction_service.list(
-        current_user.id, user_asset_id, limit=limit, offset=offset, tag=tag
+        user_asset_id, limit=limit, offset=offset, tag=tag
     )
     return [TransactionResponse.model_validate(tx) for tx in transactions]
 
 
-@router.put(  # ADDED
+@router.put(
     "/{user_asset_id}/transactions/{transaction_id}",
     response_model=TransactionResponse,
     status_code=status.HTTP_200_OK,
@@ -123,17 +122,17 @@ async def list_transactions(
 )
 async def update_transaction(
     data: TransactionUpdate,
-    current_user: CurrentUser,
+    _current_user: CurrentUser,
     transaction_service: TransactionServiceDep,
     user_asset_id: int = Path(..., ge=1, description="UserAsset ID that owns the transaction"),
     transaction_id: int = Path(..., ge=1, description="Transaction ID to update"),
 ) -> TransactionResponse:
     """Replace all fields of an existing transaction (full PUT replace semantics).
 
-    Returns 404 if the transaction or user_asset_id does not exist or is not owned by the caller.
+    Returns 404 if the transaction or user_asset_id does not exist.
     Returns 409 if the edit would result in negative remaining holding.
     """
-    tx = await transaction_service.edit(current_user.id, user_asset_id, transaction_id, data)
+    tx = await transaction_service.edit(user_asset_id, transaction_id, data)
     return TransactionResponse.model_validate(tx)
 
 
@@ -147,16 +146,16 @@ async def update_transaction(
     },
 )
 async def delete_transaction(
-    current_user: CurrentUser,
+    _current_user: CurrentUser,
     transaction_service: TransactionServiceDep,
     user_asset_id: int = Path(..., ge=1, description="UserAsset ID that owns the transaction"),
     transaction_id: int = Path(..., ge=1, description="Transaction ID to delete"),
 ) -> None:
     """Hard-delete a transaction.
 
-    Returns 404 if the transaction or user_asset_id does not exist or is not owned by the caller.
+    Returns 404 if the transaction or user_asset_id does not exist.
     """
-    await transaction_service.remove(current_user.id, user_asset_id, transaction_id)
+    await transaction_service.remove(user_asset_id, transaction_id)
 
 
 @router.post(
@@ -170,13 +169,13 @@ async def delete_transaction(
             "description": "File too large, bad encoding, or CSV header error",
         },
         401: {"model": ErrorResponse, "description": "Not authenticated"},
-        404: {"model": ErrorResponse, "description": "UserAsset not found or not owned"},
+        404: {"model": ErrorResponse, "description": "UserAsset not found"},
         413: {"model": ErrorResponse, "description": "File exceeds 1 MB limit"},
         422: {"model": ErrorResponse, "description": "CSV rows failed validation"},
     },
 )
 async def import_transactions_csv(
-    current_user: CurrentUser,
+    _current_user: CurrentUser,
     transaction_service: TransactionServiceDep,
     user_asset_id: int = Path(..., ge=1, description="UserAsset ID to import transactions into"),
     file: UploadFile = File(..., description="UTF-8 CSV file (≤ 1 MB)"),
@@ -197,14 +196,12 @@ async def import_transactions_csv(
     """
     raw_bytes = await file.read()
 
-    # Size guard
     if len(raw_bytes) > _MAX_CSV_BYTES:
         raise HTTPException(
             status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
             detail=f"File too large: {len(raw_bytes)} bytes (limit {_MAX_CSV_BYTES} bytes).",
         )
 
-    # Decode — try utf-8-sig first (handles BOM from Excel) then plain utf-8
     try:
         csv_text = raw_bytes.decode("utf-8-sig")
     except UnicodeDecodeError:
@@ -217,7 +214,6 @@ async def import_transactions_csv(
             ) from exc
 
     imported_count, preview_txs = await transaction_service.import_csv(
-        user_id=current_user.id,
         user_asset_id=user_asset_id,
         csv_text=csv_text,
     )
@@ -235,17 +231,17 @@ async def import_transactions_csv(
     summary="Get aggregated BUY summary for an asset holding",
     responses={
         401: {"model": ErrorResponse, "description": "Not authenticated"},
-        404: {"model": ErrorResponse, "description": "UserAsset not found or not owned"},
+        404: {"model": ErrorResponse, "description": "UserAsset not found"},
     },
 )
 async def get_summary(
-    current_user: CurrentUser,
+    _current_user: CurrentUser,
     transaction_service: TransactionServiceDep,
     user_asset_id: int = Path(..., ge=1, description="UserAsset ID to summarise"),
 ) -> UserAssetSummaryResponse:
     """Return total_quantity, avg_buy_price, total_invested, and currency for a holding.
 
     All figures are calculated from BUY transactions only (MVP).
-    Returns 404 if the user_asset_id does not exist or is not owned by the caller.
+    Returns 404 if the user_asset_id does not exist.
     """
-    return await transaction_service.summary(current_user.id, user_asset_id)
+    return await transaction_service.summary(user_asset_id)

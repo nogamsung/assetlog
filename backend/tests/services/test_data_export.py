@@ -50,13 +50,11 @@ def _make_symbol(
 
 def _make_user_asset(
     ua_id: int = 1,
-    user_id: int = 1,
     asset_symbol: AssetSymbol | None = None,
     memo: str | None = None,
 ) -> UserAsset:
     sym = asset_symbol if asset_symbol is not None else _make_symbol()
     ua = UserAsset(
-        user_id=user_id,
         asset_symbol_id=sym.id,
         memo=memo,
     )
@@ -98,8 +96,8 @@ def _make_service(
 ) -> DataExportService:
     ua_repo = AsyncMock(spec=UserAssetRepository)
     tx_repo = AsyncMock(spec=TransactionRepository)
-    ua_repo.list_for_user.return_value = user_assets
-    tx_repo.list_all_for_user.return_value = transactions
+    ua_repo.list_all.return_value = user_assets
+    tx_repo.list_all.return_value = transactions
     return DataExportService(user_asset_repo=ua_repo, transaction_repo=tx_repo)
 
 
@@ -111,7 +109,7 @@ def _make_service(
 class TestExportJson:
     async def test_빈_사용자_빈_배열_반환(self) -> None:
         service = _make_service(user_assets=[], transactions=[])
-        envelope = await service.export_json(user_id=1)
+        envelope = await service.export_json()
 
         assert envelope.user_assets == []
         assert envelope.transactions == []
@@ -125,7 +123,7 @@ class TestExportJson:
             _make_transaction(tx_id=2, user_asset_id=1, hours_ago=2),
         ]
         service = _make_service(user_assets=[ua], transactions=txs)
-        envelope = await service.export_json(user_id=1)
+        envelope = await service.export_json()
 
         assert len(envelope.user_assets) == 1
         assert len(envelope.transactions) == 2
@@ -134,7 +132,7 @@ class TestExportJson:
         sym = _make_symbol(sym_id=7, symbol="ETH", currency="KRW")
         ua = _make_user_asset(ua_id=2, asset_symbol=sym)
         service = _make_service(user_assets=[ua], transactions=[])
-        envelope = await service.export_json(user_id=1)
+        envelope = await service.export_json()
 
         export_ua = envelope.user_assets[0]
         assert export_ua.asset_symbol.symbol == "ETH"
@@ -145,7 +143,7 @@ class TestExportJson:
         sym = _make_symbol(last_price=Decimal("65000.000000"))
         ua = _make_user_asset(asset_symbol=sym)
         service = _make_service(user_assets=[ua], transactions=[])
-        envelope = await service.export_json(user_id=1)
+        envelope = await service.export_json()
 
         assert envelope.user_assets[0].asset_symbol.last_price == Decimal("65000.000000")
 
@@ -153,7 +151,7 @@ class TestExportJson:
         sym = _make_symbol(last_price=None)
         ua = _make_user_asset(asset_symbol=sym)
         service = _make_service(user_assets=[ua], transactions=[])
-        envelope = await service.export_json(user_id=1)
+        envelope = await service.export_json()
 
         assert envelope.user_assets[0].asset_symbol.last_price is None
 
@@ -170,7 +168,7 @@ class TestExportJson:
             tag="monthly",
         )
         service = _make_service(user_assets=[ua], transactions=[tx])
-        envelope = await service.export_json(user_id=1)
+        envelope = await service.export_json()
 
         export_tx = envelope.transactions[0]
         assert export_tx.id == 5
@@ -186,7 +184,7 @@ class TestExportJson:
         ua = _make_user_asset(asset_symbol=sym, memo=None)
         tx = _make_transaction(memo=None, tag=None)
         service = _make_service(user_assets=[ua], transactions=[tx])
-        envelope = await service.export_json(user_id=1)
+        envelope = await service.export_json()
 
         assert envelope.user_assets[0].memo is None
         assert envelope.transactions[0].memo is None
@@ -194,7 +192,7 @@ class TestExportJson:
 
     async def test_exported_at이_UTC_timezone_aware(self) -> None:
         service = _make_service(user_assets=[], transactions=[])
-        envelope = await service.export_json(user_id=1)
+        envelope = await service.export_json()
 
         assert envelope.exported_at.tzinfo is not None
         # UTC offset must be zero
@@ -209,7 +207,7 @@ class TestExportJson:
 class TestExportCsvZip:
     async def test_빈_사용자_두_csv_존재(self) -> None:
         service = _make_service(user_assets=[], transactions=[])
-        zip_bytes = await service.export_csv_zip(user_id=1)
+        zip_bytes = await service.export_csv_zip()
 
         with zipfile.ZipFile(io.BytesIO(zip_bytes)) as zf:
             names = zf.namelist()
@@ -218,13 +216,13 @@ class TestExportCsvZip:
 
     async def test_유효한_zip_파일(self) -> None:
         service = _make_service(user_assets=[], transactions=[])
-        zip_bytes = await service.export_csv_zip(user_id=1)
+        zip_bytes = await service.export_csv_zip()
 
         assert zipfile.is_zipfile(io.BytesIO(zip_bytes))
 
     async def test_user_assets_csv_헤더(self) -> None:
         service = _make_service(user_assets=[], transactions=[])
-        zip_bytes = await service.export_csv_zip(user_id=1)
+        zip_bytes = await service.export_csv_zip()
 
         with zipfile.ZipFile(io.BytesIO(zip_bytes)) as zf:
             content = zf.read("user_assets.csv").decode("utf-8")
@@ -243,7 +241,7 @@ class TestExportCsvZip:
 
     async def test_transactions_csv_헤더(self) -> None:
         service = _make_service(user_assets=[], transactions=[])
-        zip_bytes = await service.export_csv_zip(user_id=1)
+        zip_bytes = await service.export_csv_zip()
 
         with zipfile.ZipFile(io.BytesIO(zip_bytes)) as zf:
             content = zf.read("transactions.csv").decode("utf-8")
@@ -266,7 +264,7 @@ class TestExportCsvZip:
         sym = _make_symbol(symbol="BTC", exchange="upbit", name="Bitcoin", currency="KRW")
         ua = _make_user_asset(ua_id=1, asset_symbol=sym, memo="hodl")
         service = _make_service(user_assets=[ua], transactions=[])
-        zip_bytes = await service.export_csv_zip(user_id=1)
+        zip_bytes = await service.export_csv_zip()
 
         with zipfile.ZipFile(io.BytesIO(zip_bytes)) as zf:
             content = zf.read("user_assets.csv").decode("utf-8")
@@ -290,7 +288,7 @@ class TestExportCsvZip:
             tag="monthly",
         )
         service = _make_service(user_assets=[ua], transactions=[tx])
-        zip_bytes = await service.export_csv_zip(user_id=1)
+        zip_bytes = await service.export_csv_zip()
 
         with zipfile.ZipFile(io.BytesIO(zip_bytes)) as zf:
             content = zf.read("transactions.csv").decode("utf-8")
@@ -308,7 +306,7 @@ class TestExportCsvZip:
         ua = _make_user_asset(asset_symbol=sym, memo=None)
         tx = _make_transaction(memo=None, tag=None)
         service = _make_service(user_assets=[ua], transactions=[tx])
-        zip_bytes = await service.export_csv_zip(user_id=1)
+        zip_bytes = await service.export_csv_zip()
 
         with zipfile.ZipFile(io.BytesIO(zip_bytes)) as zf:
             ua_content = zf.read("user_assets.csv").decode("utf-8")
@@ -332,7 +330,7 @@ class TestExportCsvZip:
             _make_transaction(tx_id=3, user_asset_id=2),
         ]
         service = _make_service(user_assets=[ua_a, ua_b], transactions=txs)
-        zip_bytes = await service.export_csv_zip(user_id=1)
+        zip_bytes = await service.export_csv_zip()
 
         with zipfile.ZipFile(io.BytesIO(zip_bytes)) as zf:
             ua_content = zf.read("user_assets.csv").decode("utf-8")
