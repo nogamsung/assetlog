@@ -7,6 +7,7 @@ const ASSET_TYPE_LABELS: Record<string, string> = {
   crypto: "암호화폐",
   kr_stock: "국내주식",
   us_stock: "미국주식",
+  cash: "현금",
 };
 
 const COLORS = ["#3b82f6", "#f97316", "#22c55e", "#a855f7", "#ec4899"];

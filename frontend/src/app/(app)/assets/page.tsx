@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { AssetList } from "@/components/features/assets/asset-list";
+import { CashAccountList } from "@/components/features/cash/cash-account-list";
 import { BulkImportButton } from "@/components/features/transactions/bulk-import-button";
 import { Plus } from "lucide-react";
 
@@ -22,6 +23,12 @@ export default function AssetsPage() {
           </Link>
         </div>
       </div>
+
+      {/* 현금 섹션 — 보유 자산 위 */}
+      <section className="mb-8" aria-label="현금 보유">
+        <CashAccountList />
+      </section>
+
       <AssetList />
     </div>
   );

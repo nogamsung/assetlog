@@ -17,7 +17,7 @@ interface RawPnlEntry {
 }
 
 interface RawAllocationEntry {
-  asset_type: AssetType;
+  asset_type: AssetType | "cash";
   pct: number;
 }
 
@@ -35,6 +35,7 @@ interface RawPortfolioSummary {
   converted_pnl_abs: string | null;
   converted_realized_pnl: string | null;
   display_currency: string | null;
+  cash_total_by_currency?: CurrencyAmountMap;
 }
 
 interface RawAssetSymbol {
@@ -98,6 +99,7 @@ function toPortfolioSummary(raw: RawPortfolioSummary): PortfolioSummary {
     convertedPnlAbs: raw.converted_pnl_abs ?? null,
     convertedRealizedPnl: raw.converted_realized_pnl ?? null,
     displayCurrency: raw.display_currency ?? null,
+    cashTotalByCurrency: raw.cash_total_by_currency ?? {},
   };
 }
 

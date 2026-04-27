@@ -52,6 +52,7 @@ const expectedSummary: PortfolioSummary = {
   convertedPnlAbs: null,
   convertedRealizedPnl: null,
   displayCurrency: null,
+  cashTotalByCurrency: {},
 };
 
 const rawHolding = {
