@@ -2,13 +2,14 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, Plus, Upload, X, Pencil, Tag } from "lucide-react"; // MODIFIED
+import { ArrowLeft, Plus, Upload, X, Pencil, Tag, Layers } from "lucide-react"; // MODIFIED
 import { usePortfolioHoldings } from "@/hooks/use-portfolio";
 import { useAssetSummary, useUserTags } from "@/hooks/use-transactions"; // MODIFIED
 import { TransactionList } from "./transaction-list";
 import { TransactionForm } from "./transaction-form";
 import { TransactionImport } from "./transaction-import";
 import { AssetTypeBadge } from "./asset-type-badge";
+import { BulkImportDialog } from "@/components/features/transactions/bulk-import-dialog";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -38,6 +39,7 @@ export function AssetDetail({ userAssetId }: AssetDetailProps) {
   const [editingTx, setEditingTx] = useState<TransactionResponse | null>(null); // ADDED
   const [showImportPanel, setShowImportPanel] = useState(false);
   const [activeTag, setActiveTag] = useState<string | null>(null);  // ADDED
+  const [showBulkDialog, setShowBulkDialog] = useState(false);
 
   const holdingsQuery = usePortfolioHoldings();
   const summaryQuery = useAssetSummary(userAssetId);
@@ -218,6 +220,17 @@ export function AssetDetail({ userAssetId }: AssetDetailProps) {
               <Button
                 type="button"
                 size="sm"
+                variant="outline"
+                onClick={() => setShowBulkDialog(true)}
+                aria-label="일괄 등록"
+                className="gap-2"
+              >
+                <Layers className="h-4 w-4" aria-hidden="true" />
+                일괄 등록
+              </Button>
+              <Button
+                type="button"
+                size="sm"
                 variant={showImportPanel ? "ghost" : "outline"}
                 onClick={() => {
                   setShowImportPanel((prev) => !prev);
@@ -368,6 +381,12 @@ export function AssetDetail({ userAssetId }: AssetDetailProps) {
           /> {/* MODIFIED */}
         </CardContent>
       </Card>
+
+      {/* 일괄 등록 다이얼로그 */}
+      <BulkImportDialog
+        open={showBulkDialog}
+        onClose={() => setShowBulkDialog(false)}
+      />
     </div>
   );
 }
