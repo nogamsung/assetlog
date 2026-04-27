@@ -62,7 +62,7 @@ function mockPapaSuccess(
   rows: string[][],
   fileSize = 100,
 ) {
-  mockedPapa.parse.mockImplementationOnce(
+  (mockedPapa.parse as unknown as jest.Mock).mockImplementationOnce(
     (_file: File, opts: { complete: (r: { data: string[][] }) => void }) => {
       opts.complete({ data: [headers, ...rows] });
     },
@@ -130,7 +130,7 @@ describe("BulkCsvTab", () => {
       "1000",
       "2026-01-01T00:00:00",
     ]);
-    mockedPapa.parse.mockImplementationOnce(
+    (mockedPapa.parse as unknown as jest.Mock).mockImplementationOnce(
       (_file: File, opts: { complete: (r: { data: string[][] }) => void }) => {
         opts.complete({ data: [VALID_HEADERS, ...rows] });
       },
@@ -152,7 +152,7 @@ describe("BulkCsvTab", () => {
     const user = userEvent.setup();
     renderComponent();
 
-    mockedPapa.parse.mockImplementationOnce(
+    (mockedPapa.parse as unknown as jest.Mock).mockImplementationOnce(
       (_file: File, opts: { complete: (r: { data: string[][] }) => void }) => {
         // symbol 누락
         opts.complete({
@@ -185,7 +185,7 @@ describe("BulkCsvTab", () => {
       "85000000",
       "2026-04-20T10:00:00",
     ]);
-    mockedPapa.parse.mockImplementationOnce(
+    (mockedPapa.parse as unknown as jest.Mock).mockImplementationOnce(
       (_file: File, opts: { complete: (r: { data: string[][] }) => void }) => {
         opts.complete({ data: [VALID_HEADERS, ...rows] });
       },
