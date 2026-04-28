@@ -1,0 +1,16 @@
+node_modules
+.next
+out
+dist
+build
+coverage
+.env
+.env.*
+!.env.example
+*.md
+Dockerfile
+.dockerignore
+.git
+.github
+.vscode
+.idea
