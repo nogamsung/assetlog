@@ -11,6 +11,8 @@ export interface FormatCurrencyOptions { // ADDED
   compact?: boolean;
   /** Remove trailing zeros. Default true. */
   trimTrailingZeros?: boolean;
+  /** Fallback string returned when amount is NaN. Default '—'. */ // ADDED
+  fallback?: string; // ADDED
 }
 
 /**
@@ -28,6 +30,7 @@ export function formatCurrency(
   options?: FormatCurrencyOptions, // ADDED
 ): string {
   const numericValue = Number(amount);
+  if (Number.isNaN(numericValue)) return options?.fallback ?? "—"; // ADDED
   const compact = options?.compact ?? false; // ADDED
   // trimTrailingZeros default true — KRW is integer so it's N/A; for USD/STABLE it matters
   const trim = options?.trimTrailingZeros ?? true; // ADDED
@@ -79,10 +82,13 @@ export function formatCompactCurrency(amount: string | number, currency: string)
 export interface FormatPercentOptions { // ADDED
   /** 양수에 '+' 부호를 붙인다. Default false. */
   withSign?: boolean;
+  /** Fallback string returned when pct is NaN. Default '—'. */ // ADDED
+  fallback?: string; // ADDED
 }
 
 export function formatPercent(pct: number | string, digits = 2, opts?: FormatPercentOptions): string { // MODIFIED
   const n = typeof pct === "string" ? Number(pct) : pct;
+  if (Number.isNaN(n)) return opts?.fallback ?? "—"; // ADDED
   // Trailing zero trim: toFixed → Number → toString removes them
   const trimmed = String(Number(n.toFixed(digits))); // MODIFIED
   const hasDecimal = trimmed.includes(".");
@@ -114,6 +120,7 @@ export function formatSignedCurrency(
   options?: Omit<FormatCurrencyOptions, "compact">,
 ): string {
   const n = typeof amount === "string" ? Number(amount) : amount;
+  if (Number.isNaN(n)) return options?.fallback ?? "—"; // ADDED
   const formatted = formatCurrency(String(Math.abs(n)), currency, options);
   if (n > 0) return `+${formatted}`;
   if (n < 0) return `−${formatted}`; // U+2212 minus sign
@@ -145,9 +152,11 @@ export function formatRelativeTime(iso: string | null): string {
  * 수량 포맷: crypto → 8자리 소수, 주식 → 4자리 소수.
  * trailing zeros naturally removed by maximumFractionDigits + no minimumFractionDigits.
  */
-export function formatQuantity(qty: string, assetType: AssetType): string {
+export function formatQuantity(qty: string, assetType: AssetType, fallback = "—"): string { // MODIFIED
+  const n = Number(qty);
+  if (Number.isNaN(n)) return fallback; // ADDED
   const digits = assetType === "crypto" ? 8 : 4;
-  return Number(qty).toLocaleString("ko-KR", {
+  return n.toLocaleString("ko-KR", { // MODIFIED
     minimumFractionDigits: 0,
     maximumFractionDigits: digits,
   });

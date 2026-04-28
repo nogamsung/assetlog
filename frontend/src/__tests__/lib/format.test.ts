@@ -187,6 +187,72 @@ describe("formatRelativeTime", () => {
   });
 });
 
+// ── L2: NaN guard ─────────────────────────────────────────────────────────
+
+describe("formatCurrency — NaN guard", () => {
+  it("undefined 전달 시 em-dash 반환", () => {
+    expect(formatCurrency(undefined as never, "KRW")).toBe("—");
+  });
+
+  it("문자열 'abc' 전달 시 em-dash 반환", () => {
+    expect(formatCurrency("abc" as never, "USD")).toBe("—");
+  });
+
+  it("fallback 옵션으로 커스텀 문자열 반환", () => {
+    expect(formatCurrency("abc" as never, "USD", { fallback: "N/A" })).toBe("N/A");
+  });
+
+  it("0 은 NaN 이 아니므로 정상 포맷", () => {
+    expect(formatCurrency("0", "KRW")).not.toBe("—");
+  });
+
+  it("음수는 NaN 이 아니므로 정상 포맷", () => {
+    expect(formatCurrency("-100", "USD")).not.toBe("—");
+  });
+});
+
+describe("formatPercent — NaN guard", () => {
+  it("NaN 전달 시 em-dash 반환", () => {
+    expect(formatPercent(NaN)).toBe("—");
+  });
+
+  it("문자열 'x' 전달 시 em-dash 반환", () => {
+    expect(formatPercent("x" as never)).toBe("—");
+  });
+
+  it("fallback 옵션으로 커스텀 문자열 반환", () => {
+    expect(formatPercent(NaN, 2, { fallback: "N/A" })).toBe("N/A");
+  });
+
+  it("0 은 NaN 이 아니므로 정상 포맷", () => {
+    expect(formatPercent(0)).toBe("0%");
+  });
+
+  it("음수는 NaN 이 아니므로 정상 포맷", () => {
+    expect(formatPercent(-5)).toBe("-5%");
+  });
+});
+
+describe("formatSignedCurrency — NaN guard", () => {
+  it("undefined 전달 시 em-dash 반환", () => {
+    expect(formatSignedCurrency(undefined as never, "USD")).toBe("—");
+  });
+
+  it("문자열 'abc' 전달 시 em-dash 반환", () => {
+    expect(formatSignedCurrency("abc" as never, "USD")).toBe("—");
+  });
+});
+
+describe("formatQuantity — NaN guard", () => {
+  it("비숫자 문자열 전달 시 em-dash 반환", () => {
+    expect(formatQuantity("abc", "kr_stock")).toBe("—");
+  });
+
+  it("0 은 NaN 이 아니므로 정상 포맷", () => {
+    expect(formatQuantity("0", "kr_stock")).toBe("0");
+  });
+});
+
 describe("formatQuantity", () => {
   it("crypto 는 8자리 소수까지 표시한다", () => {
     const result = formatQuantity("10.0000000000", "crypto");
