@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import localFont from "next/font/local"; // {/* ADDED */}
 import { headers } from "next/headers"; // {/* ADDED */}
 import { Providers } from "@/providers";
 import { ThemeProvider } from "@/components/theme-provider";
@@ -14,6 +15,13 @@ const geistMono = Geist_Mono({
   variable: "--font-geist-mono",
   subsets: ["latin"],
 });
+
+const pretendard = localFont({ // {/* ADDED */}
+  src: "../../public/fonts/PretendardVariable.woff2", // {/* ADDED */}
+  variable: "--font-pretendard", // {/* ADDED */}
+  display: "swap", // {/* ADDED */}
+  weight: "45 920", // {/* ADDED */}
+}); // {/* ADDED */}
 
 export const metadata: Metadata = {
   title: "AssetLog",
@@ -33,7 +41,7 @@ export default async function RootLayout({ // {/* MODIFIED */}
   return (
     <html
       lang="ko"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${geistSans.variable} ${geistMono.variable} ${pretendard.variable} h-full antialiased`} /* MODIFIED */
       suppressHydrationWarning
     >
       <head>

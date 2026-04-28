@@ -13,12 +13,14 @@
 
 import * as React from "react";
 import { cn } from "@/lib/utils";
+import { useFocusTrap } from "@/hooks/use-focus-trap"; // {/* ADDED */}
 
 /* ── Context ────────────────────────────────────────────────────────────── */
 
 interface BottomSheetContextValue {
   open: boolean;
   setOpen: (v: boolean) => void;
+  titleId: string; // {/* ADDED */}
 }
 
 const BottomSheetContext = React.createContext<BottomSheetContextValue | null>(null);
@@ -39,6 +41,7 @@ interface BottomSheetProps {
 
 function BottomSheet({ open: controlledOpen, onOpenChange, children }: BottomSheetProps) {
   const [internalOpen, setInternalOpen] = React.useState(false);
+  const titleId = React.useId(); // {/* ADDED */}
 
   const open = controlledOpen ?? internalOpen;
   const setOpen = React.useCallback(
@@ -72,7 +75,7 @@ function BottomSheet({ open: controlledOpen, onOpenChange, children }: BottomShe
   }, [open]);
 
   return (
-    <BottomSheetContext.Provider value={{ open, setOpen }}>
+    <BottomSheetContext.Provider value={{ open, setOpen, titleId }}> {/* MODIFIED */}
       {children}
     </BottomSheetContext.Provider>
   );
@@ -105,10 +108,15 @@ function BottomSheetTrigger({ onClick, children, ...props }: Omit<BottomSheetTri
 
 interface BottomSheetContentProps extends React.HTMLAttributes<HTMLDivElement> {
   children: React.ReactNode;
+  /** Accessible label used when no BottomSheetTitle is rendered. */ // {/* ADDED */}
+  "aria-label"?: string; // {/* ADDED */}
 }
 
-function BottomSheetContent({ className, children, ...props }: BottomSheetContentProps) {
-  const { open, setOpen } = useBottomSheet();
+function BottomSheetContent({ className, children, "aria-label": ariaLabel, ...props }: BottomSheetContentProps) { // {/* MODIFIED */}
+  const { open, setOpen, titleId } = useBottomSheet(); // {/* MODIFIED */}
+  const contentRef = React.useRef<HTMLDivElement>(null); // {/* ADDED */}
+
+  useFocusTrap(contentRef, open); // {/* ADDED */}
 
   if (!open) return null;
 
@@ -118,6 +126,8 @@ function BottomSheetContent({ className, children, ...props }: BottomSheetConten
       className="fixed inset-0 z-50 flex flex-col justify-end sm:items-center sm:justify-center"
       role="dialog"
       aria-modal="true"
+      aria-labelledby={ariaLabel ? undefined : titleId} // {/* ADDED */}
+      aria-label={ariaLabel} // {/* ADDED */}
     >
       {/* Backdrop overlay */}
       <div
@@ -128,6 +138,8 @@ function BottomSheetContent({ className, children, ...props }: BottomSheetConten
 
       {/* Sheet / dialog */}
       <div
+        ref={contentRef} // {/* ADDED */}
+        tabIndex={-1} // {/* ADDED — focus fallback when no focusable child exists */}
         className={cn(
           /* Mobile: bottom sheet */
           "relative z-10 w-full max-h-[90vh] overflow-y-auto overscroll-contain",
@@ -135,6 +147,7 @@ function BottomSheetContent({ className, children, ...props }: BottomSheetConten
           "data-[state=open]:animate-in data-[state=open]:slide-in-from-bottom-full duration-200",
           /* sm+: centered dialog */
           "sm:max-w-md sm:rounded-2xl sm:shadow-2xl sm:mx-4",
+          "outline-none", // {/* ADDED — suppress focus ring on the container div */}
           className,
         )}
         data-state="open"
@@ -162,8 +175,10 @@ function BottomSheetHeader({ className, ...props }: React.HTMLAttributes<HTMLDiv
 /* ── Title ──────────────────────────────────────────────────────────────── */
 
 function BottomSheetTitle({ className, ...props }: React.HTMLAttributes<HTMLHeadingElement>) {
+  const { titleId } = useBottomSheet(); // {/* ADDED */}
   return (
     <h2
+      id={titleId} // {/* ADDED */}
       className={cn("text-2xl font-bold text-toss-textStrong", className)}
       {...props}
     />

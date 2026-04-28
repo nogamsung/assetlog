@@ -1,4 +1,5 @@
 import { render, screen, fireEvent, act } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import {
   BottomSheet,
   BottomSheetTrigger,
@@ -113,5 +114,126 @@ describe("BottomSheet", () => {
     // Handle bar is aria-hidden with specific classes
     const handleBar = document.querySelector(".sm\\:hidden.h-1\\.5.w-12.rounded-full");
     expect(handleBar).toBeInTheDocument();
+  });
+
+  // ── M2: aria-labelledby ─────────────────────────────────────────────────
+
+  it("M2: BottomSheetTitle 이 렌더링될 때 dialog 에 aria-labelledby 가 연결된다", () => {
+    render(<TestSheet />);
+    fireEvent.click(screen.getByText("열기"));
+
+    const dialog = screen.getByRole("dialog");
+    const title = screen.getByText("시트 제목");
+
+    const labelledById = dialog.getAttribute("aria-labelledby");
+    expect(labelledById).toBeTruthy();
+    expect(title.id).toBe(labelledById);
+  });
+
+  it("M2: aria-label prop 만 전달하면 dialog 에 aria-label 이 설정된다", () => {
+    render(
+      <BottomSheet>
+        <BottomSheetTrigger>열기</BottomSheetTrigger>
+        <BottomSheetContent aria-label="접근성 레이블">
+          <p>내용</p>
+        </BottomSheetContent>
+      </BottomSheet>,
+    );
+    fireEvent.click(screen.getByText("열기"));
+    const dialog = screen.getByRole("dialog");
+    expect(dialog).toHaveAttribute("aria-label", "접근성 레이블");
+    expect(dialog.getAttribute("aria-labelledby")).toBeNull();
+  });
+
+  // ── L1: focus trap ──────────────────────────────────────────────────────
+
+  it("L1: 열릴 때 포커스가 시트 내부로 이동한다", async () => {
+    render(
+      <BottomSheet>
+        <BottomSheetTrigger>열기</BottomSheetTrigger>
+        <BottomSheetContent>
+          <button>첫 번째 버튼</button>
+          <button>두 번째 버튼</button>
+        </BottomSheetContent>
+      </BottomSheet>,
+    );
+    const trigger = screen.getByText("열기");
+    trigger.focus();
+    await act(async () => {
+      fireEvent.click(trigger);
+    });
+    // Focus should have moved to first focusable element inside sheet.
+    expect(document.activeElement).toBe(screen.getByText("첫 번째 버튼"));
+  });
+
+  it("L1: 마지막 포커스 요소에서 Tab 누르면 첫 번째로 순환된다", async () => {
+    const user = userEvent.setup();
+    render(
+      <BottomSheet>
+        <BottomSheetTrigger>열기</BottomSheetTrigger>
+        <BottomSheetContent>
+          <button>버튼 A</button>
+          <button>버튼 B</button>
+        </BottomSheetContent>
+      </BottomSheet>,
+    );
+    await act(async () => {
+      fireEvent.click(screen.getByText("열기"));
+    });
+
+    // Focus last button explicitly, then press Tab.
+    const buttonB = screen.getByText("버튼 B");
+    buttonB.focus();
+    expect(document.activeElement).toBe(buttonB);
+
+    await user.tab();
+    expect(document.activeElement).toBe(screen.getByText("버튼 A"));
+  });
+
+  it("L1: 첫 번째 포커스 요소에서 Shift+Tab 누르면 마지막으로 순환된다", async () => {
+    const user = userEvent.setup();
+    render(
+      <BottomSheet>
+        <BottomSheetTrigger>열기</BottomSheetTrigger>
+        <BottomSheetContent>
+          <button>버튼 A</button>
+          <button>버튼 B</button>
+        </BottomSheetContent>
+      </BottomSheet>,
+    );
+    await act(async () => {
+      fireEvent.click(screen.getByText("열기"));
+    });
+
+    // Focus first button explicitly, then Shift+Tab.
+    const buttonA = screen.getByText("버튼 A");
+    buttonA.focus();
+    expect(document.activeElement).toBe(buttonA);
+
+    await user.tab({ shift: true });
+    expect(document.activeElement).toBe(screen.getByText("버튼 B"));
+  });
+
+  it("L1: 닫힐 때 포커스가 트리거로 복원된다", async () => {
+    render(
+      <BottomSheet>
+        <BottomSheetTrigger>열기</BottomSheetTrigger>
+        <BottomSheetContent>
+          <button>내부 버튼</button>
+        </BottomSheetContent>
+      </BottomSheet>,
+    );
+    const trigger = screen.getByText("열기");
+    trigger.focus();
+    await act(async () => {
+      fireEvent.click(trigger);
+    });
+
+    // Close via Escape.
+    await act(async () => {
+      fireEvent.keyDown(document, { key: "Escape" });
+    });
+
+    expect(document.activeElement).toBe(trigger);
   });
 });

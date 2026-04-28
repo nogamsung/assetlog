@@ -1,5 +1,4 @@
-@import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css'); /* ADDED */
-@import "tailwindcss";
+@import "tailwindcss"; /* MODIFIED: removed CDN @import for Pretendard — now self-hosted via next/font/local */
 
 /* ============================================================
    shadcn/ui design tokens — new-york style
@@ -192,7 +191,7 @@
 body {
   background: var(--toss-bg);
   color: var(--toss-text);
-  font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', system-ui, sans-serif;
+  font-family: var(--font-pretendard), -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', system-ui, sans-serif; /* MODIFIED */
   font-feature-settings: 'tnum' 1;
 }
 
