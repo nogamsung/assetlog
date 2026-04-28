@@ -1,6 +1,6 @@
 [project]
 name = "assetlog-backend"
-version = "0.10.0"
+version = "0.10.1"
 description = "AssetLog FastAPI backend"
 requires-python = ">=3.11"
 dependencies = [
