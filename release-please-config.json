@@ -1,0 +1,42 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "release-type": "simple",
+  "include-component-in-tag": false,
+  "separate-pull-requests": false,
+  "pull-request-title-pattern": "chore: release ${version}",
+  "packages": {
+    "backend": {
+      "release-type": "python",
+      "package-name": "assetlog-backend",
+      "extra-files": [
+        "pyproject.toml"
+      ]
+    },
+    "frontend": {
+      "release-type": "node",
+      "package-name": "frontend"
+    }
+  },
+  "plugins": [
+    {
+      "type": "linked-versions",
+      "name": "assetlog",
+      "components": [
+        "assetlog-backend",
+        "frontend"
+      ],
+      "merge": true
+    }
+  ],
+  "changelog-sections": [
+    { "type": "feat", "section": "Features" },
+    { "type": "fix", "section": "Bug Fixes" },
+    { "type": "perf", "section": "Performance" },
+    { "type": "refactor", "section": "Refactor" },
+    { "type": "docs", "section": "Documentation" },
+    { "type": "chore", "section": "Chores", "hidden": false },
+    { "type": "test", "section": "Tests", "hidden": true },
+    { "type": "ci", "section": "CI", "hidden": true },
+    { "type": "build", "section": "Build", "hidden": true }
+  ]
+}
