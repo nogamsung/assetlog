@@ -32,11 +32,7 @@ jobs:
         id: tag
         run: |
           TAG="${{ inputs.tag || github.ref_name }}"
-          VERSION="${TAG#v}"
-          MAJOR_MINOR=$(echo "$VERSION" | cut -d. -f1,2)
-          echo "tag=$TAG"               >> "$GITHUB_OUTPUT"
-          echo "version=$VERSION"       >> "$GITHUB_OUTPUT"
-          echo "major_minor=$MAJOR_MINOR" >> "$GITHUB_OUTPUT"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
 
       - uses: actions/checkout@v4
         with:
@@ -59,8 +55,6 @@ jobs:
           images: ghcr.io/${{ github.repository_owner }}/assetlog-${{ matrix.component }}
           tags: |
             type=raw,value=${{ steps.tag.outputs.tag }}
-            type=raw,value=${{ steps.tag.outputs.version }}
-            type=raw,value=${{ steps.tag.outputs.major_minor }}
             type=raw,value=latest
 
       - name: Build and push
