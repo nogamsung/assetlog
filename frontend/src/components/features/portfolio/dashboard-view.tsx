@@ -10,6 +10,7 @@ import { HoldingsTable } from "./holdings-table";
 import { HoldingsList } from "./holdings-list"; /* ADDED */
 import { PortfolioHistoryChart } from "./portfolio-history-chart";
 import { CurrencySwitcher } from "./currency-switcher";
+import { MarketIndicesStrip } from "./market-indices-strip";
 import { TagBreakdownTable } from "./tag-breakdown-table";
 import { Button } from "@/components/ui/button";
 
@@ -39,27 +40,30 @@ function EmptyPortfolio() {
   const { mutate: seedSample, isPending: isSeeding } = useSampleSeed();
 
   return (
-    <div className="flex flex-col items-center justify-center py-24 text-center">
-      <p className="text-muted-foreground mb-4">
-        포트폴리오에 자산이 없습니다. 첫 번째 자산을 추가해보세요.
-      </p>
-      <div className="flex flex-wrap items-center justify-center gap-2">
-        <Link
-          href="/assets/new"
-          className="inline-flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow hover:bg-primary/90 transition-colors"
-        >
-          자산 추가하기
-        </Link>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => seedSample()}
-          disabled={isSeeding}
-          aria-label="샘플 데이터로 시작"
-          className="text-muted-foreground"
-        >
-          {isSeeding ? "추가 중..." : "샘플 데이터로 시작"}
-        </Button>
+    <div className="space-y-6">
+      <MarketIndicesStrip />
+      <div className="flex flex-col items-center justify-center py-24 text-center">
+        <p className="text-muted-foreground mb-4">
+          포트폴리오에 자산이 없습니다. 첫 번째 자산을 추가해보세요.
+        </p>
+        <div className="flex flex-wrap items-center justify-center gap-2">
+          <Link
+            href="/assets/new"
+            className="inline-flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow hover:bg-primary/90 transition-colors"
+          >
+            자산 추가하기
+          </Link>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => seedSample()}
+            disabled={isSeeding}
+            aria-label="샘플 데이터로 시작"
+            className="text-muted-foreground"
+          >
+            {isSeeding ? "추가 중..." : "샘플 데이터로 시작"}
+          </Button>
+        </div>
       </div>
     </div>
   );
@@ -109,6 +113,8 @@ export function DashboardView() {
 
   return (
     <div className="space-y-6 sm:space-y-8"> {/* MODIFIED: mobile/desktop spacing */}
+      <MarketIndicesStrip />
+
       <div className="flex flex-wrap items-center justify-between gap-3">
         <span className="text-sm text-muted-foreground">포트폴리오 요약</span>
         <CurrencySwitcher

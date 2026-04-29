@@ -29,6 +29,7 @@ from app.services.cash_account import CashAccountService
 from app.services.data_export import DataExportService
 from app.services.fx_rate import FxRateService
 from app.services.login_rate_limiter import LoginRateLimiter
+from app.services.market_index import MarketIndexService
 from app.services.portfolio import PortfolioService
 from app.services.portfolio_history import PortfolioHistoryService
 from app.services.price_refresh import PriceRefreshService
@@ -333,6 +334,23 @@ def get_data_export_service(
 
 
 DataExportServiceDep = Annotated[DataExportService, Depends(get_data_export_service)]
+
+# ---------------------------------------------------------------------------
+# Market index DI — singleton (in-process cache shared across requests)
+# ---------------------------------------------------------------------------
+
+_default_market_index_service: MarketIndexService | None = None
+
+
+def get_market_index_service() -> MarketIndexService:
+    """Return a singleton MarketIndexService — cache is process-wide."""
+    global _default_market_index_service  # noqa: PLW0603  # intentional module-level singleton
+    if _default_market_index_service is None:
+        _default_market_index_service = MarketIndexService()
+    return _default_market_index_service
+
+
+MarketIndexServiceDep = Annotated[MarketIndexService, Depends(get_market_index_service)]
 
 # ---------------------------------------------------------------------------
 # Current-user guard
