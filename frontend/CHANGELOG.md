@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.11.0](https://github.com/nogamsung/assetlog/compare/v0.10.0...v0.11.0) (2026-04-29)
+
+
+### Features
+
+* add market indices strip on dashboard ([#60](https://github.com/nogamsung/assetlog/issues/60)) ([bfe8e09](https://github.com/nogamsung/assetlog/commit/bfe8e095d28a29bcf5fca19130facfcbb07abe18))
+
+
+### Chores
+
+* add docker deploy scripts for backend/frontend ([#59](https://github.com/nogamsung/assetlog/issues/59)) ([111fa23](https://github.com/nogamsung/assetlog/commit/111fa231870d007eb0b76706d54bd88debf566f6))
+
 ## [0.10.0](https://github.com/nogamsung/assetlog/compare/v0.9.0...v0.10.0) (2026-04-28)
 
 
