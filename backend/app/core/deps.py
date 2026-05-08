@@ -371,6 +371,26 @@ def get_performance_service(
 
 PerformanceServiceDep = Annotated[PerformanceService, Depends(get_performance_service)]
 
+
+from app.services.benchmark import BenchmarkService  # noqa: E402  # forward DI use
+
+
+def get_benchmark_service(
+    history_repo: PortfolioHistoryRepositoryDep,
+    fx_service: FxRateServiceDep,
+) -> BenchmarkService:
+    """Inject a BenchmarkService with the yfinance benchmark adapter."""
+    from app.adapters.benchmark import BenchmarkAdapter  # noqa: PLC0415
+
+    return BenchmarkService(
+        history_repo=history_repo,
+        fx_service=fx_service,
+        benchmark_adapter=BenchmarkAdapter(),
+    )
+
+
+BenchmarkServiceDep = Annotated[BenchmarkService, Depends(get_benchmark_service)]
+
 # ---------------------------------------------------------------------------
 # Current-user guard
 # ---------------------------------------------------------------------------
