@@ -46,6 +46,10 @@ class Settings(BaseSettings):
     login_global_window_seconds: int = 60  # ADDED
     login_attempt_retention_days: int = 90  # ADDED
 
+    # External integrations — Upbit (read-only API)
+    upbit_access_key: str | None = None
+    upbit_secret_key: str | None = None
+
     @field_validator("cors_origins", mode="before")
     @classmethod
     def parse_cors_origins(cls, v: object) -> list[str]:

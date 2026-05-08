@@ -29,6 +29,7 @@ from app.services.bulk_transaction import BulkTransactionService
 from app.services.cash_account import CashAccountService
 from app.services.data_export import DataExportService
 from app.services.dividend import DividendService
+from app.services.exchange_sync import ExchangeSyncService
 from app.services.fx_rate import FxRateService
 from app.services.login_rate_limiter import LoginRateLimiter
 from app.services.market_index import MarketIndexService
@@ -427,3 +428,11 @@ def get_dividend_service(
 
 
 DividendServiceDep = Annotated[DividendService, Depends(get_dividend_service)]
+
+
+def get_exchange_sync_service(session: DbSession) -> ExchangeSyncService:
+    """Inject an ExchangeSyncService bound to the current request session."""
+    return ExchangeSyncService(session)
+
+
+ExchangeSyncServiceDep = Annotated[ExchangeSyncService, Depends(get_exchange_sync_service)]
