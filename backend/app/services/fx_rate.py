@@ -127,6 +127,42 @@ class FxRateService:
 
         return amount * rate_row.rate
 
+    async def convert_at(
+        self,
+        amount: Decimal,
+        from_currency: str,
+        to_currency: str,
+        at: datetime,
+    ) -> Decimal:
+        """Convert *amount* from *from_currency* to *to_currency* at the rate valid on *at*.
+
+        Uses the most recent cached rate with fetched_at ≤ at (trade-date FX).
+        This is used by PerformanceService for historical cashflow FX conversion.
+
+        Args:
+            amount: Monetary amount to convert.
+            from_currency: Source currency code (e.g. "USD").
+            to_currency: Target currency code (e.g. "KRW").
+            at: Point in time for which the trade-date rate is needed.
+
+        Returns:
+            Converted amount as Decimal.
+
+        Raises:
+            FxRateNotAvailableError: If no cached rate exists at or before *at*.
+        """
+        if from_currency == to_currency:
+            return amount
+
+        rate_row = await self._repo.get_at(from_currency, to_currency, at)
+        if rate_row is None:
+            raise FxRateNotAvailableError(
+                f"No cached rate for {from_currency}/{to_currency} at or before {at}. "
+                "Retry after the hourly fx_refresh job runs."
+            )
+
+        return amount * rate_row.rate
+
     async def get_all_rates_for_conversion(
         self,
         from_currencies: list[str],

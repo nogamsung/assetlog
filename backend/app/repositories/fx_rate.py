@@ -101,6 +101,38 @@ class FxRateRepository:
         result = await self._session.execute(stmt)
         return result.scalar_one_or_none()
 
+    async def get_at(
+        self,
+        base_currency: str,
+        quote_currency: str,
+        at: datetime,
+    ) -> FxRate | None:
+        """Return the most recent FX rate for (base, quote) at or before *at*.
+
+        Queries the row whose fetched_at is the latest timestamp ≤ at.
+        Returns None if no such row exists (caller must handle missing rate).
+
+        Args:
+            base_currency: Base currency code (e.g. "USD").
+            quote_currency: Quote currency code (e.g. "KRW").
+            at: Upper bound for fetched_at (inclusive).
+
+        Returns:
+            FxRate row with fetched_at ≤ at, or None if absent.
+        """
+        stmt = (
+            select(FxRate)
+            .where(
+                FxRate.base_currency == base_currency,
+                FxRate.quote_currency == quote_currency,
+                FxRate.fetched_at <= at,
+            )
+            .order_by(FxRate.fetched_at.desc())
+            .limit(1)
+        )
+        result = await self._session.execute(stmt)
+        return result.scalar_one_or_none()
+
     async def list_all(self) -> list[FxRate]:
         """Return all cached FX rate rows ordered by base then quote currency.
 

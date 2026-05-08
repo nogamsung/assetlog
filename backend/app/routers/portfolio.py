@@ -6,12 +6,15 @@ from fastapi import APIRouter, Query, status
 
 from app.core.deps import (
     CurrentUser,
+    PerformanceServiceDep,
     PortfolioHistoryServiceDep,
     PortfolioServiceDep,
     TagBreakdownServiceDep,
 )
+from app.domain.performance import PerformanceMethod, PerformancePeriod
 from app.domain.portfolio_history import HistoryPeriod
 from app.schemas.auth import ErrorResponse
+from app.schemas.performance import PerformanceResponse
 from app.schemas.portfolio import (
     HoldingResponse,
     PortfolioHistoryResponse,
@@ -148,3 +151,31 @@ async def get_tag_breakdown(
 ) -> TagBreakdownResponse:
     """Return per-tag transaction flow breakdown."""
     return await service.get_breakdown()
+
+
+@router.get(
+    "/performance",
+    response_model=PerformanceResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Get TWR / MWR(IRR) portfolio performance over a period",
+    description=(
+        "Returns time-weighted return (TWR) and money-weighted return / IRR "
+        "(MWR) over the requested period in the requested report currency. "
+        "Cashflows are signed (BUY=-, SELL=+) and converted at trade-date FX "
+        "rates. If FX rates are missing for any required pair, twr/mwr are "
+        "null and a 'fx_rate_missing' warning is returned (HTTP 200)."
+    ),
+    responses={
+        401: {"model": ErrorResponse, "description": "Not authenticated"},
+        422: {"model": ErrorResponse, "description": "Validation error"},
+    },
+)
+async def get_portfolio_performance(
+    _current_user: CurrentUser,
+    perf_service: PerformanceServiceDep,
+    period: PerformancePeriod = Query(default=PerformancePeriod.ONE_YEAR),
+    method: PerformanceMethod = Query(default=PerformanceMethod.BOTH),
+    currency: str = Query(default="KRW", min_length=3, max_length=10),
+) -> PerformanceResponse:
+    """Return TWR / MWR portfolio performance metrics."""
+    return await perf_service.get_performance(period, method, currency.upper())

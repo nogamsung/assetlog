@@ -30,6 +30,7 @@ from app.services.data_export import DataExportService
 from app.services.fx_rate import FxRateService
 from app.services.login_rate_limiter import LoginRateLimiter
 from app.services.market_index import MarketIndexService
+from app.services.performance import PerformanceService
 from app.services.portfolio import PortfolioService
 from app.services.portfolio_history import PortfolioHistoryService
 from app.services.price_refresh import PriceRefreshService
@@ -351,6 +352,21 @@ def get_market_index_service() -> MarketIndexService:
 
 
 MarketIndexServiceDep = Annotated[MarketIndexService, Depends(get_market_index_service)]
+
+# ---------------------------------------------------------------------------
+# Performance DI
+# ---------------------------------------------------------------------------
+
+
+def get_performance_service(
+    history_repo: PortfolioHistoryRepositoryDep,
+    fx_service: FxRateServiceDep,
+) -> PerformanceService:
+    """Inject a PerformanceService wired to history repo and fx service."""
+    return PerformanceService(history_repo=history_repo, fx_service=fx_service)
+
+
+PerformanceServiceDep = Annotated[PerformanceService, Depends(get_performance_service)]
 
 # ---------------------------------------------------------------------------
 # Current-user guard

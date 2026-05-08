@@ -218,3 +218,46 @@ class TestListPricePointsForSymbols:
         assert sym2.id in result
         assert result[sym1.id][0][1] == Decimal("1000")
         assert result[sym2.id][0][1] == Decimal("2000")
+
+
+# ---------------------------------------------------------------------------
+# list_all_transactions — ADDED
+# ---------------------------------------------------------------------------
+
+
+class TestListAllTransactions:
+    async def test_모든_통화_거래_반환(self, db_session: AsyncSession) -> None:
+        """list_all_transactions은 currency 필터 없이 모든 거래를 반환한다."""
+        sym_krw = await _create_symbol(db_session, "ALL_BTC", "KRW")
+        sym_usd = await _create_symbol(db_session, "ALL_AAPL", "USD", AssetType.US_STOCK)
+        ua_krw = await _create_user_asset(db_session, sym_krw)
+        ua_usd = await _create_user_asset(db_session, sym_usd)
+
+        await _add_buy_tx(db_session, ua_krw, Decimal("1"), Decimal("50000000"), NOW)
+        await _add_buy_tx(db_session, ua_usd, Decimal("5"), Decimal("170"), NOW)
+
+        repo = PortfolioHistoryRepository(db_session)
+        txs = await repo.list_all_transactions()
+
+        symbol_ids = {tx.symbol_id for tx in txs}
+        assert sym_krw.id in symbol_ids
+        assert sym_usd.id in symbol_ids
+
+    async def test_각_행에_currency_포함(self, db_session: AsyncSession) -> None:
+        """각 AllTxRow 에 currency 필드가 있다."""
+        sym = await _create_symbol(db_session, "ALL_CURR", "USD", AssetType.US_STOCK)
+        ua = await _create_user_asset(db_session, sym)
+        await _add_buy_tx(db_session, ua, Decimal("2"), Decimal("100"), NOW)
+
+        repo = PortfolioHistoryRepository(db_session)
+        txs = await repo.list_all_transactions()
+
+        usd_txs = [tx for tx in txs if tx.symbol_id == sym.id]
+        assert len(usd_txs) >= 1
+        assert usd_txs[0].currency == "USD"
+
+    async def test_거래_없으면_빈_리스트(self, db_session: AsyncSession) -> None:
+        """거래 없으면 빈 리스트 반환."""
+        repo = PortfolioHistoryRepository(db_session)
+        txs = await repo.list_all_transactions()
+        assert isinstance(txs, list)

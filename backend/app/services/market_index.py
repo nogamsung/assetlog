@@ -67,9 +67,7 @@ def _fetch_indices_sync(specs: Sequence[IndexSpec]) -> list[IndexQuote]:
             if len(close) >= 2:
                 prev = Decimal(str(close.iloc[-2]))
                 change = price - prev
-                change_pct = (
-                    (change / prev * Decimal("100")) if prev != 0 else Decimal("0")
-                )
+                change_pct = (change / prev * Decimal("100")) if prev != 0 else Decimal("0")
             else:
                 change = Decimal("0")
                 change_pct = Decimal("0")

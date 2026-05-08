@@ -45,6 +45,31 @@ class TransactionRow:
         self.tx_type = tx_type  # ADDED
 
 
+class AllTxRow:
+    """Lightweight value object — one BUY or SELL transaction with symbol currency.
+
+    Used by PerformanceService which needs all transactions across all currencies.
+    """
+
+    __slots__ = ("symbol_id", "currency", "traded_at", "quantity", "price", "tx_type")
+
+    def __init__(
+        self,
+        symbol_id: int,
+        currency: str,
+        traded_at: datetime,
+        quantity: Decimal,
+        price: Decimal,
+        tx_type: TransactionType,
+    ) -> None:
+        self.symbol_id = symbol_id
+        self.currency = currency  # AssetSymbol.currency
+        self.traded_at = traded_at
+        self.quantity = quantity
+        self.price = price
+        self.tx_type = tx_type
+
+
 class PortfolioHistoryRepository:
     """Read-only queries for portfolio history computation.
 
@@ -91,6 +116,48 @@ class PortfolioHistoryRepository:
         logger.debug(
             "list_transactions: currency=%s returned %d rows",
             currency,
+            len(result),
+        )
+        return result
+
+    async def list_all_transactions(self) -> list[AllTxRow]:
+        """Return all BUY and SELL transactions across all currencies, ordered by traded_at ASC.
+
+        Unlike list_transactions, no currency filter is applied — used by
+        PerformanceService which needs multi-currency transactions for FX conversion.
+        Each row includes AssetSymbol.currency for per-trade FX lookup.
+        """
+        stmt = (
+            select(
+                AssetSymbol.id.label("symbol_id"),
+                AssetSymbol.currency,
+                Transaction.traded_at,
+                Transaction.quantity,
+                Transaction.price,
+                Transaction.type.label("tx_type"),
+            )
+            .join(UserAsset, Transaction.user_asset_id == UserAsset.id)
+            .join(AssetSymbol, UserAsset.asset_symbol_id == AssetSymbol.id)
+            .order_by(Transaction.traded_at.asc())
+        )
+
+        rows = (await self._session.execute(stmt)).all()
+
+        result: list[AllTxRow] = []
+        for row in rows:
+            result.append(
+                AllTxRow(
+                    symbol_id=row.symbol_id,
+                    currency=row.currency,
+                    traded_at=_to_utc(row.traded_at),
+                    quantity=Decimal(str(row.quantity)),
+                    price=Decimal(str(row.price)),
+                    tx_type=row.tx_type,
+                )
+            )
+
+        logger.debug(
+            "list_all_transactions: returned %d rows",
             len(result),
         )
         return result
