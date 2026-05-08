@@ -458,3 +458,23 @@ def get_exchange_sync_service(session: DbSession) -> ExchangeSyncService:
 
 
 ExchangeSyncServiceDep = Annotated[ExchangeSyncService, Depends(get_exchange_sync_service)]
+
+
+from app.services.risk import RiskService  # noqa: E402  # forward DI use
+
+
+def get_risk_service(
+    history_repo: PortfolioHistoryRepositoryDep,
+    fx_service: FxRateServiceDep,
+) -> RiskService:
+    """Inject a RiskService configured with the env-provided risk-free rate."""
+    from decimal import Decimal  # noqa: PLC0415
+
+    return RiskService(
+        history_repo=history_repo,
+        fx_service=fx_service,
+        risk_free_rate=Decimal(str(settings.risk_free_rate)),
+    )
+
+
+RiskServiceDep = Annotated[RiskService, Depends(get_risk_service)]

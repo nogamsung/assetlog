@@ -65,9 +65,7 @@ def _make_service(
 
     symbol_repo = AsyncMock(spec=AssetSymbolRepository)
 
-    async def _search(
-        *, asset_type: AssetType | None = None, **_: object
-    ) -> list[AssetSymbol]:
+    async def _search(*, asset_type: AssetType | None = None, **_: object) -> list[AssetSymbol]:
         if asset_type == AssetType.KR_STOCK:
             return kr_symbols or []
         return symbols

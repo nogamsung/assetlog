@@ -44,9 +44,7 @@ def _trade(
 
 
 class TestImportTrades:
-    async def test_빈_입력_무동작(
-        self, service: ExchangeSyncService
-    ) -> None:
+    async def test_빈_입력_무동작(self, service: ExchangeSyncService) -> None:
         result = await service.import_trades(ExchangeSource.UPBIT, [])
         assert result.fetched == 0
         assert result.inserted == 0
@@ -58,8 +56,10 @@ class TestImportTrades:
         assert result.inserted == 1
 
         symbols = (
-            await db_session.execute(select(AssetSymbol).where(AssetSymbol.symbol == "BTC"))
-        ).scalars().all()
+            (await db_session.execute(select(AssetSymbol).where(AssetSymbol.symbol == "BTC")))
+            .scalars()
+            .all()
+        )
         assert len(symbols) == 1
         assert symbols[0].asset_type == AssetType.CRYPTO
         assert symbols[0].exchange == "UPBIT"

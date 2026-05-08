@@ -17,7 +17,6 @@ from app.services.benchmark import (
 )
 from app.services.fx_rate import FxRateService
 
-
 # ---------------------------------------------------------------------------
 # Pure helpers
 # ---------------------------------------------------------------------------

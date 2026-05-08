@@ -207,15 +207,11 @@ class TestFxRateRepositorySnapshots:
         await db_session.flush()
 
         # at = 2026-04-01 → should pick ts2 (1350), not ts3 (future)
-        result = await repo.get_rate_at(
-            "USD", "KRW", datetime(2026, 4, 1, tzinfo=UTC)
-        )
+        result = await repo.get_rate_at("USD", "KRW", datetime(2026, 4, 1, tzinfo=UTC))
         assert result is not None
         assert result.rate == Decimal("1350")
 
-    async def test_get_rates_at_batch_빈_입력_빈_dict(
-        self, repo: FxRateRepository
-    ) -> None:
+    async def test_get_rates_at_batch_빈_입력_빈_dict(self, repo: FxRateRepository) -> None:
         result = await repo.get_rates_at_batch("USD", "KRW", [])
         assert result == {}
 
@@ -230,8 +226,8 @@ class TestFxRateRepositorySnapshots:
 
         ats = [
             datetime(2025, 12, 1, tzinfo=UTC),  # before any snapshot
-            datetime(2026, 2, 1, tzinfo=UTC),   # between ts1 and ts2 → ts1
-            datetime(2026, 4, 1, tzinfo=UTC),   # after ts2 → ts2
+            datetime(2026, 2, 1, tzinfo=UTC),  # between ts1 and ts2 → ts1
+            datetime(2026, 4, 1, tzinfo=UTC),  # after ts2 → ts2
         ]
         result = await repo.get_rates_at_batch("USD", "KRW", ats)
         assert result[ats[0]] is None

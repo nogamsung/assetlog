@@ -38,6 +38,10 @@ class Settings(BaseSettings):
     # Timezone
     tz: str = "Asia/Seoul"
 
+    # Risk metrics — annualised risk-free rate used for Sharpe ratio.
+    # Default 3% (~Korea 3-year treasury yield). Override via env.
+    risk_free_rate: float = 0.03
+
     # Authentication — single-owner password (bcrypt hash stored in env, not DB)  # ADDED
     app_password_hash: str | None = None  # ADDED
     login_max_attempts: int = 5  # ADDED
