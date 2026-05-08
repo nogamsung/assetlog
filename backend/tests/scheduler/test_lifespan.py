@@ -107,13 +107,12 @@ class TestSchedulerLifespan:
         scheduler = build_scheduler(session_factory, mock_registry)
         jobs = scheduler.get_jobs()
 
-        assert (
-            len(jobs) == 3
-        )  # price_refresh_hourly + fx_refresh_hourly + login_attempt_cleanup_daily  # MODIFIED
+        assert len(jobs) == 4
         job_ids = {j.id for j in jobs}
         assert "price_refresh_hourly" in job_ids
         assert "fx_refresh_hourly" in job_ids
-        assert "login_attempt_cleanup_daily" in job_ids  # ADDED
+        assert "login_attempt_cleanup_daily" in job_ids
+        assert "dividend_refresh_daily" in job_ids
         # Verify scheduler is not running yet — start() has not been called
         assert not scheduler.running
 
@@ -128,7 +127,7 @@ class TestSchedulerLifespan:
         scheduler = build_scheduler(session_factory, mock_registry)
         jobs = scheduler.get_jobs()
 
-        assert len(jobs) == 3  # MODIFIED — includes login_attempt_cleanup_daily
+        assert len(jobs) == 4
         for job in jobs:
             assert job.max_instances == 1
             assert job.coalesce is True

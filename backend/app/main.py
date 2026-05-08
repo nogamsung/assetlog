@@ -29,6 +29,7 @@ from app.exceptions import (
 from app.routers.auth import router as auth_router
 from app.routers.bulk_transaction import router as bulk_transaction_router
 from app.routers.cash_account import router as cash_account_router
+from app.routers.dividend import router as dividend_router
 from app.routers.export import router as export_router
 from app.routers.fx import router as fx_router
 from app.routers.market_index import router as market_index_router
@@ -255,6 +256,7 @@ app.include_router(bulk_transaction_router)
 app.include_router(cash_account_router)
 app.include_router(portfolio_router)
 app.include_router(fx_router)
+app.include_router(dividend_router)
 app.include_router(market_index_router)
 app.include_router(sample_router)
 app.include_router(export_router)
