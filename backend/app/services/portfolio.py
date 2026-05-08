@@ -154,9 +154,7 @@ class PortfolioService:
                         h.converted_pnl_abs = await self._fx_service.convert(
                             h.pnl_abs, from_currency, convert_to
                         )
-                    fx_now = await self._fx_service.convert(
-                        Decimal("1"), from_currency, convert_to
-                    )
+                    fx_now = await self._fx_service.convert(Decimal("1"), from_currency, convert_to)
                 except FxRateNotAvailableError:
                     logger.debug(
                         "get_holdings: FX rate unavailable for %s→%s, "
@@ -437,9 +435,7 @@ class PortfolioService:
                 continue
 
             try:
-                fx_now = await self._fx_service.convert(
-                    Decimal("1"), from_currency, convert_to
-                )
+                fx_now = await self._fx_service.convert(Decimal("1"), from_currency, convert_to)
             except FxRateNotAvailableError:
                 if first_warning is None:
                     first_warning = "missing_current_rate"

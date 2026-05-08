@@ -10,6 +10,7 @@ from app.core.deps import (
     PerformanceServiceDep,
     PortfolioHistoryServiceDep,
     PortfolioServiceDep,
+    RiskServiceDep,
     TagBreakdownServiceDep,
 )
 from app.domain.performance import PerformanceMethod, PerformancePeriod
@@ -22,6 +23,7 @@ from app.schemas.portfolio import (
     PortfolioHistoryResponse,
     PortfolioSummaryResponse,
 )
+from app.schemas.risk import RiskMetricsResponse
 from app.schemas.tag_breakdown import TagBreakdownResponse
 
 router = APIRouter(prefix="/api/portfolio", tags=["portfolio"])
@@ -212,3 +214,29 @@ async def get_portfolio_benchmark(
     """Return cumulative-return comparison vs market indices."""
     symbol_list = [s.strip() for s in symbols.split(",") if s.strip()]
     return await bench_service.compare(period, currency.upper(), symbol_list)
+
+
+@router.get(
+    "/performance/risk",
+    response_model=RiskMetricsResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Get annualised return / volatility / Sharpe / max drawdown",
+    description=(
+        "Computes risk-adjusted performance metrics from the same daily value "
+        "series used by /performance and /performance/benchmark. Volatility "
+        "uses 252 trading days for annualisation; Sharpe uses the configured "
+        "risk_free_rate (env: RISK_FREE_RATE, default 0.03)."
+    ),
+    responses={
+        401: {"model": ErrorResponse, "description": "Not authenticated"},
+        422: {"model": ErrorResponse, "description": "Validation error"},
+    },
+)
+async def get_portfolio_risk(
+    _current_user: CurrentUser,
+    risk_service: RiskServiceDep,
+    period: PerformancePeriod = Query(default=PerformancePeriod.ONE_YEAR),
+    currency: str = Query(default="KRW", min_length=3, max_length=10),
+) -> RiskMetricsResponse:
+    """Return Sharpe / volatility / MDD / annualised-return metrics."""
+    return await risk_service.get_risk_metrics(period, currency.upper())

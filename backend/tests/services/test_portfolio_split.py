@@ -18,7 +18,6 @@ from app.services.portfolio import (
     _weighted_avg_fx_buy,
 )
 
-
 # ---------------------------------------------------------------------------
 # Pure helpers
 # ---------------------------------------------------------------------------
@@ -207,7 +206,7 @@ def _make_fx_service(
         if from_cur == to_cur:
             return {ts: Decimal("1") for ts in timestamps}
         if historical_rates is None:
-            return {ts: None for ts in timestamps}
+            return dict.fromkeys(timestamps)
         snaps = historical_rates.get((from_cur, to_cur), {})
         return {ts: snaps.get(ts) for ts in timestamps}
 

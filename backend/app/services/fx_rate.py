@@ -250,9 +250,7 @@ class FxRateService:
         if from_currency == to_currency:
             return {ts: Decimal("1") for ts in timestamps}
 
-        snapshots = await self._repo.get_rates_at_batch(
-            from_currency, to_currency, timestamps
-        )
+        snapshots = await self._repo.get_rates_at_batch(from_currency, to_currency, timestamps)
         return {ts: (snap.rate if snap is not None else None) for ts, snap in snapshots.items()}
 
     async def list_all_rates(self) -> list[FxRate]:
