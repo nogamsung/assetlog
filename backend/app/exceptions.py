@@ -91,3 +91,14 @@ class FxRateNotAvailableError(AppError):
 
     status_code: int = HTTPStatus.SERVICE_UNAVAILABLE.value
     detail: str = "Exchange rate not available yet. Please retry later."
+
+
+class ExternalIntegrationError(AppError):
+    """External integration (Upbit, brokerage OpenAPI) failed or is misconfigured.
+
+    Raised when API keys are missing or an upstream call returned an error
+    that should propagate to the caller (manual sync requests).
+    """
+
+    status_code: int = HTTPStatus.BAD_GATEWAY.value
+    detail: str = "External integration failed."
