@@ -417,13 +417,15 @@ def get_dividend_service(
     repo: DividendRepositoryDep,
     symbol_repo: AssetSymbolRepositoryDep,
 ) -> DividendService:
-    """Inject a DividendService with the yfinance adapter."""
+    """Inject a DividendService with the yfinance + pykrx adapters."""
+    from app.adapters.kr_dividends import KrDividendAdapter  # noqa: PLC0415
     from app.adapters.us_dividends import UsDividendAdapter  # noqa: PLC0415
 
     return DividendService(
         repo=repo,
         symbol_repo=symbol_repo,
         us_adapter=UsDividendAdapter(),
+        kr_adapter=KrDividendAdapter(),
     )
 
 

@@ -6,6 +6,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from unittest.mock import AsyncMock, MagicMock
 
+from app.adapters.kr_dividends import KrDividendAdapter
 from app.adapters.us_dividends import UsDividendAdapter
 from app.domain.asset_type import AssetType
 from app.domain.dividend import DividendQuote, DividendSource
@@ -51,9 +52,11 @@ def _make_service(
     *,
     symbols: list[AssetSymbol],
     fetch_quotes: dict[str, list[DividendQuote]] | None = None,
+    kr_fetch_quotes: dict[str, list[DividendQuote]] | None = None,
     list_rows: list[Dividend] | None = None,
     sum_map: dict[int, Decimal] | None = None,
     insert_count: int = 0,
+    kr_symbols: list[AssetSymbol] | None = None,
 ) -> DividendService:
     repo = AsyncMock(spec=DividendRepository)
     repo.insert_quotes.return_value = insert_count
@@ -61,15 +64,36 @@ def _make_service(
     repo.sum_by_symbol.return_value = sum_map or {}
 
     symbol_repo = AsyncMock(spec=AssetSymbolRepository)
-    symbol_repo.search.return_value = symbols
 
-    adapter = MagicMock(spec=UsDividendAdapter)
+    async def _search(
+        *, asset_type: AssetType | None = None, **_: object
+    ) -> list[AssetSymbol]:
+        if asset_type == AssetType.KR_STOCK:
+            return kr_symbols or []
+        return symbols
 
-    async def _fetch(ticker: str) -> list[DividendQuote]:
+    symbol_repo.search.side_effect = _search
+
+    us_adapter = MagicMock(spec=UsDividendAdapter)
+
+    async def _fetch_us(ticker: str) -> list[DividendQuote]:
         return (fetch_quotes or {}).get(ticker, [])
 
-    adapter.fetch_dividends.side_effect = _fetch
-    return DividendService(repo=repo, symbol_repo=symbol_repo, us_adapter=adapter)
+    us_adapter.fetch_dividends.side_effect = _fetch_us
+
+    kr_adapter = MagicMock(spec=KrDividendAdapter)
+
+    async def _fetch_kr(ticker: str) -> list[DividendQuote]:
+        return (kr_fetch_quotes or {}).get(ticker, [])
+
+    kr_adapter.fetch_dividends.side_effect = _fetch_kr
+
+    return DividendService(
+        repo=repo,
+        symbol_repo=symbol_repo,
+        us_adapter=us_adapter,
+        kr_adapter=kr_adapter,
+    )
 
 
 class TestRefreshUsDividends:
@@ -100,6 +124,52 @@ class TestRefreshUsDividends:
         assert result == 0
 
 
+class TestRefreshKrDividends:
+    async def test_심볼_없으면_0(self) -> None:
+        svc = _make_service(symbols=[])
+        assert await svc.refresh_kr_dividends() == 0
+
+    async def test_KR_심볼만_조회(self) -> None:
+        kr_sym = AssetSymbol(
+            asset_type=AssetType.KR_STOCK,
+            symbol="005930",
+            exchange="KRX",
+            name="삼성전자",
+            currency="KRW",
+        )
+        kr_sym.id = 11
+        kr_quotes = [
+            DividendQuote(date(2024, 12, 30), Decimal("1444"), "KRW"),
+            DividendQuote(date(2025, 12, 30), Decimal("1500"), "KRW"),
+        ]
+        svc = _make_service(
+            symbols=[],
+            kr_symbols=[kr_sym],
+            kr_fetch_quotes={"005930": kr_quotes},
+            insert_count=2,
+        )
+        total = await svc.refresh_kr_dividends()
+        assert total == 2
+        svc._repo.insert_quotes.assert_awaited_with(  # type: ignore[attr-defined]  # AsyncMock
+            asset_symbol_id=11,
+            quotes=kr_quotes,
+            source=DividendSource.PYKRX,
+        )
+
+    async def test_kr_adapter_예외_무시(self) -> None:
+        kr_sym = AssetSymbol(
+            asset_type=AssetType.KR_STOCK,
+            symbol="005930",
+            exchange="KRX",
+            name="삼성전자",
+            currency="KRW",
+        )
+        kr_sym.id = 11
+        svc = _make_service(symbols=[], kr_symbols=[kr_sym])
+        svc._kr_adapter.fetch_dividends.side_effect = RuntimeError("boom")  # type: ignore[attr-defined]  # mocked
+        assert await svc.refresh_kr_dividends() == 0
+
+
 class TestListDividends:
     async def test_빈_결과(self) -> None:
         svc = _make_service(symbols=[])
@@ -110,10 +180,12 @@ class TestListDividends:
     async def test_summary_정렬과_currency(self) -> None:
         rows = [
             _make_dividend_row(row_id=1, asset_symbol_id=1, amount="0.24"),
-            _make_dividend_row(row_id=2, asset_symbol_id=1, amount="0.25",
-                               ex_date=date(2026, 5, 9)),
-            _make_dividend_row(row_id=3, asset_symbol_id=2, amount="0.75",
-                               ex_date=date(2026, 3, 7)),
+            _make_dividend_row(
+                row_id=2, asset_symbol_id=1, amount="0.25", ex_date=date(2026, 5, 9)
+            ),
+            _make_dividend_row(
+                row_id=3, asset_symbol_id=2, amount="0.75", ex_date=date(2026, 3, 7)
+            ),
         ]
         svc = _make_service(
             symbols=[],
