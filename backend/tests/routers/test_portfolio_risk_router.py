@@ -60,9 +60,7 @@ class TestRiskEndpoint:
     async def test_잘못된_period_422(self, async_client: AsyncClient) -> None:
         app.dependency_overrides[get_current_user] = lambda: OwnerPrincipal()
         try:
-            response = await async_client.get(
-                "/api/portfolio/performance/risk?period=INVALID"
-            )
+            response = await async_client.get("/api/portfolio/performance/risk?period=INVALID")
             assert response.status_code == 422
         finally:
             app.dependency_overrides.clear()

@@ -478,3 +478,17 @@ def get_risk_service(
 
 
 RiskServiceDep = Annotated[RiskService, Depends(get_risk_service)]
+
+
+from app.services.heatmap import HeatmapService  # noqa: E402  # forward DI use
+
+
+def get_heatmap_service(
+    history_repo: PortfolioHistoryRepositoryDep,
+    fx_service: FxRateServiceDep,
+) -> HeatmapService:
+    """Inject a HeatmapService bound to the current request session."""
+    return HeatmapService(history_repo=history_repo, fx_service=fx_service)
+
+
+HeatmapServiceDep = Annotated[HeatmapService, Depends(get_heatmap_service)]
