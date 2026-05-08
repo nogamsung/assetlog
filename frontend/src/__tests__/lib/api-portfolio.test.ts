@@ -53,6 +53,9 @@ const expectedSummary: PortfolioSummary = {
   convertedRealizedPnl: null,
   displayCurrency: null,
   cashTotalByCurrency: {},
+  convertedPricePnl: null,
+  convertedFxPnl: null,
+  fxWarning: null,
 };
 
 const rawHolding = {
@@ -117,6 +120,9 @@ const expectedHolding: HoldingResponse = {
   convertedPnlAbs: null,
   convertedRealizedPnl: null,
   displayCurrency: null,
+  pricePnl: null,
+  fxPnl: null,
+  fxWarning: null,
 };
 
 describe("getPortfolioSummary", () => {

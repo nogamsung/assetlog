@@ -150,3 +150,92 @@ class TestFxRateRepositoryListAll:
         rows = await repo.list_all()
         bases = [r.base_currency for r in rows]
         assert bases == sorted(bases)
+
+
+class TestFxRateRepositorySnapshots:
+    async def test_insert_snapshot_저장(
+        self, repo: FxRateRepository, db_session: AsyncSession
+    ) -> None:
+        ts = datetime(2026, 5, 7, 10, 0, tzinfo=UTC)
+        await repo.insert_snapshot("USD", "KRW", Decimal("1380.50"), ts)
+        await db_session.flush()
+
+        snap = await repo.get_rate_at("USD", "KRW", ts)
+        assert snap is not None
+        assert snap.rate == Decimal("1380.50")
+        # SQLite drops tz; compare on the naive value
+        assert snap.recorded_at.replace(tzinfo=None) == ts.replace(tzinfo=None)
+
+    async def test_insert_snapshot_중복_무시(
+        self, repo: FxRateRepository, db_session: AsyncSession
+    ) -> None:
+        ts = datetime(2026, 5, 7, 10, 0, tzinfo=UTC)
+        await repo.insert_snapshot("USD", "KRW", Decimal("1380.50"), ts)
+        await db_session.flush()
+        await repo.insert_snapshot("USD", "KRW", Decimal("9999.99"), ts)
+        await db_session.flush()
+
+        # Same timestamp → second insert silently dropped, original rate kept
+        snap = await repo.get_rate_at("USD", "KRW", ts)
+        assert snap is not None
+        assert snap.rate == Decimal("1380.50")
+
+    async def test_get_rate_at_없는_페어_None(self, repo: FxRateRepository) -> None:
+        result = await repo.get_rate_at("USD", "JPY", datetime.now(UTC))
+        assert result is None
+
+    async def test_get_rate_at_과거_시점_이전_None(
+        self, repo: FxRateRepository, db_session: AsyncSession
+    ) -> None:
+        ts_future = datetime(2026, 5, 7, tzinfo=UTC)
+        ts_past = datetime(2026, 1, 1, tzinfo=UTC)
+        await repo.insert_snapshot("USD", "KRW", Decimal("1380"), ts_future)
+        await db_session.flush()
+
+        result = await repo.get_rate_at("USD", "KRW", ts_past)
+        assert result is None
+
+    async def test_get_rate_at_가장_가까운_과거_반환(
+        self, repo: FxRateRepository, db_session: AsyncSession
+    ) -> None:
+        ts1 = datetime(2026, 1, 1, tzinfo=UTC)
+        ts2 = datetime(2026, 3, 1, tzinfo=UTC)
+        ts3 = datetime(2026, 5, 1, tzinfo=UTC)
+        await repo.insert_snapshot("USD", "KRW", Decimal("1300"), ts1)
+        await repo.insert_snapshot("USD", "KRW", Decimal("1350"), ts2)
+        await repo.insert_snapshot("USD", "KRW", Decimal("1400"), ts3)
+        await db_session.flush()
+
+        # at = 2026-04-01 → should pick ts2 (1350), not ts3 (future)
+        result = await repo.get_rate_at(
+            "USD", "KRW", datetime(2026, 4, 1, tzinfo=UTC)
+        )
+        assert result is not None
+        assert result.rate == Decimal("1350")
+
+    async def test_get_rates_at_batch_빈_입력_빈_dict(
+        self, repo: FxRateRepository
+    ) -> None:
+        result = await repo.get_rates_at_batch("USD", "KRW", [])
+        assert result == {}
+
+    async def test_get_rates_at_batch_여러_시점_매칭(
+        self, repo: FxRateRepository, db_session: AsyncSession
+    ) -> None:
+        ts1 = datetime(2026, 1, 1, tzinfo=UTC)
+        ts2 = datetime(2026, 3, 1, tzinfo=UTC)
+        await repo.insert_snapshot("USD", "KRW", Decimal("1300"), ts1)
+        await repo.insert_snapshot("USD", "KRW", Decimal("1400"), ts2)
+        await db_session.flush()
+
+        ats = [
+            datetime(2025, 12, 1, tzinfo=UTC),  # before any snapshot
+            datetime(2026, 2, 1, tzinfo=UTC),   # between ts1 and ts2 → ts1
+            datetime(2026, 4, 1, tzinfo=UTC),   # after ts2 → ts2
+        ]
+        result = await repo.get_rates_at_batch("USD", "KRW", ats)
+        assert result[ats[0]] is None
+        assert result[ats[1]] is not None
+        assert result[ats[1]].rate == Decimal("1300")
+        assert result[ats[2]] is not None
+        assert result[ats[2]].rate == Decimal("1400")

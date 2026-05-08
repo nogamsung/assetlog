@@ -50,6 +50,7 @@ class FxRateService:
         currencies = _SUPPORTED_CURRENCIES
         fetched_at = datetime.now(tz=UTC)
         total_upserted = 0
+        snapshots_inserted = 0
 
         for base in currencies:
             quotes = [c for c in currencies if c != base]
@@ -85,11 +86,33 @@ class FxRateService:
                             "error": str(exc),
                         },
                     )
+                    continue
+
+                try:
+                    await self._repo.insert_snapshot(base, quote, rate, fetched_at)
+                    snapshots_inserted += 1
+                except Exception as exc:  # noqa: BLE001
+                    logger.error(
+                        "fx_rate snapshot insert failed base=%s quote=%s: %s",
+                        base,
+                        quote,
+                        exc,
+                        extra={
+                            "event": "fx_snapshot_insert_fail",
+                            "base": base,
+                            "quote": quote,
+                            "error": str(exc),
+                        },
+                    )
 
         logger.info(
             "fx_rate refresh_all done: %d pairs upserted",
             total_upserted,
-            extra={"event": "fx_refresh_done", "upserted": total_upserted},
+            extra={
+                "event": "fx_refresh_done",
+                "upserted": total_upserted,
+                "snapshots_inserted": snapshots_inserted,
+            },
         )
         return total_upserted
 
@@ -201,6 +224,36 @@ class FxRateService:
                 return None  # partial conversion forbidden
             rates[currency] = rate_row.rate
         return rates
+
+    async def get_historical_rates_at(
+        self,
+        from_currency: str,
+        to_currency: str,
+        timestamps: list[datetime],
+    ) -> dict[datetime, Decimal | None]:
+        """Return historical FX rates from snapshots for multiple timestamps.
+
+        Same-currency pairs map every timestamp to ``Decimal("1")`` without
+        a DB round-trip. Missing snapshots map to ``None`` at that key.
+
+        Args:
+            from_currency: Source currency code (e.g. "USD").
+            to_currency: Target currency code (e.g. "KRW").
+            timestamps: Reference timestamps to resolve.
+
+        Returns:
+            Dict mapping each requested timestamp to its rate (or None if no
+            snapshot exists at or before that timestamp).
+        """
+        if not timestamps:
+            return {}
+        if from_currency == to_currency:
+            return {ts: Decimal("1") for ts in timestamps}
+
+        snapshots = await self._repo.get_rates_at_batch(
+            from_currency, to_currency, timestamps
+        )
+        return {ts: (snap.rate if snap is not None else None) for ts, snap in snapshots.items()}
 
     async def list_all_rates(self) -> list[FxRate]:
         """Return all cached FX rate rows for display purposes.

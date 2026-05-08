@@ -2,13 +2,12 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from datetime import timedelta
+from dataclasses import dataclass, field
+from datetime import datetime, timedelta
 from decimal import Decimal
 
 from app.models.asset_symbol import AssetSymbol
 
-# Threshold after which a cached price is considered stale.
 STALE_THRESHOLD: timedelta = timedelta(hours=3)
 
 
@@ -19,10 +18,16 @@ class HoldingRow:
     Carries denormalised BUY/SELL-transaction aggregates alongside the loaded
     AssetSymbol so the service layer can compute derived values without
     additional DB round-trips.
+
+    ``buy_lots`` holds (traded_at, cost_local) tuples for each BUY transaction
+    where cost_local = quantity × price in the asset's native currency.
+    Used by PortfolioService to compute cost-weighted average historical FX
+    rates for the price/FX P&L decomposition.
     """
 
     user_asset_id: int
     asset_symbol: AssetSymbol
-    total_qty: Decimal  # remaining qty (buy - sell)
-    total_cost: Decimal  # cost basis of remaining qty (avg_buy_price × remaining_qty)
-    realized_pnl: Decimal  # ADDED — Σ(sell_value) - Σ(sell_qty) × avg_buy_price
+    total_qty: Decimal
+    total_cost: Decimal
+    realized_pnl: Decimal
+    buy_lots: tuple[tuple[datetime, Decimal], ...] = field(default_factory=tuple)

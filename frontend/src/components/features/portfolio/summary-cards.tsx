@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatCurrency, formatCompactCurrency, formatPercent, formatRelativeTime, pnlColor } from "@/lib/format"; /* MODIFIED */
 import { tossHeroNumber, tossCardNumber } from "@/lib/toss-tokens"; /* ADDED */
 import { cn } from "@/lib/utils"; /* ADDED */
+import { FxWarningInfo } from "./fx-warning-info";
 import type { PortfolioSummary } from "@/types/portfolio";
 
 interface SummaryCardsProps {
@@ -148,10 +149,23 @@ export function SummaryCards({ summary }: SummaryCardsProps) {
           <CardContent>
             <p className={cn(tossCardNumber, pnlColor(firstPnlAbs))}> {/* MODIFIED: pnlColor + tossCardNumber */}
               {pnlMain}
+              {summary.fxWarning !== null && summary.fxWarning !== "same_currency" && (
+                <FxWarningInfo warning={summary.fxWarning} />
+              )}
             </p>
             {pnlSub !== null && (
               <p className="mt-1 text-xs text-toss-textWeak">{pnlSub}</p>
             )}
+            {hasConversion &&
+              !summary.fxWarning &&
+              summary.convertedFxPnl != null &&
+              Number(summary.convertedFxPnl) !== 0 &&
+              displayCurrency !== null && (
+                <p className="mt-1 text-xs text-toss-textWeak">
+                  환율 영향 {Number(summary.convertedFxPnl) >= 0 ? "+" : ""}
+                  {formatCurrency(summary.convertedFxPnl, displayCurrency)}
+                </p>
+              )}
           </CardContent>
         </Card>
 

@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { formatCurrency, formatPercent, formatQuantity, pnlColor } from "@/lib/format"; /* MODIFIED */
+import { FxWarningInfo } from "./fx-warning-info";
 import { PendingBadge } from "./pending-badge";
 import { StaleBadge } from "./stale-badge";
 import type { HoldingResponse } from "@/types/portfolio";
@@ -210,8 +211,21 @@ export function HoldingsTable({ holdings }: HoldingsTableProps) {
                           ({Number(holding.pnlPct) >= 0 ? "+" : ""}{formatPercent(holding.pnlPct)})
                         </span>
                       )}
+                      {holding.fxWarning !== null && holding.fxWarning !== "same_currency" && (
+                        <FxWarningInfo warning={holding.fxWarning} />
+                      )}
                     </span>
                   )}
+                  {!holding.isPending &&
+                    holding.displayCurrency !== null &&
+                    !holding.fxWarning &&
+                    holding.fxPnl != null &&
+                    Number(holding.fxPnl) !== 0 && (
+                      <div className="text-xs text-toss-textWeak font-normal mt-0.5">
+                        환율 영향 {Number(holding.fxPnl) >= 0 ? "+" : ""}
+                        {formatCurrency(holding.fxPnl, displayCurr)}
+                      </div>
+                    )}
                 </td>
                 <td className="px-4 py-3 text-right">
                   {holding.isPending ? (

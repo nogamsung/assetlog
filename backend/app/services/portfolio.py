@@ -8,10 +8,11 @@ from decimal import Decimal, InvalidOperation
 from typing import TYPE_CHECKING
 
 from app.domain.portfolio import STALE_THRESHOLD, HoldingRow
-from app.exceptions import FxRateNotAvailableError  # ADDED
+from app.exceptions import FxRateNotAvailableError
 from app.repositories.portfolio import PortfolioRepository
 from app.schemas.portfolio import (
     AllocationEntry,
+    FxWarning,
     HoldingResponse,
     PnlEntry,
     PortfolioSummaryResponse,
@@ -23,6 +24,57 @@ if TYPE_CHECKING:
     from app.services.fx_rate import FxRateService
 
 logger = logging.getLogger(__name__)
+
+
+def _compute_price_fx_split(
+    *,
+    pnl_local: Decimal,
+    cost_basis_local: Decimal,
+    fx_now: Decimal,
+    fx_buy_avg: Decimal,
+) -> tuple[Decimal, Decimal]:
+    """Decompose total P&L (in display currency) into price and FX components.
+
+    Identity (algebraic):
+        total_pnl_display
+            = latest_value_local × fx_now − cost_basis_local × fx_buy_avg
+            = (latest_value_local − cost_basis_local) × fx_now      ← price_pnl
+              + cost_basis_local × (fx_now − fx_buy_avg)            ← fx_pnl
+
+    Both inputs must be in the asset's native currency. ``pnl_local`` equals
+    ``latest_value_local − cost_basis_local``.
+    """
+    price_pnl = pnl_local * fx_now
+    fx_pnl = cost_basis_local * (fx_now - fx_buy_avg)
+    return price_pnl, fx_pnl
+
+
+def _weighted_avg_fx_buy(
+    buy_lots: tuple[tuple[datetime, Decimal], ...],
+    historical_rates: dict[datetime, Decimal | None],
+) -> Decimal | None:
+    """Cost-weighted average historical FX rate over BUY transactions.
+
+    Returns:
+        ``Σ(cost_local_i × fx_at_traded_at_i) / Σ(cost_local_i)`` if all
+        timestamps have rates, ``None`` if any rate is missing or total cost
+        is zero.
+    """
+    if not buy_lots:
+        return None
+
+    total_cost = Decimal("0")
+    weighted_sum = Decimal("0")
+    for traded_at, cost_local in buy_lots:
+        rate = historical_rates.get(traded_at)
+        if rate is None:
+            return None
+        total_cost += cost_local
+        weighted_sum += cost_local * rate
+
+    if total_cost == Decimal("0"):
+        return None
+    return weighted_sum / total_cost
 
 
 class PortfolioService:
@@ -81,21 +133,19 @@ class PortfolioService:
             else:
                 h.weight_pct = 0.0
 
-        # ADDED — optional per-row currency conversion (partial allowed)
+        # Optional per-row currency conversion (partial allowed)
         if convert_to is not None and self._fx_service is not None:
-            for h in holdings:
-                h.display_currency = convert_to  # ADDED — set regardless of rate availability
+            for h, row in zip(holdings, rows, strict=True):
+                h.display_currency = convert_to
                 from_currency = h.asset_symbol.currency
+                fx_now: Decimal | None = None
                 try:
-                    # converted_cost_basis — always available when fx rate exists
                     h.converted_cost_basis = await self._fx_service.convert(
                         h.cost_basis, from_currency, convert_to
                     )
-                    # converted_realized_pnl — always available when fx rate exists
                     h.converted_realized_pnl = await self._fx_service.convert(
                         h.realized_pnl, from_currency, convert_to
                     )
-                    # converted_latest_value / converted_pnl_abs — only when not pending
                     if h.latest_value is not None:
                         h.converted_latest_value = await self._fx_service.convert(
                             h.latest_value, from_currency, convert_to
@@ -104,9 +154,13 @@ class PortfolioService:
                         h.converted_pnl_abs = await self._fx_service.convert(
                             h.pnl_abs, from_currency, convert_to
                         )
-                except FxRateNotAvailableError:  # ADDED — row-level catch; others proceed normally
+                    fx_now = await self._fx_service.convert(
+                        Decimal("1"), from_currency, convert_to
+                    )
+                except FxRateNotAvailableError:
                     logger.debug(
-                        "get_holdings: FX rate unavailable for %s→%s, holding user_asset_id=%s converted_* set null",
+                        "get_holdings: FX rate unavailable for %s→%s, "
+                        "holding user_asset_id=%s converted_* set null",
                         from_currency,
                         convert_to,
                         h.user_asset_id,
@@ -116,7 +170,56 @@ class PortfolioService:
                     h.converted_pnl_abs = None
                     h.converted_realized_pnl = None
 
+                await self._compute_split(h, row, from_currency, convert_to, fx_now)
+
         return holdings
+
+    async def _compute_split(
+        self,
+        holding: HoldingResponse,
+        row: HoldingRow,
+        from_currency: str,
+        convert_to: str,
+        fx_now: Decimal | None,
+    ) -> None:
+        """Populate ``price_pnl``, ``fx_pnl``, ``fx_warning`` on *holding*.
+
+        See ``_compute_price_fx_split`` for the algebraic decomposition.
+        Resolves historical FX rates for each BUY lot's traded_at via the
+        injected FxRateService and computes the cost-weighted average buy FX.
+        """
+        if from_currency == convert_to:
+            holding.price_pnl = holding.pnl_abs
+            holding.fx_pnl = Decimal("0")
+            holding.fx_warning = "same_currency"
+            return
+
+        if fx_now is None:
+            holding.fx_warning = "missing_current_rate"
+            return
+
+        if holding.pnl_abs is None or not row.buy_lots:
+            return
+
+        timestamps = [traded_at for traded_at, _ in row.buy_lots]
+        assert self._fx_service is not None
+        historical = await self._fx_service.get_historical_rates_at(
+            from_currency, convert_to, timestamps
+        )
+        fx_buy_avg = _weighted_avg_fx_buy(row.buy_lots, historical)
+        if fx_buy_avg is None:
+            holding.fx_warning = "missing_historical_rate"
+            return
+
+        price_pnl, fx_pnl = _compute_price_fx_split(
+            pnl_local=holding.pnl_abs,
+            cost_basis_local=row.total_cost,
+            fx_now=fx_now,
+            fx_buy_avg=fx_buy_avg,
+        )
+        holding.price_pnl = price_pnl
+        holding.fx_pnl = fx_pnl
+        holding.fx_warning = None
 
     async def get_summary(
         self,
@@ -237,7 +340,10 @@ class PortfolioService:
         converted_total_cost: Decimal | None = None
         converted_pnl_abs: Decimal | None = None
         converted_realized_pnl: Decimal | None = None
+        converted_price_pnl: Decimal | None = None
+        converted_fx_pnl: Decimal | None = None
         display_currency: str | None = None
+        summary_fx_warning: FxWarning | None = None
 
         if convert_to is not None and self._fx_service is not None and total_value:
             all_currencies = list(
@@ -273,11 +379,16 @@ class PortfolioService:
                     convert_to,
                 )
 
+            split_result = await self._aggregate_split(rows, convert_to)
+            converted_price_pnl = split_result[0]
+            converted_fx_pnl = split_result[1]
+            summary_fx_warning = split_result[2]
+
         return PortfolioSummaryResponse(
             total_value_by_currency=total_value_str,
             total_cost_by_currency=total_cost_str,
             pnl_by_currency=pnl_by_currency,
-            realized_pnl_by_currency=realized_pnl_str,  # ADDED
+            realized_pnl_by_currency=realized_pnl_str,
             cash_total_by_currency=cash_total_str,
             allocation=allocation,
             last_price_refreshed_at=last_refreshed,
@@ -288,7 +399,77 @@ class PortfolioService:
             converted_pnl_abs=converted_pnl_abs,
             converted_realized_pnl=converted_realized_pnl,
             display_currency=display_currency,
+            converted_price_pnl=converted_price_pnl,
+            converted_fx_pnl=converted_fx_pnl,
+            fx_warning=summary_fx_warning,
         )
+
+    async def _aggregate_split(
+        self,
+        rows: list[HoldingRow],
+        convert_to: str,
+    ) -> tuple[Decimal | None, Decimal | None, FxWarning | None]:
+        """Sum per-holding ``price_pnl``/``fx_pnl`` for the summary card.
+
+        Returns:
+            ``(price_pnl_sum, fx_pnl_sum, warning)``. If any non-pending holding
+            with the asset's currency != display currency lacks rates,
+            both sums are ``None`` and *warning* is set to the first
+            propagating reason. ``same_currency`` is never propagated to
+            the summary level (only zero-contribution).
+        """
+        assert self._fx_service is not None
+        price_total = Decimal("0")
+        fx_total = Decimal("0")
+        first_warning: FxWarning | None = None
+
+        for row in rows:
+            sym = row.asset_symbol
+            from_currency = sym.currency
+            latest_price = sym.last_price
+            if latest_price is None:
+                continue
+
+            pnl_local = row.total_qty * latest_price - row.total_cost
+
+            if from_currency == convert_to:
+                price_total += pnl_local
+                continue
+
+            try:
+                fx_now = await self._fx_service.convert(
+                    Decimal("1"), from_currency, convert_to
+                )
+            except FxRateNotAvailableError:
+                if first_warning is None:
+                    first_warning = "missing_current_rate"
+                continue
+
+            if not row.buy_lots:
+                continue
+
+            timestamps = [traded_at for traded_at, _ in row.buy_lots]
+            historical = await self._fx_service.get_historical_rates_at(
+                from_currency, convert_to, timestamps
+            )
+            fx_buy_avg = _weighted_avg_fx_buy(row.buy_lots, historical)
+            if fx_buy_avg is None:
+                if first_warning is None:
+                    first_warning = "missing_historical_rate"
+                continue
+
+            price_pnl, fx_pnl = _compute_price_fx_split(
+                pnl_local=pnl_local,
+                cost_basis_local=row.total_cost,
+                fx_now=fx_now,
+                fx_buy_avg=fx_buy_avg,
+            )
+            price_total += price_pnl
+            fx_total += fx_pnl
+
+        if first_warning is not None:
+            return None, None, first_warning
+        return price_total, fx_total, None
 
     # ------------------------------------------------------------------
     # Private helpers

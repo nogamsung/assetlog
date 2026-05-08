@@ -11,6 +11,8 @@ from pydantic import BaseModel, ConfigDict, Field, field_serializer
 from app.domain.asset_type import AssetType
 from app.domain.portfolio_history import HistoryBucket, HistoryPeriod
 
+FxWarning = Literal["missing_historical_rate", "missing_current_rate", "same_currency"]
+
 
 class SymbolEmbedded(BaseModel):
     """Minimal symbol data embedded inside HoldingResponse."""
@@ -120,7 +122,35 @@ class HoldingResponse(BaseModel):
         examples=["KRW"],
     )
 
-    @field_serializer("quantity", "avg_cost", "cost_basis", "realized_pnl")  # MODIFIED
+    price_pnl: Decimal | None = Field(
+        default=None,
+        description=(
+            "Market-price component of P&L in display_currency = pnl_local × fx_now. "
+            "Equal to converted_pnl_abs when display_currency != asset currency."
+        ),
+        examples=["80000.00"],
+    )
+    fx_pnl: Decimal | None = Field(
+        default=None,
+        description=(
+            "FX-delta component of P&L in display_currency = "
+            "cost_basis_local × (fx_now - fx_buy_avg). Zero when same currency."
+        ),
+        examples=["20000.00"],
+    )
+    fx_warning: FxWarning | None = Field(
+        default=None,
+        description=(
+            "Reason split fields are null or zeroed: "
+            "'missing_historical_rate' = no snapshot for a BUY's traded_at, "
+            "'missing_current_rate' = no current FX rate for the pair, "
+            "'same_currency' = display_currency matches asset currency, "
+            "null = split successfully computed."
+        ),
+        examples=["same_currency"],
+    )
+
+    @field_serializer("quantity", "avg_cost", "cost_basis", "realized_pnl")
     def _serialize_decimal_required(self, v: Decimal) -> str:
         return str(v)
 
@@ -128,14 +158,16 @@ class HoldingResponse(BaseModel):
     def _serialize_decimal_optional(self, v: Decimal | None) -> str | None:
         return str(v) if v is not None else None
 
-    @field_serializer(  # ADDED
+    @field_serializer(
         "converted_latest_value",
         "converted_cost_basis",
         "converted_pnl_abs",
         "converted_realized_pnl",
+        "price_pnl",
+        "fx_pnl",
     )
-    def _serialize_converted_decimal(self, v: Decimal | None) -> str | None:  # ADDED
-        return str(v) if v is not None else None  # ADDED
+    def _serialize_converted_decimal(self, v: Decimal | None) -> str | None:
+        return str(v) if v is not None else None
 
 
 class PnlEntry(BaseModel):
@@ -242,11 +274,39 @@ class PortfolioSummaryResponse(BaseModel):
         examples=["KRW"],
     )
 
+    converted_price_pnl: Decimal | None = Field(
+        default=None,
+        description=(
+            "Sum of per-holding price_pnl in display_currency "
+            "(null if convert_to not provided or any required FX rate is missing)."
+        ),
+        examples=["2400000.00"],
+    )
+    converted_fx_pnl: Decimal | None = Field(
+        default=None,
+        description=(
+            "Sum of per-holding fx_pnl in display_currency "
+            "(null if convert_to not provided or any required FX rate is missing)."
+        ),
+        examples=["600000.00"],
+    )
+    fx_warning: FxWarning | None = Field(
+        default=None,
+        description=(
+            "Aggregate split warning. Set to 'missing_historical_rate' / "
+            "'missing_current_rate' if any holding lacks rates required for split. "
+            "'same_currency' is not used at the summary level."
+        ),
+        examples=[None],
+    )
+
     @field_serializer(
         "converted_total_value",
         "converted_total_cost",
         "converted_pnl_abs",
         "converted_realized_pnl",
+        "converted_price_pnl",
+        "converted_fx_pnl",
     )
     def _serialize_converted_decimal(self, v: Decimal | None) -> str | None:
         return str(v) if v is not None else None
