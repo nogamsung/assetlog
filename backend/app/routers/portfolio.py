@@ -7,6 +7,7 @@ from fastapi import APIRouter, Query, status
 from app.core.deps import (
     BenchmarkServiceDep,
     CurrentUser,
+    HeatmapServiceDep,
     PerformanceServiceDep,
     PortfolioHistoryServiceDep,
     PortfolioServiceDep,
@@ -17,6 +18,7 @@ from app.domain.performance import PerformanceMethod, PerformancePeriod
 from app.domain.portfolio_history import HistoryPeriod
 from app.schemas.auth import ErrorResponse
 from app.schemas.benchmark import BenchmarkComparisonResponse
+from app.schemas.heatmap import HeatmapResponse
 from app.schemas.performance import PerformanceResponse
 from app.schemas.portfolio import (
     HoldingResponse,
@@ -240,3 +242,29 @@ async def get_portfolio_risk(
 ) -> RiskMetricsResponse:
     """Return Sharpe / volatility / MDD / annualised-return metrics."""
     return await risk_service.get_risk_metrics(period, currency.upper())
+
+
+@router.get(
+    "/performance/heatmap",
+    response_model=HeatmapResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Monthly returns heatmap (year × month matrix)",
+    description=(
+        "Returns per-month portfolio returns over the most recent N calendar "
+        "years, computed by sampling portfolio value at month-end and taking "
+        "(v_i / v_{i-1}) - 1. Yearly aggregates compound the months "
+        "geometrically. Default years=5."
+    ),
+    responses={
+        401: {"model": ErrorResponse, "description": "Not authenticated"},
+        422: {"model": ErrorResponse, "description": "Validation error"},
+    },
+)
+async def get_portfolio_heatmap(
+    _current_user: CurrentUser,
+    heatmap_service: HeatmapServiceDep,
+    currency: str = Query(default="KRW", min_length=3, max_length=10),
+    years: int = Query(default=5, ge=1, le=20),
+) -> HeatmapResponse:
+    """Return monthly returns matrix."""
+    return await heatmap_service.get_heatmap(currency.upper(), years)
