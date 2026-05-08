@@ -9,7 +9,14 @@ from app.core.config import settings
 from app.db.base import Base
 
 # Import all models here so that Base.metadata is populated for autogenerate.
-from app.models import AssetSymbol, FxRate, FxRateSnapshot, LoginAttempt, UserAsset  # noqa: F401
+from app.models import (  # noqa: F401
+    AssetSymbol,
+    Dividend,
+    FxRate,
+    FxRateSnapshot,
+    LoginAttempt,
+    UserAsset,
+)
 
 logger = logging.getLogger(__name__)
 

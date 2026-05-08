@@ -16,6 +16,7 @@ from app.domain.asset_type import AssetType
 from app.exceptions import UnauthorizedError
 from app.repositories.asset_symbol import AssetSymbolRepository
 from app.repositories.cash_account import CashAccountRepository
+from app.repositories.dividend import DividendRepository
 from app.repositories.fx_rate import FxRateRepository
 from app.repositories.login_attempt import LoginAttemptRepository
 from app.repositories.portfolio import PortfolioRepository
@@ -27,6 +28,7 @@ from app.services.auth import AuthService
 from app.services.bulk_transaction import BulkTransactionService
 from app.services.cash_account import CashAccountService
 from app.services.data_export import DataExportService
+from app.services.dividend import DividendService
 from app.services.fx_rate import FxRateService
 from app.services.login_rate_limiter import LoginRateLimiter
 from app.services.market_index import MarketIndexService
@@ -400,3 +402,28 @@ async def get_current_user(
 
 
 CurrentUser = Annotated[OwnerPrincipal, Depends(get_current_user)]
+
+
+def get_dividend_repository(session: DbSession) -> DividendRepository:
+    """Inject a DividendRepository bound to the current request session."""
+    return DividendRepository(session)
+
+
+DividendRepositoryDep = Annotated[DividendRepository, Depends(get_dividend_repository)]
+
+
+def get_dividend_service(
+    repo: DividendRepositoryDep,
+    symbol_repo: AssetSymbolRepositoryDep,
+) -> DividendService:
+    """Inject a DividendService with the yfinance adapter."""
+    from app.adapters.us_dividends import UsDividendAdapter  # noqa: PLC0415
+
+    return DividendService(
+        repo=repo,
+        symbol_repo=symbol_repo,
+        us_adapter=UsDividendAdapter(),
+    )
+
+
+DividendServiceDep = Annotated[DividendService, Depends(get_dividend_service)]
