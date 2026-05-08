@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 from datetime import date
 
+from app.adapters.kr_dividends import KrDividendAdapter
 from app.adapters.us_dividends import UsDividendAdapter
 from app.domain.asset_type import AssetType
 from app.domain.dividend import DividendSource
@@ -32,10 +33,12 @@ class DividendService:
         repo: DividendRepository,
         symbol_repo: AssetSymbolRepository,
         us_adapter: UsDividendAdapter,
+        kr_adapter: KrDividendAdapter | None = None,
     ) -> None:
         self._repo = repo
         self._symbol_repo = symbol_repo
         self._us_adapter = us_adapter
+        self._kr_adapter = kr_adapter or KrDividendAdapter()
 
     async def refresh_us_dividends(self) -> int:
         """Fetch and store dividends for every US-listed AssetSymbol.
@@ -82,6 +85,61 @@ class DividendService:
             total_inserted,
             extra={
                 "event": "us_div_refresh_done",
+                "inserted": total_inserted,
+                "symbols": len(symbols),
+            },
+        )
+        return total_inserted
+
+    async def refresh_kr_dividends(self) -> int:
+        """Fetch and store dividends for every KR-listed AssetSymbol.
+
+        Uses pykrx fundamentals (trailing-12m DPS sampled at year-ends) since
+        KRX exposes no event-level dividend feed. Each non-zero year produces
+        one synthetic ``Dividend`` row keyed by year-end ex_date.
+
+        Returns:
+            Total number of newly inserted dividend rows across all symbols.
+        """
+        symbols = await self._symbol_repo.search(
+            asset_type=AssetType.KR_STOCK,
+            limit=1000,
+        )
+        if not symbols:
+            logger.debug(
+                "refresh_kr_dividends no symbols",
+                extra={"event": "kr_div_refresh_empty"},
+            )
+            return 0
+
+        total_inserted = 0
+        for sym in symbols:
+            try:
+                quotes = await self._kr_adapter.fetch_dividends(sym.symbol)
+            except Exception as exc:  # noqa: BLE001
+                logger.error(
+                    "refresh_kr_dividends fetch failed for %s: %s",
+                    sym.symbol,
+                    exc,
+                    extra={
+                        "event": "kr_div_refresh_fetch_fail",
+                        "symbol": sym.symbol,
+                        "error": str(exc),
+                    },
+                )
+                continue
+            inserted = await self._repo.insert_quotes(
+                asset_symbol_id=sym.id,
+                quotes=quotes,
+                source=DividendSource.PYKRX,
+            )
+            total_inserted += inserted
+
+        logger.info(
+            "refresh_kr_dividends done: %d inserted",
+            total_inserted,
+            extra={
+                "event": "kr_div_refresh_done",
                 "inserted": total_inserted,
                 "symbols": len(symbols),
             },

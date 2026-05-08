@@ -46,9 +46,7 @@ class TestInsertQuotes:
         count = await repo.insert_quotes(sym.id, [], DividendSource.YFINANCE)
         assert count == 0
 
-    async def test_신규_삽입(
-        self, repo: DividendRepository, db_session: AsyncSession
-    ) -> None:
+    async def test_신규_삽입(self, repo: DividendRepository, db_session: AsyncSession) -> None:
         sym = await _create_symbol(db_session)
         quotes = [
             DividendQuote(date(2026, 2, 7), Decimal("0.24"), "USD"),
@@ -80,9 +78,7 @@ class TestListFiltered:
         rows = await repo.list_filtered(asset_symbol_ids=[])
         assert rows == []
 
-    async def test_심볼_필터(
-        self, repo: DividendRepository, db_session: AsyncSession
-    ) -> None:
+    async def test_심볼_필터(self, repo: DividendRepository, db_session: AsyncSession) -> None:
         aapl = await _create_symbol(db_session, symbol="AAPL")
         msft = await _create_symbol(db_session, symbol="MSFT")
         await repo.insert_quotes(
