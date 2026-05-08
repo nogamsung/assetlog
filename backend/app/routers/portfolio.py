@@ -5,6 +5,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Query, status
 
 from app.core.deps import (
+    BenchmarkServiceDep,
     CurrentUser,
     PerformanceServiceDep,
     PortfolioHistoryServiceDep,
@@ -14,6 +15,7 @@ from app.core.deps import (
 from app.domain.performance import PerformanceMethod, PerformancePeriod
 from app.domain.portfolio_history import HistoryPeriod
 from app.schemas.auth import ErrorResponse
+from app.schemas.benchmark import BenchmarkComparisonResponse
 from app.schemas.performance import PerformanceResponse
 from app.schemas.portfolio import (
     HoldingResponse,
@@ -179,3 +181,34 @@ async def get_portfolio_performance(
 ) -> PerformanceResponse:
     """Return TWR / MWR portfolio performance metrics."""
     return await perf_service.get_performance(period, method, currency.upper())
+
+
+@router.get(
+    "/performance/benchmark",
+    response_model=BenchmarkComparisonResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Compare portfolio cumulative return against market benchmarks",
+    description=(
+        "Returns the user portfolio's cumulative return time series alongside "
+        "one series per requested benchmark symbol (default: KOSPI / S&P 500 / BTC). "
+        "Each series is anchored at 0% on the window start. The response also "
+        "includes per-symbol alpha = portfolio_final_return − benchmark_final_return."
+    ),
+    responses={
+        401: {"model": ErrorResponse, "description": "Not authenticated"},
+        422: {"model": ErrorResponse, "description": "Validation error"},
+    },
+)
+async def get_portfolio_benchmark(
+    _current_user: CurrentUser,
+    bench_service: BenchmarkServiceDep,
+    period: PerformancePeriod = Query(default=PerformancePeriod.ONE_YEAR),
+    currency: str = Query(default="KRW", min_length=3, max_length=10),
+    symbols: str = Query(
+        default="^KS11,^GSPC,BTC-USD",
+        description="Comma-separated list of yfinance ticker symbols",
+    ),
+) -> BenchmarkComparisonResponse:
+    """Return cumulative-return comparison vs market indices."""
+    symbol_list = [s.strip() for s in symbols.split(",") if s.strip()]
+    return await bench_service.compare(period, currency.upper(), symbol_list)
