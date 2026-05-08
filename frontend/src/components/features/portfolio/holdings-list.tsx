@@ -11,6 +11,7 @@ import Link from "next/link";
 import { formatCurrency, formatPercent, pnlColor } from "@/lib/format";
 import { tossCardNumber } from "@/lib/toss-tokens";
 import { cn } from "@/lib/utils";
+import { FxWarningInfo } from "./fx-warning-info";
 import type { HoldingResponse } from "@/types/portfolio";
 
 type SortKey = "latestValue" | "pnlAbs" | "weightPct";
@@ -185,8 +186,20 @@ export function HoldingsList({ holdings }: HoldingsListProps) {
                             {formatPercent(holding.pnlPct)})
                           </span>
                         )}
+                        {holding.fxWarning !== null && holding.fxWarning !== "same_currency" && (
+                          <FxWarningInfo warning={holding.fxWarning} />
+                        )}
                       </p>
                     )}
+                    {holding.displayCurrency !== null &&
+                      !holding.fxWarning &&
+                      holding.fxPnl != null &&
+                      Number(holding.fxPnl) !== 0 && (
+                        <p className="text-xs text-toss-textWeak font-normal mt-0.5">
+                          환율 영향 {Number(holding.fxPnl) >= 0 ? "+" : ""}
+                          {formatCurrency(holding.fxPnl, displayCurr)}
+                        </p>
+                      )}
                   </>
                 )}
               </div>

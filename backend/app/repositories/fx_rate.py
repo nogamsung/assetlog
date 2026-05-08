@@ -3,16 +3,26 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime
+from datetime import UTC, datetime
 from decimal import Decimal
 
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.fx_rate import FxRate
+from app.models.fx_rate_snapshot import FxRateSnapshot
 from app.repositories._dialect import get_dialect_name
 
 logger = logging.getLogger("app.repositories.fx_rate")
+
+
+def _ensure_utc(value: datetime) -> datetime:
+    """Return a tz-aware datetime — assume UTC for naive values.
+
+    SQLite drops timezone info on round-trip; production MySQL preserves it.
+    Comparisons across the Python boundary need a uniform tzinfo.
+    """
+    return value.replace(tzinfo=UTC) if value.tzinfo is None else value
 
 
 class FxRateRepository:
@@ -110,3 +120,147 @@ class FxRateRepository:
         stmt = select(FxRate).order_by(FxRate.base_currency, FxRate.quote_currency)
         result = await self._session.execute(stmt)
         return list(result.scalars().all())
+
+    async def insert_snapshot(
+        self,
+        base: str,
+        quote: str,
+        rate: Decimal,
+        recorded_at: datetime,
+    ) -> None:
+        """Insert a new FX rate snapshot row.
+
+        Silently ignores duplicate inserts (same base/quote/recorded_at) to
+        safely handle scheduler retries that fire twice in the same tick.
+        Pre-checks existence rather than catching ``IntegrityError`` because
+        savepoint semantics differ across SQLite/MySQL and the test fixture
+        relies on a single-session rollback for isolation.
+
+        Args:
+            base: Base currency code (e.g. "USD").
+            quote: Quote currency code (e.g. "KRW").
+            rate: Exchange rate — 1 base = rate quote.
+            recorded_at: Timestamp when the rate was recorded (scheduler tick time).
+        """
+        existing_stmt = (
+            select(FxRateSnapshot.id)
+            .where(
+                FxRateSnapshot.base_currency == base,
+                FxRateSnapshot.quote_currency == quote,
+                FxRateSnapshot.recorded_at == recorded_at,
+            )
+            .limit(1)
+        )
+        existing = (await self._session.execute(existing_stmt)).scalar_one_or_none()
+        if existing is not None:
+            logger.debug(
+                "fx_rate_snapshot duplicate suppressed",
+                extra={
+                    "event": "fx_snapshot_duplicate",
+                    "base": base,
+                    "quote": quote,
+                    "recorded_at": recorded_at.isoformat(),
+                },
+            )
+            return
+
+        snapshot = FxRateSnapshot(
+            base_currency=base,
+            quote_currency=quote,
+            rate=rate,
+            recorded_at=recorded_at,
+        )
+        self._session.add(snapshot)
+        await self._session.flush()
+        logger.debug(
+            "fx_rate_snapshot inserted",
+            extra={
+                "event": "fx_snapshot_insert",
+                "base": base,
+                "quote": quote,
+                "recorded_at": recorded_at.isoformat(),
+            },
+        )
+
+    async def get_rate_at(
+        self,
+        base: str,
+        quote: str,
+        at: datetime,
+    ) -> FxRateSnapshot | None:
+        """Return the nearest snapshot at or before *at* for the given pair.
+
+        Uses a "nearest-past" strategy: the most recent snapshot whose
+        ``recorded_at <= at`` is returned.
+
+        Args:
+            base: Base currency code.
+            quote: Quote currency code.
+            at: Reference timestamp — returns the latest snapshot on or before this.
+
+        Returns:
+            FxRateSnapshot row or None if no snapshot exists at or before *at*.
+        """
+        stmt = (
+            select(FxRateSnapshot)
+            .where(
+                FxRateSnapshot.base_currency == base,
+                FxRateSnapshot.quote_currency == quote,
+                FxRateSnapshot.recorded_at <= at,
+            )
+            .order_by(FxRateSnapshot.recorded_at.desc())
+            .limit(1)
+        )
+        result = await self._session.execute(stmt)
+        return result.scalar_one_or_none()
+
+    async def get_rates_at_batch(
+        self,
+        base: str,
+        quote: str,
+        ats: list[datetime],
+    ) -> dict[datetime, FxRateSnapshot | None]:
+        """Return nearest-past snapshots for multiple timestamps in one query.
+
+        Fetches all snapshots for the pair then performs nearest-past matching
+        in Python.  This avoids N+1 queries when resolving multiple BUY lot
+        timestamps for a single currency pair.
+
+        Args:
+            base: Base currency code.
+            quote: Quote currency code.
+            ats: List of reference timestamps to resolve.
+
+        Returns:
+            Dict mapping each requested timestamp to its matching snapshot
+            (or None if no snapshot exists at or before that timestamp).
+        """
+        if not ats:
+            return {}
+
+        max_at = max(ats)
+        stmt = (
+            select(FxRateSnapshot)
+            .where(
+                FxRateSnapshot.base_currency == base,
+                FxRateSnapshot.quote_currency == quote,
+                FxRateSnapshot.recorded_at <= max_at,
+            )
+            .order_by(FxRateSnapshot.recorded_at)
+        )
+        result = await self._session.execute(stmt)
+        all_snaps: list[FxRateSnapshot] = list(result.scalars().all())
+
+        # SQLite returns naive datetimes; production MySQL returns aware.
+        # Normalise via _ensure_utc before comparing against the request's
+        # tz-aware timestamps.
+        resolved: dict[datetime, FxRateSnapshot | None] = {}
+        for at in ats:
+            match: FxRateSnapshot | None = None
+            for snap in all_snaps:
+                if _ensure_utc(snap.recorded_at) <= at:
+                    match = snap
+                else:
+                    break
+            resolved[at] = match
+        return resolved

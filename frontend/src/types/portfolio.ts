@@ -12,6 +12,8 @@ export interface AllocationEntry {
   pct: number;
 }
 
+export type FxWarning = "missing_historical_rate" | "missing_current_rate" | "same_currency" | null; // ADDED
+
 export interface PortfolioSummary {
   totalValueByCurrency: CurrencyAmountMap;
   totalCostByCurrency: CurrencyAmountMap;
@@ -29,6 +31,10 @@ export interface PortfolioSummary {
   displayCurrency: string | null;
   // 현금 보유 합계 (통화별)
   cashTotalByCurrency: CurrencyAmountMap;
+  // 환차손익 분리 필드 (convert_to 사용 시) — optional for forward compat
+  convertedPricePnl?: string | null;
+  convertedFxPnl?: string | null;
+  fxWarning?: FxWarning;
 }
 
 export interface HoldingResponse {
@@ -52,4 +58,8 @@ export interface HoldingResponse {
   convertedPnlAbs: string | null;
   convertedRealizedPnl: string | null;
   displayCurrency: string | null;
+  // 환차손익 분리 필드 — optional for forward compat
+  pricePnl?: string | null;
+  fxPnl?: string | null;
+  fxWarning?: FxWarning;
 }

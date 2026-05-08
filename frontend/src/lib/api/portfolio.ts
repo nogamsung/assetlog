@@ -1,5 +1,4 @@
 import { apiClient } from "@/lib/api-client";
-import { snakeToCamel } from "@/lib/case";
 import type { AssetType } from "@/types/asset";
 import type {
   PortfolioSummary,
@@ -7,6 +6,7 @@ import type {
   CurrencyAmountMap,
   PnlEntry,
   AllocationEntry,
+  FxWarning,
 } from "@/types/portfolio";
 
 // ── Raw shapes (snake_case from backend) ──────────────────────────────────────
@@ -36,6 +36,9 @@ interface RawPortfolioSummary {
   converted_realized_pnl: string | null;
   display_currency: string | null;
   cash_total_by_currency?: CurrencyAmountMap;
+  converted_price_pnl: string | null;  // ADDED
+  converted_fx_pnl: string | null;     // ADDED
+  fx_warning: FxWarning;               // ADDED
 }
 
 interface RawAssetSymbol {
@@ -70,6 +73,10 @@ interface RawHolding {
   converted_pnl_abs: string | null;
   converted_realized_pnl: string | null;
   display_currency: string | null;
+  // 환차손익 분리 필드 — ADDED
+  price_pnl: string | null;  // ADDED
+  fx_pnl: string | null;     // ADDED
+  fx_warning: FxWarning;     // ADDED
 }
 
 // ── Converters ─────────────────────────────────────────────────────────────────
@@ -100,11 +107,46 @@ function toPortfolioSummary(raw: RawPortfolioSummary): PortfolioSummary {
     convertedRealizedPnl: raw.converted_realized_pnl ?? null,
     displayCurrency: raw.display_currency ?? null,
     cashTotalByCurrency: raw.cash_total_by_currency ?? {},
+    convertedPricePnl: raw.converted_price_pnl ?? null,  // ADDED
+    convertedFxPnl:    raw.converted_fx_pnl ?? null,     // ADDED
+    fxWarning:         raw.fx_warning ?? null,            // ADDED
   };
 }
 
-function toHolding(raw: RawHolding): HoldingResponse {
-  return snakeToCamel(raw) as unknown as HoldingResponse;
+function toHolding(raw: RawHolding): HoldingResponse { // MODIFIED — explicit mapping for type safety
+  return {
+    userAssetId:          raw.user_asset_id,
+    assetSymbol: {
+      id:        raw.asset_symbol.id,
+      assetType: raw.asset_symbol.asset_type,
+      symbol:    raw.asset_symbol.symbol,
+      exchange:  raw.asset_symbol.exchange,
+      name:      raw.asset_symbol.name,
+      currency:  raw.asset_symbol.currency,
+      createdAt: raw.asset_symbol.created_at,
+      updatedAt: raw.asset_symbol.updated_at,
+    },
+    quantity:             raw.quantity,
+    avgCost:              raw.avg_cost,
+    costBasis:            raw.cost_basis,
+    realizedPnl:          raw.realized_pnl,
+    latestPrice:          raw.latest_price,
+    latestValue:          raw.latest_value,
+    pnlAbs:               raw.pnl_abs,
+    pnlPct:               raw.pnl_pct,
+    weightPct:            raw.weight_pct,
+    lastPriceRefreshedAt: raw.last_price_refreshed_at,
+    isStale:              raw.is_stale,
+    isPending:            raw.is_pending,
+    convertedLatestValue: raw.converted_latest_value ?? null,
+    convertedCostBasis:   raw.converted_cost_basis ?? null,
+    convertedPnlAbs:      raw.converted_pnl_abs ?? null,
+    convertedRealizedPnl: raw.converted_realized_pnl ?? null,
+    displayCurrency:      raw.display_currency ?? null,
+    pricePnl:             raw.price_pnl ?? null,  // ADDED
+    fxPnl:                raw.fx_pnl ?? null,     // ADDED
+    fxWarning:            raw.fx_warning ?? null,  // ADDED
+  };
 }
 
 // ── Public API helpers ─────────────────────────────────────────────────────────

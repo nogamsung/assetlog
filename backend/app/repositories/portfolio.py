@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import logging
+from datetime import datetime
 from decimal import Decimal
 
-from sqlalchemy import case, func, select, text  # MODIFIED — added text
+from sqlalchemy import case, func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -107,6 +108,9 @@ class PortfolioRepository:
 
         rows = (await self._session.execute(stmt)).all()
 
+        ua_ids = [row[0].id for row in rows]
+        buy_lots_by_ua = await self._load_buy_lots(ua_ids)
+
         result: list[HoldingRow] = []
         for row in rows:
             user_asset: UserAsset = row[0]
@@ -116,21 +120,21 @@ class PortfolioRepository:
             total_sold_qty = Decimal(str(row.total_sold_qty))
             total_sold_value = Decimal(str(row.total_sold_value))
 
-            # Derived: remaining qty and cost basis of remaining shares  # ADDED
             remaining_qty = total_bought_qty - total_sold_qty
             avg_buy_price = (
                 total_bought_cost / total_bought_qty if total_bought_qty != zero else zero
             )
             cost_basis_remaining = avg_buy_price * remaining_qty
-            realized_pnl = total_sold_value - total_sold_qty * avg_buy_price  # ADDED
+            realized_pnl = total_sold_value - total_sold_qty * avg_buy_price
 
             result.append(
                 HoldingRow(
                     user_asset_id=user_asset.id,
                     asset_symbol=user_asset.asset_symbol,
-                    total_qty=remaining_qty,  # MODIFIED — remaining, not total bought
-                    total_cost=cost_basis_remaining,  # MODIFIED — cost of remaining shares
-                    realized_pnl=realized_pnl,  # ADDED
+                    total_qty=remaining_qty,
+                    total_cost=cost_basis_remaining,
+                    realized_pnl=realized_pnl,
+                    buy_lots=buy_lots_by_ua.get(user_asset.id, ()),
                 )
             )
 
@@ -139,6 +143,43 @@ class PortfolioRepository:
             len(result),
         )
         return result
+
+    async def _load_buy_lots(
+        self,
+        user_asset_ids: list[int],
+    ) -> dict[int, tuple[tuple[datetime, Decimal], ...]]:
+        """Fetch BUY transactions grouped by user_asset_id.
+
+        Each entry maps user_asset_id → tuple of (traded_at, cost_local) tuples
+        ordered by traded_at where cost_local = quantity × price in the asset's
+        native currency. Used by PortfolioService to compute cost-weighted
+        average historical FX rates.
+        """
+        if not user_asset_ids:
+            return {}
+
+        stmt = (
+            select(
+                Transaction.user_asset_id,
+                Transaction.traded_at,
+                (Transaction.quantity * Transaction.price).label("cost_local"),
+            )
+            .where(
+                Transaction.user_asset_id.in_(user_asset_ids),
+                Transaction.type == TransactionType.BUY,
+            )
+            .order_by(Transaction.user_asset_id, Transaction.traded_at)
+        )
+        rows = (await self._session.execute(stmt)).all()
+
+        grouped: dict[int, list[tuple[datetime, Decimal]]] = {}
+        for row in rows:
+            ua_id = int(row[0])
+            traded_at: datetime = row[1]
+            cost_local = Decimal(str(row[2]))
+            grouped.setdefault(ua_id, []).append((traded_at, cost_local))
+
+        return {ua_id: tuple(lots) for ua_id, lots in grouped.items()}
 
     async def list_tag_breakdown_rows(
         self,
