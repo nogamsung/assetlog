@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
 
@@ -10,9 +11,22 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domain.dividend import DividendQuote, DividendSource
+from app.models.asset_symbol import AssetSymbol
 from app.models.dividend import Dividend
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class CalendarRow:
+    """Result row of ``list_calendar_with_symbol`` — joined with AssetSymbol."""
+
+    asset_symbol_id: int
+    symbol: str
+    name: str
+    ex_date: date
+    amount: Decimal
+    currency: str
 
 
 class DividendRepository:
@@ -109,3 +123,44 @@ class DividendRepository:
             stmt = stmt.where(Dividend.asset_symbol_id.in_(asset_symbol_ids))
         rows = (await self._session.execute(stmt)).all()
         return {int(row[0]): Decimal(str(row[1])) for row in rows}
+
+    async def list_calendar_with_symbol(
+        self,
+        *,
+        date_from: date | None = None,
+        date_to: date | None = None,
+    ) -> list[CalendarRow]:
+        """Return dividends joined with AssetSymbol for display, oldest first.
+
+        Designed for the calendar UI — dates ascending so upcoming ex-dates
+        sort naturally when ``date_from`` is set to today.
+        """
+        stmt = (
+            select(
+                Dividend.asset_symbol_id,
+                AssetSymbol.symbol,
+                AssetSymbol.name,
+                Dividend.ex_date,
+                Dividend.amount,
+                Dividend.currency,
+            )
+            .join(AssetSymbol, AssetSymbol.id == Dividend.asset_symbol_id)
+            .order_by(Dividend.ex_date.asc(), Dividend.id.asc())
+        )
+        if date_from is not None:
+            stmt = stmt.where(Dividend.ex_date >= date_from)
+        if date_to is not None:
+            stmt = stmt.where(Dividend.ex_date <= date_to)
+
+        rows = (await self._session.execute(stmt)).all()
+        return [
+            CalendarRow(
+                asset_symbol_id=int(row[0]),
+                symbol=str(row[1]),
+                name=str(row[2]),
+                ex_date=row[3],
+                amount=Decimal(str(row[4])),
+                currency=str(row[5]),
+            )
+            for row in rows
+        ]

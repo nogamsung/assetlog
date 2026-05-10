@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 from datetime import date
+from decimal import Decimal
 
 from app.adapters.kr_dividends import KrDividendAdapter
 from app.adapters.us_dividends import UsDividendAdapter
@@ -11,13 +12,20 @@ from app.domain.asset_type import AssetType
 from app.domain.dividend import DividendSource
 from app.repositories.asset_symbol import AssetSymbolRepository
 from app.repositories.dividend import DividendRepository
+from app.repositories.portfolio import PortfolioRepository
 from app.schemas.dividend import (
+    DividendCalendarEntry,
+    DividendCalendarResponse,
     DividendListResponse,
     DividendResponse,
     DividendSummaryEntry,
+    YieldOnCostEntry,
+    YieldOnCostResponse,
 )
 
 logger = logging.getLogger(__name__)
+
+_ZERO = Decimal("0")
 
 
 class DividendService:
@@ -34,11 +42,13 @@ class DividendService:
         symbol_repo: AssetSymbolRepository,
         us_adapter: UsDividendAdapter,
         kr_adapter: KrDividendAdapter | None = None,
+        portfolio_repo: PortfolioRepository | None = None,
     ) -> None:
         self._repo = repo
         self._symbol_repo = symbol_repo
         self._us_adapter = us_adapter
         self._kr_adapter = kr_adapter or KrDividendAdapter()
+        self._portfolio_repo = portfolio_repo
 
     async def refresh_us_dividends(self) -> int:
         """Fetch and store dividends for every US-listed AssetSymbol.
@@ -175,3 +185,68 @@ class DividendService:
             for sym_id, total in sorted(sums.items())
         ]
         return DividendListResponse(items=items, summary_by_symbol=summary)
+
+    async def get_calendar(
+        self,
+        *,
+        date_from: date | None = None,
+        date_to: date | None = None,
+    ) -> DividendCalendarResponse:
+        """Return chronological dividend rows joined with symbol/name."""
+        rows = await self._repo.list_calendar_with_symbol(
+            date_from=date_from,
+            date_to=date_to,
+        )
+        entries = [
+            DividendCalendarEntry(
+                asset_symbol_id=row.asset_symbol_id,
+                symbol=row.symbol,
+                name=row.name,
+                ex_date=row.ex_date,
+                amount=row.amount,
+                currency=row.currency,
+            )
+            for row in rows
+        ]
+        return DividendCalendarResponse(entries=entries)
+
+    async def get_yield_on_cost(self) -> YieldOnCostResponse:
+        """Return cumulative-dividend yield-on-cost per current holding.
+
+        Joins ``DividendRepository.sum_by_symbol`` with the user's holdings
+        (cost basis, symbol metadata) from PortfolioRepository. Falls back to
+        an empty response if no portfolio_repo was injected — caller is
+        expected to wire it in when this endpoint is exposed.
+        """
+        if self._portfolio_repo is None:
+            logger.debug(
+                "get_yield_on_cost called without portfolio_repo — returning empty",
+                extra={"event": "yoc_no_portfolio_repo"},
+            )
+            return YieldOnCostResponse(entries=[])
+
+        holdings = await self._portfolio_repo.list_holdings_with_aggregates()
+        if not holdings:
+            return YieldOnCostResponse(entries=[])
+
+        sym_ids = [h.asset_symbol.id for h in holdings]
+        sums = await self._repo.sum_by_symbol(asset_symbol_ids=sym_ids)
+
+        entries: list[YieldOnCostEntry] = []
+        for h in holdings:
+            sym = h.asset_symbol
+            total = sums.get(sym.id, _ZERO)
+            cost_basis = h.total_cost
+            yoc = (total / cost_basis) if cost_basis > _ZERO else None
+            entries.append(
+                YieldOnCostEntry(
+                    asset_symbol_id=sym.id,
+                    symbol=sym.symbol,
+                    name=sym.name,
+                    currency=sym.currency,
+                    cost_basis=cost_basis,
+                    total_dividend=total,
+                    yield_on_cost_pct=yoc,
+                )
+            )
+        return YieldOnCostResponse(entries=entries)

@@ -59,9 +59,7 @@ class TestHeatmapEndpoint:
     async def test_years_검증_상한(self, async_client: AsyncClient) -> None:
         app.dependency_overrides[get_current_user] = lambda: OwnerPrincipal()
         try:
-            response = await async_client.get(
-                "/api/portfolio/performance/heatmap?years=21"
-            )
+            response = await async_client.get("/api/portfolio/performance/heatmap?years=21")
             assert response.status_code == 422
         finally:
             app.dependency_overrides.clear()
@@ -69,9 +67,7 @@ class TestHeatmapEndpoint:
     async def test_years_검증_하한(self, async_client: AsyncClient) -> None:
         app.dependency_overrides[get_current_user] = lambda: OwnerPrincipal()
         try:
-            response = await async_client.get(
-                "/api/portfolio/performance/heatmap?years=0"
-            )
+            response = await async_client.get("/api/portfolio/performance/heatmap?years=0")
             assert response.status_code == 422
         finally:
             app.dependency_overrides.clear()
