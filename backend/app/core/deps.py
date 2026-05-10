@@ -436,8 +436,9 @@ DividendRepositoryDep = Annotated[DividendRepository, Depends(get_dividend_repos
 def get_dividend_service(
     repo: DividendRepositoryDep,
     symbol_repo: AssetSymbolRepositoryDep,
+    portfolio_repo: PortfolioRepositoryDep,
 ) -> DividendService:
-    """Inject a DividendService with the yfinance + pykrx adapters."""
+    """Inject a DividendService with the yfinance + pykrx adapters + portfolio repo."""
     from app.adapters.kr_dividends import KrDividendAdapter  # noqa: PLC0415
     from app.adapters.us_dividends import UsDividendAdapter  # noqa: PLC0415
 
@@ -446,6 +447,7 @@ def get_dividend_service(
         symbol_repo=symbol_repo,
         us_adapter=UsDividendAdapter(),
         kr_adapter=KrDividendAdapter(),
+        portfolio_repo=portfolio_repo,
     )
 
 

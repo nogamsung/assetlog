@@ -8,7 +8,11 @@ from fastapi import APIRouter, Query, status
 
 from app.core.deps import CurrentUser, DividendServiceDep
 from app.schemas.auth import ErrorResponse
-from app.schemas.dividend import DividendListResponse
+from app.schemas.dividend import (
+    DividendCalendarResponse,
+    DividendListResponse,
+    YieldOnCostResponse,
+)
 
 router = APIRouter(prefix="/api/dividends", tags=["dividends"])
 
@@ -41,3 +45,53 @@ async def list_dividends(
         date_from=date_from,
         date_to=date_to,
     )
+
+
+@router.get(
+    "/calendar",
+    response_model=DividendCalendarResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Chronological dividend calendar (joined with symbol/name)",
+    description=(
+        "Returns dividend rows ordered ascending by ex_date for use in a "
+        "calendar UI. Each entry includes asset_symbol.symbol and name so "
+        "the client doesn't need an extra round-trip. Use ``from=YYYY-MM-DD`` "
+        "(typically today) to fetch upcoming-only events."
+    ),
+    responses={
+        401: {"model": ErrorResponse, "description": "Not authenticated"},
+        422: {"model": ErrorResponse, "description": "Validation error"},
+    },
+)
+async def get_dividend_calendar(
+    _current_user: CurrentUser,
+    dividend_service: DividendServiceDep,
+    date_from: date | None = Query(default=None, alias="from"),
+    date_to: date | None = Query(default=None, alias="to"),
+) -> DividendCalendarResponse:
+    return await dividend_service.get_calendar(
+        date_from=date_from,
+        date_to=date_to,
+    )
+
+
+@router.get(
+    "/yield-on-cost",
+    response_model=YieldOnCostResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Yield-on-cost per current holding",
+    description=(
+        "Returns cumulative-dividend yield-on-cost = total_dividend / cost_basis "
+        "for every UserAsset. cost_basis is the remaining-share cost in the "
+        "asset's native currency (matching dividend currency). Holdings with "
+        "zero cost basis return null yield."
+    ),
+    responses={
+        401: {"model": ErrorResponse, "description": "Not authenticated"},
+    },
+)
+async def get_yield_on_cost(
+    _current_user: CurrentUser,
+    dividend_service: DividendServiceDep,
+) -> YieldOnCostResponse:
+    return await dividend_service.get_yield_on_cost()
