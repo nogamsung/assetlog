@@ -22,9 +22,7 @@ def service(db_session: AsyncSession) -> CashAccountService:
 
 
 class TestCreateWithInterestRate:
-    async def test_생성시_interest_rate_저장(
-        self, service: CashAccountService
-    ) -> None:
+    async def test_생성시_interest_rate_저장(self, service: CashAccountService) -> None:
         account = await service.create(
             CashAccountCreate(
                 label="KRW Savings",

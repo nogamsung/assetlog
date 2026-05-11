@@ -107,11 +107,7 @@ class CashAccountUpdate(BaseModel):
     @model_validator(mode="after")
     def at_least_one_field(self) -> CashAccountUpdate:
         """Require at least one field to be provided."""
-        if (
-            self.label is None
-            and self.balance is None
-            and self.interest_rate_annual is None
-        ):
+        if self.label is None and self.balance is None and self.interest_rate_annual is None:
             raise ValueError(
                 "at least one field must be provided (label, balance, or interest_rate_annual)"
             )
