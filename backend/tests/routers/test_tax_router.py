@@ -48,9 +48,7 @@ class TestCapitalGainsEndpoint:
         app.dependency_overrides[get_current_user] = lambda: OwnerPrincipal()
         app.dependency_overrides[get_tax_kr_service] = lambda: mock_svc
         try:
-            response = await async_client.get(
-                "/api/tax/capital-gains?year=2025&method=average"
-            )
+            response = await async_client.get("/api/tax/capital-gains?year=2025&method=average")
             assert response.status_code == 200
             body = response.json()
             assert body["year"] == 2025
@@ -78,9 +76,7 @@ class TestCapitalGainsEndpoint:
     async def test_invalid_method_422(self, async_client: AsyncClient) -> None:
         app.dependency_overrides[get_current_user] = lambda: OwnerPrincipal()
         try:
-            response = await async_client.get(
-                "/api/tax/capital-gains?year=2025&method=lifo"
-            )
+            response = await async_client.get("/api/tax/capital-gains?year=2025&method=lifo")
             assert response.status_code == 422
         finally:
             app.dependency_overrides.clear()

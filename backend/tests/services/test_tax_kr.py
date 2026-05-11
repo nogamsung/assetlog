@@ -81,15 +81,13 @@ def _make_service(
     ua_repo.get_by_symbol.side_effect = _ua_by_symbol
 
     tx_repo = AsyncMock(spec=TransactionRepository)
-    tx_repo.list_all_for_user_asset.side_effect = lambda ua_id: (
-        (txs_by_symbol_id or {}).get(ua_id, [])
+    tx_repo.list_all_for_user_asset.side_effect = lambda ua_id: (txs_by_symbol_id or {}).get(
+        ua_id, []
     )
 
     fx = AsyncMock(spec=FxRateService)
 
-    async def _convert_at(
-        amount: Decimal, frm: str, to: str, at: datetime
-    ) -> Decimal:
+    async def _convert_at(amount: Decimal, frm: str, to: str, at: datetime) -> Decimal:
         if frm == to:
             return amount
         rate = (fx_rates or {}).get((frm, to, at.date().isoformat()))
