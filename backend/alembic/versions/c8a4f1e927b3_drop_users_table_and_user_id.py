@@ -25,9 +25,28 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
+    # The original a2f8c3d91e45 migration created this FK without a name,
+    # so the DB-side name is whatever the backend auto-assigned (e.g. MySQL's
+    # ``user_assets_ibfk_2``) rather than ``fk_user_assets_user_id``. Look it
+    # up at runtime so the migration works regardless of naming.
+    bind = op.get_bind()
+    insp = sa.inspect(bind)
+    user_fk_name: str | None = None
+    for fk in insp.get_foreign_keys("user_assets"):
+        if (
+            fk.get("referred_table") == "users"
+            and fk.get("constrained_columns") == ["user_id"]
+        ):
+            user_fk_name = fk.get("name")
+            break
+    if user_fk_name is None:
+        raise RuntimeError(
+            "Expected FK user_assets.user_id -> users.id was not found",
+        )
+
     # --- user_assets: drop FK + composite unique + index, then drop user_id column ---
     with op.batch_alter_table("user_assets") as batch:
-        batch.drop_constraint("fk_user_assets_user_id", type_="foreignkey")
+        batch.drop_constraint(user_fk_name, type_="foreignkey")
         batch.drop_constraint("uq_user_asset_symbol", type_="unique")
         batch.drop_index("ix_user_assets_user_id")
         batch.drop_column("user_id")
