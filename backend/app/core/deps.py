@@ -524,3 +524,20 @@ def get_target_allocation_service(
 TargetAllocationServiceDep = Annotated[
     TargetAllocationService, Depends(get_target_allocation_service)
 ]
+
+
+from app.services.rebalance import RebalanceService  # noqa: E402  # forward DI
+
+
+def get_rebalance_service(
+    target_service: TargetAllocationServiceDep,
+    portfolio_service: PortfolioServiceDep,
+) -> RebalanceService:
+    """Inject a RebalanceService bound to the current session."""
+    return RebalanceService(
+        target_service=target_service,
+        portfolio_service=portfolio_service,
+    )
+
+
+RebalanceServiceDep = Annotated[RebalanceService, Depends(get_rebalance_service)]

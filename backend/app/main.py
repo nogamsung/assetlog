@@ -35,6 +35,7 @@ from app.routers.fx import router as fx_router
 from app.routers.integration import router as integration_router
 from app.routers.market_index import router as market_index_router
 from app.routers.portfolio import router as portfolio_router
+from app.routers.rebalance import router as rebalance_router
 from app.routers.sample import router as sample_router
 from app.routers.symbol import router as symbol_router
 from app.routers.target_allocation import router as target_allocation_router
@@ -262,6 +263,7 @@ app.include_router(dividend_router)
 app.include_router(integration_router)
 app.include_router(market_index_router)
 app.include_router(target_allocation_router)
+app.include_router(rebalance_router)
 app.include_router(sample_router)
 app.include_router(export_router)
 

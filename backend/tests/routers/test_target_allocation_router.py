@@ -28,9 +28,7 @@ class TestGetTargetAllocation:
 
 class TestPutTargetAllocation:
     async def test_미인증_401(self, async_client: AsyncClient) -> None:
-        response = await async_client.put(
-            "/api/target-allocation", json={"entries": []}
-        )
+        response = await async_client.put("/api/target-allocation", json={"entries": []})
         assert response.status_code == 401
 
     async def test_정상_저장_round_trip(self, async_client: AsyncClient) -> None:
@@ -77,9 +75,7 @@ class TestPutTargetAllocation:
                 "/api/target-allocation",
                 json={"entries": [{"asset_type": "us_stock", "target_pct": "0.5"}]},
             )
-            response = await async_client.put(
-                "/api/target-allocation", json={"entries": []}
-            )
+            response = await async_client.put("/api/target-allocation", json={"entries": []})
             assert response.status_code == 200
             assert response.json() == {"entries": []}
         finally:

@@ -43,25 +43,17 @@ class TestReplace:
     async def test_빈_리스트_clear(self, service: TargetAllocationService) -> None:
         await service.replace(
             TargetAllocationUpsertRequest(
-                entries=[
-                    TargetAllocationEntry(
-                        asset_type="us_stock", target_pct=Decimal("0.5")
-                    )
-                ]
+                entries=[TargetAllocationEntry(asset_type="us_stock", target_pct=Decimal("0.5"))]
             )
         )
         result = await service.replace(TargetAllocationUpsertRequest(entries=[]))
         assert result.entries == []
 
-    async def test_replace_삭제_후_재삽입(
-        self, service: TargetAllocationService
-    ) -> None:
+    async def test_replace_삭제_후_재삽입(self, service: TargetAllocationService) -> None:
         await service.replace(
             TargetAllocationUpsertRequest(
                 entries=[
-                    TargetAllocationEntry(
-                        asset_type="us_stock", target_pct=Decimal("0.5")
-                    ),
+                    TargetAllocationEntry(asset_type="us_stock", target_pct=Decimal("0.5")),
                 ]
             )
         )
@@ -69,9 +61,7 @@ class TestReplace:
         result = await service.replace(
             TargetAllocationUpsertRequest(
                 entries=[
-                    TargetAllocationEntry(
-                        asset_type="kr_stock", target_pct=Decimal("0.7")
-                    ),
+                    TargetAllocationEntry(asset_type="kr_stock", target_pct=Decimal("0.7")),
                 ]
             )
         )
@@ -84,12 +74,8 @@ class TestSchemaValidation:
         with pytest.raises(ValueError):
             TargetAllocationUpsertRequest(
                 entries=[
-                    TargetAllocationEntry(
-                        asset_type="us_stock", target_pct=Decimal("0.6")
-                    ),
-                    TargetAllocationEntry(
-                        asset_type="kr_stock", target_pct=Decimal("0.5")
-                    ),
+                    TargetAllocationEntry(asset_type="us_stock", target_pct=Decimal("0.6")),
+                    TargetAllocationEntry(asset_type="kr_stock", target_pct=Decimal("0.5")),
                 ]
             )
 
@@ -97,12 +83,8 @@ class TestSchemaValidation:
         with pytest.raises(ValueError):
             TargetAllocationUpsertRequest(
                 entries=[
-                    TargetAllocationEntry(
-                        asset_type="us_stock", target_pct=Decimal("0.3")
-                    ),
-                    TargetAllocationEntry(
-                        asset_type="us_stock", target_pct=Decimal("0.2")
-                    ),
+                    TargetAllocationEntry(asset_type="us_stock", target_pct=Decimal("0.3")),
+                    TargetAllocationEntry(asset_type="us_stock", target_pct=Decimal("0.2")),
                 ]
             )
 
