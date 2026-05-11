@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.12.2](https://github.com/nogamsung/assetlog/compare/v0.12.1...v0.12.2) (2026-05-11)
+
+
+### Bug Fixes
+
+* **migrations:** look up user_assets.user_id FK name at runtime ([#118](https://github.com/nogamsung/assetlog/issues/118)) ([5ea7172](https://github.com/nogamsung/assetlog/commit/5ea7172d21fea70d9510b53c3ecc5d53c3ea72ca))
+* **schema:** add missing tables to bootstrap schema.sql ([#117](https://github.com/nogamsung/assetlog/issues/117)) ([d5eceb3](https://github.com/nogamsung/assetlog/commit/d5eceb3f9f70afcacb00b1e8dfa7f64e63b2a98b))
+
 ## [0.12.1](https://github.com/nogamsung/assetlog/compare/v0.12.0...v0.12.1) (2026-05-11)
 
 
