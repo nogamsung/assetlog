@@ -6,6 +6,7 @@ from app.models.dividend import Dividend
 from app.models.fx_rate import FxRate
 from app.models.fx_rate_snapshot import FxRateSnapshot
 from app.models.login_attempt import LoginAttempt
+from app.models.target_allocation import TargetAllocation
 from app.models.transaction import Transaction
 from app.models.user_asset import UserAsset
 
@@ -16,6 +17,7 @@ __all__ = [
     "FxRate",
     "FxRateSnapshot",
     "LoginAttempt",
+    "TargetAllocation",
     "Transaction",
     "UserAsset",
 ]

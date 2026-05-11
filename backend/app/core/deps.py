@@ -494,3 +494,33 @@ def get_heatmap_service(
 
 
 HeatmapServiceDep = Annotated[HeatmapService, Depends(get_heatmap_service)]
+
+
+from app.repositories.target_allocation import (  # noqa: E402
+    TargetAllocationRepository,
+)
+from app.services.target_allocation import TargetAllocationService  # noqa: E402
+
+
+def get_target_allocation_repository(
+    session: DbSession,
+) -> TargetAllocationRepository:
+    """Inject a TargetAllocationRepository bound to the current session."""
+    return TargetAllocationRepository(session)
+
+
+TargetAllocationRepositoryDep = Annotated[
+    TargetAllocationRepository, Depends(get_target_allocation_repository)
+]
+
+
+def get_target_allocation_service(
+    repo: TargetAllocationRepositoryDep,
+) -> TargetAllocationService:
+    """Inject a TargetAllocationService bound to the current session."""
+    return TargetAllocationService(repo)
+
+
+TargetAllocationServiceDep = Annotated[
+    TargetAllocationService, Depends(get_target_allocation_service)
+]
