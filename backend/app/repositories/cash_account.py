@@ -41,13 +41,19 @@ class CashAccountRepository:
         label: str,
         currency: str,
         balance: Decimal,
+        interest_rate_annual: Decimal | None = None,
     ) -> CashAccount:
         """Persist a new CashAccount and return the refreshed instance.
 
         Commit is handled by the caller via ``Depends(get_db_session)``.
         Refresh is required to populate server_default columns (created_at, updated_at).
         """
-        account = CashAccount(label=label, currency=currency, balance=balance)
+        account = CashAccount(
+            label=label,
+            currency=currency,
+            balance=balance,
+            interest_rate_annual=interest_rate_annual,
+        )
         self._session.add(account)
         await self._session.flush()
         await self._session.refresh(account)
@@ -60,12 +66,15 @@ class CashAccountRepository:
         *,
         label: str | None,
         balance: Decimal | None,
+        interest_rate_annual: Decimal | None = None,
     ) -> CashAccount:
         """Apply partial field updates, flush, and refresh. Returns the updated entity."""
         if label is not None:
             entity.label = label
         if balance is not None:
             entity.balance = balance
+        if interest_rate_annual is not None:
+            entity.interest_rate_annual = interest_rate_annual
         await self._session.flush()
         await self._session.refresh(entity)
         logger.debug("CashAccount updated: id=%s", entity.id)

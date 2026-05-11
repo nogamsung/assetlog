@@ -24,6 +24,10 @@ class CashAccount(Base):
     label: Mapped[str] = mapped_column(String(100), nullable=False)
     currency: Mapped[str] = mapped_column(String(4), nullable=False, index=True)
     balance: Mapped[Decimal] = mapped_column(Numeric(20, 4), nullable=False)
+    interest_rate_annual: Mapped[Decimal | None] = mapped_column(
+        Numeric(6, 4),
+        nullable=True,
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),

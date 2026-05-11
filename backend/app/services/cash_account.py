@@ -36,6 +36,7 @@ class CashAccountService:
             label=data.label,
             currency=data.currency,
             balance=data.balance,
+            interest_rate_annual=data.interest_rate_annual,
         )
         logger.info(
             "CashAccount created: id=%s currency=%s",
@@ -60,7 +61,12 @@ class CashAccountService:
         account = await self._repo.get_by_id(id_)
         if account is None:
             raise NotFoundError(f"CashAccount {id_} not found")
-        updated = await self._repo.update(account, label=data.label, balance=data.balance)
+        updated = await self._repo.update(
+            account,
+            label=data.label,
+            balance=data.balance,
+            interest_rate_annual=data.interest_rate_annual,
+        )
         logger.info("CashAccount updated: id=%s", updated.id)
         return updated
 
