@@ -541,3 +541,26 @@ def get_rebalance_service(
 
 
 RebalanceServiceDep = Annotated[RebalanceService, Depends(get_rebalance_service)]
+
+
+from app.services.tax_kr import TaxKrService  # noqa: E402  # forward DI
+
+
+def get_tax_kr_service(
+    history_repo: PortfolioHistoryRepositoryDep,
+    symbol_repo: AssetSymbolRepositoryDep,
+    tx_repo: TransactionRepositoryDep,
+    user_asset_repo: UserAssetRepositoryDep,
+    fx_service: FxRateServiceDep,
+) -> TaxKrService:
+    """Inject TaxKrService for Korean capital-gains-tax estimation."""
+    return TaxKrService(
+        history_repo=history_repo,
+        symbol_repo=symbol_repo,
+        tx_repo=tx_repo,
+        user_asset_repo=user_asset_repo,
+        fx_service=fx_service,
+    )
+
+
+TaxKrServiceDep = Annotated[TaxKrService, Depends(get_tax_kr_service)]
