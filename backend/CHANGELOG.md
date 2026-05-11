@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.12.1](https://github.com/nogamsung/assetlog/compare/v0.12.0...v0.12.1) (2026-05-11)
+
+
+### Bug Fixes
+
+* **auth:** COOKIE_DOMAIN env to share session across sibling subdomains ([#115](https://github.com/nogamsung/assetlog/issues/115)) ([f75b853](https://github.com/nogamsung/assetlog/commit/f75b85381d9bdaa6ed46a891d0208ebb0ab42554))
+
 ## [0.12.0](https://github.com/nogamsung/assetlog/compare/v0.11.0...v0.12.0) (2026-05-11)
 
 
