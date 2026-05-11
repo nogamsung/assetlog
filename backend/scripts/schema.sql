@@ -61,22 +61,27 @@ CREATE TABLE IF NOT EXISTS `user_assets` (
 
 -- ----------------------------------------------------------------------------
 -- transactions — individual buy/sell records linked to a user_asset
+-- external_source/external_id columns identify rows imported from external
+-- venues (Upbit, brokerage APIs, file imports) for idempotent re-sync.
 -- ----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS `transactions` (
-  `id`             INT             NOT NULL AUTO_INCREMENT,
-  `user_asset_id`  INT             NOT NULL,
-  `type`           VARCHAR(16)     NOT NULL COMMENT 'buy | sell',
-  `quantity`       DECIMAL(28, 10) NOT NULL,
-  `price`          DECIMAL(20, 6)  NOT NULL,
-  `traded_at`      DATETIME        NOT NULL,
-  `memo`           VARCHAR(255)    NULL,
-  `tag`            VARCHAR(50)     NULL,
-  `created_at`     DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  `updated_at`     DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `id`              INT             NOT NULL AUTO_INCREMENT,
+  `user_asset_id`   INT             NOT NULL,
+  `type`            VARCHAR(16)     NOT NULL COMMENT 'buy | sell',
+  `quantity`        DECIMAL(28, 10) NOT NULL,
+  `price`           DECIMAL(20, 6)  NOT NULL,
+  `traded_at`       DATETIME        NOT NULL,
+  `memo`            VARCHAR(255)    NULL,
+  `tag`             VARCHAR(50)     NULL,
+  `external_source` VARCHAR(32)     NULL,
+  `external_id`     VARCHAR(64)     NULL,
+  `created_at`      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at`      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
-  KEY `ix_transactions_user_asset_id`        (`user_asset_id`),
-  KEY `ix_transactions_user_asset_traded_at` (`user_asset_id`, `traded_at`),
-  KEY `ix_transactions_tag`                  (`tag`),
+  UNIQUE KEY `uq_tx_external_source_id`        (`external_source`, `external_id`),
+  KEY `ix_transactions_user_asset_id`          (`user_asset_id`),
+  KEY `ix_transactions_user_asset_traded_at`   (`user_asset_id`, `traded_at`),
+  KEY `ix_transactions_tag`                    (`tag`),
   CONSTRAINT `fk_transactions_user_asset_id`
     FOREIGN KEY (`user_asset_id`) REFERENCES `user_assets`(`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
@@ -112,6 +117,22 @@ CREATE TABLE IF NOT EXISTS `fx_rates` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ----------------------------------------------------------------------------
+-- fx_rate_snapshots — append-only time series of FX rates for historical lookup
+-- Used by the price/FX P&L decomposition to value BUYs at trade-date rates.
+-- ----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS `fx_rate_snapshots` (
+  `id`              INT             NOT NULL AUTO_INCREMENT,
+  `base_currency`   VARCHAR(10)     NOT NULL,
+  `quote_currency`  VARCHAR(10)     NOT NULL,
+  `rate`            DECIMAL(20, 8)  NOT NULL,
+  `recorded_at`     DATETIME        NOT NULL,
+  `created_at`      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_fx_snap_base_quote_recorded` (`base_currency`, `quote_currency`, `recorded_at`),
+  KEY `ix_fx_snap_pair_recorded`              (`base_currency`, `quote_currency`, `recorded_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ----------------------------------------------------------------------------
 -- login_attempts — audit log for brute-force detection / rate limiting
 -- ----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS `login_attempts` (
@@ -124,5 +145,64 @@ CREATE TABLE IF NOT EXISTS `login_attempts` (
   KEY `ix_login_attempts_attempted`           (`attempted_at`),
   KEY `ix_login_attempts_success_attempted`   (`success`, `attempted_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ----------------------------------------------------------------------------
+-- cash_accounts — single-owner cash balance per (label, currency)
+-- ----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS `cash_accounts` (
+  `id`                    INT             NOT NULL AUTO_INCREMENT,
+  `label`                 VARCHAR(100)    NOT NULL,
+  `currency`              VARCHAR(4)      NOT NULL,
+  `balance`               DECIMAL(20, 4)  NOT NULL,
+  `interest_rate_annual`  DECIMAL(6, 4)   NULL COMMENT 'Annualised interest as fraction (0.0350 = 3.5%)',
+  `created_at`            DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at`            DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `ix_cash_accounts_currency` (`currency`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ----------------------------------------------------------------------------
+-- dividends — cash dividend distributions per asset_symbol
+-- ----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS `dividends` (
+  `id`                INT             NOT NULL AUTO_INCREMENT,
+  `asset_symbol_id`   INT             NOT NULL,
+  `ex_date`           DATE            NOT NULL,
+  `amount`            DECIMAL(20, 8)  NOT NULL,
+  `currency`          VARCHAR(10)     NOT NULL,
+  `source`            VARCHAR(16)     NOT NULL COMMENT 'yfinance | pykrx | manual',
+  `created_at`        DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_dividend_symbol_ex_date` (`asset_symbol_id`, `ex_date`),
+  KEY `ix_dividend_ex_date`               (`ex_date`),
+  CONSTRAINT `fk_dividends_asset_symbol_id`
+    FOREIGN KEY (`asset_symbol_id`) REFERENCES `asset_symbols`(`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ----------------------------------------------------------------------------
+-- target_allocations — desired weight per asset_type bucket
+-- ----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS `target_allocations` (
+  `id`           INT             NOT NULL AUTO_INCREMENT,
+  `asset_type`   VARCHAR(32)     NOT NULL COMMENT 'AssetType value or "cash"',
+  `target_pct`   DECIMAL(6, 4)   NOT NULL COMMENT 'Fraction 0–1 (0.6000 = 60%)',
+  `created_at`   DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at`   DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_target_allocation_asset_type` (`asset_type`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ----------------------------------------------------------------------------
+-- alembic_version — stamped at latest head so future revisions apply
+-- incrementally without re-running the bootstrap.
+-- ----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS `alembic_version` (
+  `version_num` VARCHAR(32) NOT NULL,
+  PRIMARY KEY (`version_num`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+INSERT INTO `alembic_version` (`version_num`)
+  VALUES ('a4b7e293c8d1')
+  ON DUPLICATE KEY UPDATE `version_num` = VALUES(`version_num`);
 
 SET FOREIGN_KEY_CHECKS = 1;
