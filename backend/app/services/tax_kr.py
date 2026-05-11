@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import logging
 from collections import deque
-from datetime import datetime
+from datetime import UTC, date, datetime
 from decimal import Decimal
 
 from app.domain.asset_type import AssetType
@@ -24,12 +24,15 @@ from app.exceptions import FxRateNotAvailableError
 from app.models.asset_symbol import AssetSymbol
 from app.models.transaction import Transaction
 from app.repositories.asset_symbol import AssetSymbolRepository
+from app.repositories.dividend import DividendRepository
 from app.repositories.portfolio_history import PortfolioHistoryRepository
 from app.repositories.transaction import TransactionRepository
 from app.repositories.user_asset import UserAssetRepository
 from app.schemas.tax import (
     CapitalGainsTaxResponse,
     CostMethod,
+    DividendTaxEntry,
+    DividendTaxResponse,
     TaxableSaleEntry,
 )
 from app.services.fx_rate import FxRateService
@@ -52,12 +55,14 @@ class TaxKrService:
         tx_repo: TransactionRepository,
         user_asset_repo: UserAssetRepository,
         fx_service: FxRateService,
+        dividend_repo: DividendRepository | None = None,
     ) -> None:
         self._history_repo = history_repo
         self._symbol_repo = symbol_repo
         self._tx_repo = tx_repo
         self._user_asset_repo = user_asset_repo
         self._fx = fx_service
+        self._dividend_repo = dividend_repo
 
     async def get_capital_gains(
         self,
@@ -296,4 +301,66 @@ class TaxKrService:
             warnings=warnings,
         )
 
+    async def get_dividend_income_tax(
+        self,
+        year: int,
+        withholding_rate: Decimal = Decimal("0.154"),
+        comprehensive_threshold_krw: Decimal = Decimal("20000000"),
+    ) -> DividendTaxResponse:
+        """Estimate Korean dividend-income tax for *year*.
 
+        Pulls all Dividend rows in [Jan 1, Dec 31], converts each at the
+        ex-date FX rate, then applies the flat withholding rate. Flags
+        comprehensive-tax threshold breach when total exceeds the cap
+        (default 20,000,000 KRW).
+        """
+        warnings: list[str] = []
+        if self._dividend_repo is None:
+            return DividendTaxResponse(
+                year=year,
+                entries=[],
+                total_dividend_krw=_ZERO,
+                withholding_rate=withholding_rate,
+                withholding_tax_krw=_ZERO,
+                comprehensive_threshold_krw=comprehensive_threshold_krw,
+                comprehensive_threshold_breach=False,
+                warnings=warnings,
+            )
+
+        rows = await self._dividend_repo.list_calendar_with_symbol(
+            date_from=date(year, 1, 1),
+            date_to=date(year, 12, 31),
+        )
+
+        entries: list[DividendTaxEntry] = []
+        total_krw = _ZERO
+        for row in rows:
+            # Anchor FX conversion to UTC midnight of ex_date
+            ex_dt = datetime(row.ex_date.year, row.ex_date.month, row.ex_date.day, tzinfo=UTC)
+            fx = await self._fx_at_or_warn(row.currency, ex_dt, warnings)
+            amount_krw = row.amount * fx
+            entries.append(
+                DividendTaxEntry(
+                    asset_symbol_id=row.asset_symbol_id,
+                    symbol=row.symbol,
+                    ex_date=row.ex_date,
+                    amount_local=row.amount,
+                    currency=row.currency,
+                    amount_krw=amount_krw,
+                )
+            )
+            total_krw += amount_krw
+
+        withholding_tax = total_krw * withholding_rate
+        breach = total_krw > comprehensive_threshold_krw
+
+        return DividendTaxResponse(
+            year=year,
+            entries=entries,
+            total_dividend_krw=total_krw,
+            withholding_rate=withholding_rate,
+            withholding_tax_krw=withholding_tax,
+            comprehensive_threshold_krw=comprehensive_threshold_krw,
+            comprehensive_threshold_breach=breach,
+            warnings=warnings,
+        )

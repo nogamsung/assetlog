@@ -552,14 +552,16 @@ def get_tax_kr_service(
     tx_repo: TransactionRepositoryDep,
     user_asset_repo: UserAssetRepositoryDep,
     fx_service: FxRateServiceDep,
+    dividend_repo: DividendRepositoryDep,
 ) -> TaxKrService:
-    """Inject TaxKrService for Korean capital-gains-tax estimation."""
+    """Inject TaxKrService for Korean capital-gains + dividend-income tax."""
     return TaxKrService(
         history_repo=history_repo,
         symbol_repo=symbol_repo,
         tx_repo=tx_repo,
         user_asset_repo=user_asset_repo,
         fx_service=fx_service,
+        dividend_repo=dividend_repo,
     )
 
 
