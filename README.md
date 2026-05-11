@@ -116,6 +116,7 @@ DATABASE_URL=mysql+asyncmy://assetlog:assetlog@localhost:3306/assetlog
 JWT_SECRET_KEY=$(openssl rand -hex 32)
 APP_PASSWORD_HASH='$2b$12$...'   # 아래에서 생성
 COOKIE_SECURE=false               # HTTPS 환경에서는 true
+CORS_ORIGINS=["http://localhost:3000"]  # 프런트 origin (배열 또는 콤마 구분)
 
 # frontend/.env.local
 NEXT_PUBLIC_API_URL=http://localhost:8000
@@ -145,6 +146,74 @@ npm run dev
 ### 5. 첫 사용 (샘플 데이터)
 
 빈 화면에서 **"샘플 데이터로 시작"** 클릭 → BTC · ETH · AAPL · 삼성전자 · 현대차 + 12개월 분산 거래 자동 생성. 가격 / 환산 / 차트 / 태그 모든 기능을 즉시 확인 가능.
+
+---
+
+## 배포 (Production)
+
+GHCR (`ghcr.io/<owner>/assetlog-backend`, `ghcr.io/<owner>/assetlog-frontend`) 에 자동 푸시된 이미지를 사용. `git tag v*` 또는 release-please 머지로 트리거.
+
+### 1. GitHub repo variable 등록 (1회)
+
+`Settings → Secrets and variables → Actions → Variables`:
+
+| 이름 | 값 (예시) | 용도 |
+|------|-----------|------|
+| `NEXT_PUBLIC_API_URL` | `https://api.example.com` | **빌드타임 baked-in** — frontend 이미지가 호출할 backend URL |
+
+> ⚠️ `NEXT_PUBLIC_*` 변수는 Next.js 가 `npm run build` 시점에 JS 번들에 **inline** 합니다. Docker 이미지를 다시 빌드해야 반영됩니다. 컨테이너 ENV 변경만으로는 바뀌지 않음.
+
+### 2. Backend production env (배포 호스트)
+
+```env
+# Database
+DATABASE_URL=mysql+asyncmy://<user>:<pwd>@<host>:3306/assetlog
+
+# Auth — bcrypt cost 12+ hash
+APP_PASSWORD_HASH='$2b$12$...'
+JWT_SECRET_KEY=<openssl rand -hex 32 로 생성>
+
+# CORS — frontend origin (배열 또는 콤마 구분)
+CORS_ORIGINS=["https://frontend.example.com"]
+
+# Cookie — HTTPS 전용
+COOKIE_SECURE=true
+COOKIE_SAMESITE=strict   # frontend 와 backend 가 같은 등록도메인 (예: app.example.com / api.example.com)
+# COOKIE_SAMESITE=lax    # 다른 site 일 경우 (별도 도메인)
+# COOKIE_SAMESITE=none   # cross-site cookie 필요 시 (Secure 와 함께만)
+
+# 스케줄러
+ENABLE_SCHEDULER=true
+```
+
+### 3. 통신 흐름 검증
+
+배포 후 CORS preflight 가 통과하는지 확인:
+```bash
+curl -i -X OPTIONS https://<backend-domain>/api/auth/login \
+  -H "Origin: https://<frontend-domain>" \
+  -H "Access-Control-Request-Method: POST" \
+  -H "Access-Control-Request-Headers: content-type"
+# 기대: HTTP/2 200 + access-control-allow-origin 헤더
+# 실패: HTTP/2 400 "Disallowed CORS origin" → CORS_ORIGINS 누락
+```
+
+### 4. 새 이미지 배포
+
+```bash
+docker pull ghcr.io/<owner>/assetlog-backend:latest
+docker pull ghcr.io/<owner>/assetlog-frontend:latest
+docker compose up -d
+```
+
+### 트러블슈팅
+
+| 증상 | 원인 | 해결 |
+|------|------|------|
+| `net::ERR_CONNECTION_REFUSED` (브라우저) | frontend 이미지가 `localhost:8000` 호출 — `NEXT_PUBLIC_API_URL` 빌드 인자 누락 | repo variable 등록 → 새 태그로 재빌드 |
+| `Disallowed CORS origin` 400 | backend `CORS_ORIGINS` 에 frontend origin 없음 | env 갱신 → backend 재시작 |
+| 로그인 200 이지만 후속 요청 401 | cookie 가 cross-site 차단됨 | `COOKIE_SAMESITE=lax` (또는 same registrable domain 로 통일) |
+| 503 `Owner password not configured` | `APP_PASSWORD_HASH` 미설정 | bcrypt hash 생성 후 env 등록 |
 
 ---
 
