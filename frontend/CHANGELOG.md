@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.12.0](https://github.com/nogamsung/assetlog/compare/v0.11.0...v0.12.0) (2026-05-11)
+
+
+### Features
+
+* **fullstack:** split P&L into price vs FX components ([#63](https://github.com/nogamsung/assetlog/issues/63)) ([#98](https://github.com/nogamsung/assetlog/issues/98)) ([c712a28](https://github.com/nogamsung/assetlog/commit/c712a2842b0342a22e21c915976f25e01a79254d))
+
+
+### Bug Fixes
+
+* **ci:** bake NEXT_PUBLIC_API_URL into frontend image at build time ([#113](https://github.com/nogamsung/assetlog/issues/113)) ([d16c0c2](https://github.com/nogamsung/assetlog/commit/d16c0c22280d06b3603998c571f3a0a33fe3a8a9))
+
 ## [0.11.0](https://github.com/nogamsung/assetlog/compare/v0.10.0...v0.11.0) (2026-04-29)
 
 
