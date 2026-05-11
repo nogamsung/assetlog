@@ -66,6 +66,7 @@ class TestCashAccountServiceCreate:
             label="Test Account",
             currency="KRW",
             balance=Decimal("1000000"),
+            interest_rate_annual=None,
         )
 
     async def test_생성된_계정_반환(self) -> None:
@@ -102,7 +103,9 @@ class TestCashAccountServiceUpdate:
         data = CashAccountUpdate(label="New Label")
         result = await svc.update(1, data)
 
-        repo.update.assert_called_once_with(original, label="New Label", balance=None)
+        repo.update.assert_called_once_with(
+            original, label="New Label", balance=None, interest_rate_annual=None
+        )
         assert result.label == "New Label"
 
     async def test_balance만_업데이트(self) -> None:
@@ -116,7 +119,9 @@ class TestCashAccountServiceUpdate:
         data = CashAccountUpdate(balance=Decimal("9999"))
         result = await svc.update(1, data)
 
-        repo.update.assert_called_once_with(original, label=None, balance=Decimal("9999"))
+        repo.update.assert_called_once_with(
+            original, label=None, balance=Decimal("9999"), interest_rate_annual=None
+        )
         assert result.balance == Decimal("9999.0000")
 
     async def test_둘_다_업데이트(self) -> None:
@@ -130,7 +135,9 @@ class TestCashAccountServiceUpdate:
         data = CashAccountUpdate(label="New", balance=Decimal("500"))
         result = await svc.update(1, data)
 
-        repo.update.assert_called_once_with(original, label="New", balance=Decimal("500"))
+        repo.update.assert_called_once_with(
+            original, label="New", balance=Decimal("500"), interest_rate_annual=None
+        )
         assert result.label == "New"
 
 

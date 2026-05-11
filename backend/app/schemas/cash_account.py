@@ -41,6 +41,18 @@ class CashAccountCreate(BaseModel):
         description="Current cash balance (non-negative)",
         examples=["1500000.0000"],
     )
+    interest_rate_annual: Decimal | None = Field(
+        default=None,
+        ge=0,
+        le=1,
+        max_digits=6,
+        decimal_places=4,
+        description=(
+            "Optional annualised interest rate as a fraction (0.035 = 3.5%). "
+            "Display-only — accrual is not auto-applied to balance."
+        ),
+        examples=["0.0350"],
+    )
 
     @field_validator("currency", mode="before")
     @classmethod
@@ -78,12 +90,31 @@ class CashAccountUpdate(BaseModel):
         description="New balance value (omit to keep existing)",
         examples=["2000000.0000"],
     )
+    interest_rate_annual: Decimal | None = Field(
+        default=None,
+        ge=0,
+        le=1,
+        max_digits=6,
+        decimal_places=4,
+        description=(
+            "Annualised interest rate as a fraction (0.035 = 3.5%). "
+            "Omit to keep existing; explicit null clears it via extra='forbid' is not allowed — "
+            "use a separate clear endpoint if needed."
+        ),
+        examples=["0.0350"],
+    )
 
     @model_validator(mode="after")
     def at_least_one_field(self) -> CashAccountUpdate:
         """Require at least one field to be provided."""
-        if self.label is None and self.balance is None:
-            raise ValueError("at least one field must be provided (label or balance)")
+        if (
+            self.label is None
+            and self.balance is None
+            and self.interest_rate_annual is None
+        ):
+            raise ValueError(
+                "at least one field must be provided (label, balance, or interest_rate_annual)"
+            )
         return self
 
 
@@ -98,9 +129,18 @@ class CashAccountResponse(BaseModel):
     balance: Decimal = Field(
         ..., description="Current balance (serialised as string)", examples=["1500000.0000"]
     )
+    interest_rate_annual: Decimal | None = Field(
+        default=None,
+        description="Optional annualised interest rate (Decimal as string) — null if not set",
+        examples=["0.0350"],
+    )
     created_at: datetime = Field(..., description="Creation timestamp (UTC)")
     updated_at: datetime = Field(..., description="Last update timestamp (UTC)")
 
     @field_serializer("balance")
     def _serialize_balance(self, v: Decimal) -> str:
         return str(v)
+
+    @field_serializer("interest_rate_annual")
+    def _serialize_interest(self, v: Decimal | None) -> str | None:
+        return str(v) if v is not None else None
