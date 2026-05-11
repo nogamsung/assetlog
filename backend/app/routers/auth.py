@@ -24,6 +24,7 @@ def _set_auth_cookie(response: Response, token: str) -> None:
         samesite=settings.cookie_samesite,  # type: ignore[arg-type]  # Literal type from settings str
         max_age=settings.jwt_access_token_expire_minutes * 60,
         path="/",
+        domain=settings.cookie_domain,
     )
 
 
@@ -60,7 +61,7 @@ async def login(
 )
 async def logout(response: Response) -> None:
     """Delete the access_token cookie to invalidate the client session."""
-    response.delete_cookie(key=_COOKIE_KEY, path="/", domain=None)
+    response.delete_cookie(key=_COOKIE_KEY, path="/", domain=settings.cookie_domain)
 
 
 @router.get(

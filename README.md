@@ -182,6 +182,10 @@ COOKIE_SAMESITE=strict   # frontend 와 backend 가 같은 등록도메인 (예:
 # COOKIE_SAMESITE=lax    # 다른 site 일 경우 (별도 도메인)
 # COOKIE_SAMESITE=none   # cross-site cookie 필요 시 (Secure 와 함께만)
 
+# 두 서브도메인이 같은 쿠키를 공유해야 할 때 (예: app.example.com 과 api.example.com).
+# 로컬 개발에서는 비워둘 것 (호스트 전용 쿠키).
+COOKIE_DOMAIN=.example.com
+
 # 스케줄러
 ENABLE_SCHEDULER=true
 ```
@@ -213,6 +217,7 @@ docker compose up -d
 | `net::ERR_CONNECTION_REFUSED` (브라우저) | frontend 이미지가 `localhost:8000` 호출 — `NEXT_PUBLIC_API_URL` 빌드 인자 누락 | repo variable 등록 → 새 태그로 재빌드 |
 | `Disallowed CORS origin` 400 | backend `CORS_ORIGINS` 에 frontend origin 없음 | env 갱신 → backend 재시작 |
 | 로그인 200 이지만 후속 요청 401 | cookie 가 cross-site 차단됨 | `COOKIE_SAMESITE=lax` (또는 same registrable domain 로 통일) |
+| 로그인 후 dashboard 빈 화면 / `/login` 으로 리다이렉트 반복 | cookie 가 API 호스트에만 저장 — frontend 호스트에서 못 읽음 | `COOKIE_DOMAIN=.example.com` (registrable domain 으로 통일) |
 | 503 `Owner password not configured` | `APP_PASSWORD_HASH` 미설정 | bcrypt hash 생성 후 env 등록 |
 
 ---

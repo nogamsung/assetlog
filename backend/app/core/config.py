@@ -30,6 +30,11 @@ class Settings(BaseSettings):
     # Cookie
     cookie_secure: bool = False
     cookie_samesite: str = "strict"
+    # Optional Domain attribute. Set to a registrable domain (e.g.
+    # ``.example.com``) so a single cookie issued by the API is also
+    # visible to the frontend on a sibling subdomain (e.g. app.example.com
+    # ↔ api.example.com). Leave unset for local development.
+    cookie_domain: str | None = None
 
     # Scheduler
     refresh_interval_minutes: int = 60
