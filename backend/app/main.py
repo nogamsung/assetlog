@@ -39,6 +39,7 @@ from app.routers.rebalance import router as rebalance_router
 from app.routers.sample import router as sample_router
 from app.routers.symbol import router as symbol_router
 from app.routers.target_allocation import router as target_allocation_router
+from app.routers.tax import router as tax_router
 from app.routers.transaction import router as transaction_router
 from app.routers.user_asset import router as user_asset_router
 from app.scheduler import build_scheduler
@@ -264,6 +265,7 @@ app.include_router(integration_router)
 app.include_router(market_index_router)
 app.include_router(target_allocation_router)
 app.include_router(rebalance_router)
+app.include_router(tax_router)
 app.include_router(sample_router)
 app.include_router(export_router)
 

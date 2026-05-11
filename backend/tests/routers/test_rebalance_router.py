@@ -61,9 +61,7 @@ class TestRebalanceEndpoint:
     async def test_threshold_범위_초과_422(self, async_client: AsyncClient) -> None:
         app.dependency_overrides[get_current_user] = lambda: OwnerPrincipal()
         try:
-            response = await async_client.get(
-                "/api/rebalance/suggestion?threshold_pct=1.5"
-            )
+            response = await async_client.get("/api/rebalance/suggestion?threshold_pct=1.5")
             assert response.status_code == 422
         finally:
             app.dependency_overrides.clear()

@@ -83,9 +83,7 @@ def _make_service(
     )
 
     portfolio_svc = AsyncMock(spec=PortfolioService)
-    portfolio_svc.get_summary.return_value = (
-        summary if summary is not None else _make_summary()
-    )
+    portfolio_svc.get_summary.return_value = summary if summary is not None else _make_summary()
 
     return RebalanceService(target_svc, portfolio_svc)
 

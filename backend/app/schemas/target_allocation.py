@@ -9,7 +9,6 @@ from pydantic import BaseModel, ConfigDict, Field, field_serializer, model_valid
 
 from app.domain.asset_type import AssetType
 
-
 AllocationBucket = AssetType | Literal["cash"]
 
 
