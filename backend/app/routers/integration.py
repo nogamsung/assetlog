@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, File, Query, UploadFile, status
+from fastapi import APIRouter, File, Form, Query, UploadFile, status
 
 from app.core.config import settings
 from app.core.deps import CurrentUser, ExchangeSyncServiceDep
@@ -83,6 +83,10 @@ async def import_file(
         description="When true, parse and count without persisting to DB",
     ),
     file: UploadFile = File(..., description="PDF statement file"),
+    password: str | None = Form(
+        default=None,
+        description="Optional PDF decryption password (some brokers ship encrypted statements)",
+    ),
 ) -> ImportFileResponse:
     if source not in _SUPPORTED_FILE_SOURCES:
         raise ValidationError(
@@ -95,7 +99,15 @@ async def import_file(
 
     from app.adapters.parsers.toss_securities import parse_pdf  # noqa: PLC0415  # lazy
 
-    parse_result = parse_pdf(file_bytes)
+    try:
+        parse_result = parse_pdf(file_bytes, password=password)
+    except Exception as exc:  # pdfplumber raises pikepdf.PasswordError on bad/missing pwd
+        if "password" in str(exc).lower() or "encrypted" in str(exc).lower():
+            raise ValidationError(
+                "PDF is password-protected or password is incorrect. "
+                "Provide the correct password via the 'password' form field."
+            ) from exc
+        raise
 
     exchange_source = ExchangeSource(source)
     import_result = await sync_service.import_records(

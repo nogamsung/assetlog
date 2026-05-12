@@ -66,7 +66,7 @@ class TestDryRunWithFixture:
 
         txt_content = FIXTURE_TXT.read_bytes()
 
-        def fake_parse_pdf(file_bytes: bytes) -> object:
+        def fake_parse_pdf(file_bytes: bytes, password: str | None = None) -> object:
             return parse_text(file_bytes.decode("utf-8"))
 
         client: AsyncClient = await authenticated_client()
@@ -103,7 +103,7 @@ class TestDryRunWithFixture:
 
         txt_content = FIXTURE_TXT.read_bytes()
 
-        def fake_parse_pdf(file_bytes: bytes) -> object:
+        def fake_parse_pdf(file_bytes: bytes, password: str | None = None) -> object:
             return parse_text(file_bytes.decode("utf-8"))
 
         client: AsyncClient = await authenticated_client()
@@ -120,3 +120,58 @@ class TestDryRunWithFixture:
         data = response.json()
         # Should have substantial trades
         assert data["inserted_trades"] >= 100
+
+
+class TestPasswordOption:
+    async def test_password_is_forwarded_to_parser(
+        self,
+        authenticated_client,  # type: ignore[no-untyped-def]
+    ) -> None:
+        from unittest.mock import patch
+
+        from app.adapters.parsers.base import ParseResult
+
+        captured: dict[str, object] = {}
+
+        def spy_parse_pdf(file_bytes: bytes, password: str | None = None) -> ParseResult:
+            captured["password"] = password
+            return ParseResult()
+
+        client: AsyncClient = await authenticated_client()
+        with patch(
+            "app.adapters.parsers.toss_securities.parse_pdf",
+            side_effect=spy_parse_pdf,
+        ):
+            response = await client.post(
+                "/api/integrations/import-file",
+                params={"source": "toss_securities", "dry_run": "true"},
+                files={"file": ("statement.pdf", b"%PDF-fake", "application/pdf")},
+                data={"password": "19970211"},
+            )
+
+        assert response.status_code == 200
+        assert captured["password"] == "19970211"
+
+    async def test_wrong_password_returns_422(
+        self,
+        authenticated_client,  # type: ignore[no-untyped-def]
+    ) -> None:
+        from unittest.mock import patch
+
+        def fake_parse_pdf(file_bytes: bytes, password: str | None = None) -> object:
+            raise ValueError("PDF is encrypted; password required")
+
+        client: AsyncClient = await authenticated_client()
+        with patch(
+            "app.adapters.parsers.toss_securities.parse_pdf",
+            side_effect=fake_parse_pdf,
+        ):
+            response = await client.post(
+                "/api/integrations/import-file",
+                params={"source": "toss_securities", "dry_run": "true"},
+                files={"file": ("statement.pdf", b"%PDF-fake", "application/pdf")},
+                data={"password": "wrong"},
+            )
+
+        assert response.status_code == 422
+        assert "password" in response.json()["detail"].lower()

@@ -577,11 +577,14 @@ def parse_text(text: str) -> ParseResult:
     return result
 
 
-def parse_pdf(file_bytes: bytes) -> ParseResult:
+def parse_pdf(file_bytes: bytes, password: str | None = None) -> ParseResult:
     """Parse a Toss Securities PDF file.
 
     Args:
         file_bytes: Raw bytes of the PDF file.
+        password: Optional decryption password. Some brokers (Upbit, Shinhan) ship
+            password-protected statements; pass the user-supplied password through
+            so pdfplumber can open them.
 
     Returns:
         ParseResult with records and skipped entries.
@@ -594,7 +597,7 @@ def parse_pdf(file_bytes: bytes) -> ParseResult:
         raise ImportError("pdfplumber is required for PDF parsing: uv add pdfplumber") from exc
 
     pages_text: list[str] = []
-    with pdfplumber.open(io.BytesIO(file_bytes)) as pdf:
+    with pdfplumber.open(io.BytesIO(file_bytes), password=password or "") as pdf:
         for page in pdf.pages:
             page_text = page.extract_text(layout=False) or ""
             pages_text.append(page_text)
