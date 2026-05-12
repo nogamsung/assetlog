@@ -26,14 +26,15 @@ def _trades_sync(access_key: str, secret_key: str) -> list[ExternalTrade]:
 
     upbit = ccxt.upbit({"apiKey": access_key, "secret": secret_key, "enableRateLimit": True})
     balances = upbit.fetch_balance()
-    coins = sorted(sym for sym, info in balances.get("info", {}).items() if isinstance(info, dict))
-    if not coins:
-        coins = [
-            asset
-            for asset, val in (balances.get("total") or {}).items()
-            if isinstance(val, int | float) and val > 0 and asset != "KRW"
-        ]
-    markets: list[str] = [f"{coin}/KRW" for coin in coins if coin and coin != "KRW"]
+    # ccxt's standard `total` map is dict[str, float] keyed by currency.
+    # We previously parsed `info` (the raw exchange payload), but Upbit's
+    # /v1/accounts returns a list — caused 'list has no attribute items'.
+    coins = sorted(
+        asset
+        for asset, val in (balances.get("total") or {}).items()
+        if isinstance(val, int | float) and val > 0 and asset != "KRW"
+    )
+    markets: list[str] = [f"{coin}/KRW" for coin in coins if coin]
 
     trades: list[ExternalTrade] = []
     for market in markets:
