@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.13.2](https://github.com/nogamsung/assetlog/compare/v0.13.1...v0.13.2) (2026-05-12)
+
+
+### Bug Fixes
+
+* **schema:** add dividends external_id + cash_account_transactions to bootstrap ([#93](https://github.com/nogamsung/assetlog/issues/93)) ([#131](https://github.com/nogamsung/assetlog/issues/131)) ([b103dbb](https://github.com/nogamsung/assetlog/commit/b103dbb274759c3bd1de783db99e0c46dba6ffb7))
+
 ## [0.13.1](https://github.com/nogamsung/assetlog/compare/v0.13.0...v0.13.1) (2026-05-12)
 
 
