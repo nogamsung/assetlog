@@ -11,6 +11,7 @@ from app.db.base import Base
 # Import all models here so that Base.metadata is populated for autogenerate.
 from app.models import (  # noqa: F401
     AssetSymbol,
+    CashAccountTransaction,
     Dividend,
     FxRate,
     FxRateSnapshot,

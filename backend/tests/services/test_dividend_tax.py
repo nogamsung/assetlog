@@ -49,9 +49,7 @@ def _make_service(
 
     fx = AsyncMock(spec=FxRateService)
 
-    async def _convert_at(
-        amount: Decimal, frm: str, to: str, at: datetime
-    ) -> Decimal:
+    async def _convert_at(amount: Decimal, frm: str, to: str, at: datetime) -> Decimal:
         if frm == to:
             return amount
         rate = (fx_rates or {}).get((frm, to, at.date().isoformat()))
