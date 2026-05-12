@@ -23,7 +23,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from datetime import UTC, datetime
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from typing import Any
 
 from app.domain.exchange_sync import ExternalTrade
@@ -37,17 +37,29 @@ _QUOTE_PREFERENCE = ("KRW", "BTC", "USDT")
 _MAX_PAGES = 200  # safety: 200 × 100 = 20,000 orders cap
 _PAGE_PROGRESS_REQUIRED = True  # break if oldest_at doesn't move
 
+# Match transactions table column precision (Numeric(20,6) for price,
+# Numeric(28,10) for quantity) so MySQL doesn't truncate inserts.
+_PRICE_QUANTUM = Decimal("0.000001")
+_QTY_QUANTUM = Decimal("0.0000000001")
+
 
 def _trades_sync(access_key: str, secret_key: str) -> list[ExternalTrade]:
     """Fetch the user's Upbit holdings AND closed-order history — sync.
 
-    Returns a combined list of:
-      - ExternalTrades from /v1/orders/closed (real history, when available)
-      - Synthetic BUY trades from current holdings (qty=balance, price=avg_buy_price)
-        for any held coin that wasn't represented in the history fetch.
+    Strategy:
+      1. Fetch all closed orders → real trade history.
+      2. Fetch current balances. For EVERY held coin compute:
+            history_qty = sum(BUY) − sum(SELL) of trades from step 1
+            actual_qty  = current balance from Upbit
+            diff        = actual_qty − history_qty
+         If |diff| > 0 emit a synthetic BUY/SELL adjustment so the system
+         holding matches the real Upbit balance (covers airdrops, deposits
+         from external wallets, history gaps, etc).
+      3. Coins held with no history at all also fall through this path (history
+         contributes 0 → diff = full balance → synthetic BUY).
 
-    Synthetic trades carry a stable external_id (`upbit:holding:<COIN>`) so a
-    re-sync dedupes them (they don't double-count balance).
+    All synthetic adjustments share a stable external_id (`upbit:adjust:<COIN>`)
+    so the upstream replace-then-insert path keeps holdings exact on every sync.
     """
     import ccxt  # noqa: PLC0415
 
@@ -57,20 +69,16 @@ def _trades_sync(access_key: str, secret_key: str) -> list[ExternalTrade]:
     # Step 1: pull every closed order across all markets (real trade history).
     history = _fetch_all_closed_orders(upbit)
     if not history:
-        # Fallback per-market in case the no-symbol form ever stops working.
         logger.warning(
             "upbit primary all-orders fetch returned nothing; falling back to per-market",
             extra={"event": "upbit_phase0_empty"},
         )
         history = _fetch_history_per_held_market(upbit)
 
-    covered_symbols: set[str] = {t.symbol for t in history}
-
-    # Step 2: synthesize BUY trades from holdings the history didn't cover.
+    # Step 2: balance-based adjustment so system holdings match Upbit exactly.
     balances = upbit.fetch_balance()
-    synthetic = _balance_to_synthetic_trades(balances, exclude_symbols=covered_symbols)
-
-    return history + synthetic
+    adjustments = _balance_adjustments(balances, history)
+    return history + adjustments
 
 
 def _fetch_history_per_held_market(upbit: Any) -> list[ExternalTrade]:
@@ -94,27 +102,28 @@ def _fetch_history_per_held_market(upbit: Any) -> list[ExternalTrade]:
     return fallback_trades
 
 
-def _balance_to_synthetic_trades(
-    balances: dict[str, Any], exclude_symbols: set[str]
+def _balance_adjustments(
+    balances: dict[str, Any], history: list[ExternalTrade]
 ) -> list[ExternalTrade]:
-    """Build placeholder BUY trades from current holdings.
+    """Emit BUY/SELL adjustments to make system holdings == Upbit balance.
 
-    Uses Upbit's raw `info` list (each row has currency / balance / avg_buy_price)
-    so the user's "보유 자산" view is populated even when the trade history is
-    empty (deposit-only assets or trades pre-dating the order log).
-
-    Skipped:
-      - KRW (cash)
-      - balance <= 0
-      - avg_buy_price <= 0 (deposit-only without a recorded cost basis)
-      - currencies already covered by real trade history
+    For each held coin (Upbit `info` row): compute system_qty from history,
+    compare with actual balance, emit a single BUY (positive diff) or SELL
+    (negative diff) trade with stable external_id `upbit:adjust:<COIN>` —
+    the replace path keeps it idempotent.
     """
     info = balances.get("info")
     if not isinstance(info, list):
         return []
+
+    history_qty: dict[str, Decimal] = {}
+    for t in history:
+        delta = t.quantity if t.side == TransactionType.BUY else -t.quantity
+        history_qty[t.symbol] = history_qty.get(t.symbol, Decimal(0)) + delta
+
     out: list[ExternalTrade] = []
-    skipped_no_avg: list[str] = []
-    skipped_covered: list[str] = []
+    skipped_zero_avg: list[str] = []
+    matched: list[str] = []
     now = datetime.now(UTC)
     for row in info:
         if not isinstance(row, dict):
@@ -122,38 +131,52 @@ def _balance_to_synthetic_trades(
         currency = row.get("currency")
         if not isinstance(currency, str) or currency.upper() == "KRW":
             continue
-        symbol_upper = currency.upper()
-        if symbol_upper in exclude_symbols:
-            skipped_covered.append(currency)
-            continue
-        balance = _to_decimal(row.get("balance"))
+        symbol = currency.upper()
+        actual = _to_decimal(row.get("balance"))
         avg_buy = _to_decimal(row.get("avg_buy_price"))
-        if balance is None or balance <= 0:
+        if actual is None or actual < 0:
+            continue
+        sys_qty = history_qty.get(symbol, Decimal(0))
+        diff = actual - sys_qty
+        if abs(diff) < _QTY_QUANTUM:
+            matched.append(symbol)
             continue
         if avg_buy is None or avg_buy <= 0:
-            skipped_no_avg.append(currency)
-            continue
+            # Deposit-only with no cost basis — use 1.0 as harmless placeholder
+            # so quantity still shows in holdings (PnL is the user's problem).
+            avg_buy = Decimal("1")
+            skipped_zero_avg.append(symbol)
+        side = TransactionType.BUY if diff > 0 else TransactionType.SELL
+        qty = abs(diff)
         out.append(
             ExternalTrade(
-                external_id=f"upbit:holding:{symbol_upper}",
-                symbol=symbol_upper,
+                external_id=f"upbit:adjust:{symbol}",
+                symbol=symbol,
                 quote_currency="KRW",
-                side=TransactionType.BUY,
-                quantity=balance,
-                price=avg_buy,
+                side=side,
+                quantity=_q(qty, _QTY_QUANTUM),
+                price=_q(avg_buy, _PRICE_QUANTUM),
                 traded_at=now,
             )
         )
     logger.warning(
-        "upbit synthetic holdings",
+        "upbit balance adjustments",
         extra={
-            "event": "upbit_synthetic_holdings",
-            "synthesized": [t.symbol for t in out],
-            "skipped_no_avg": skipped_no_avg,
-            "skipped_covered_by_history": skipped_covered,
+            "event": "upbit_balance_adjust",
+            "adjusted": [(t.symbol, str(t.side.value), str(t.quantity)) for t in out],
+            "matched": matched,
+            "no_avg_buy_used_placeholder": skipped_zero_avg,
         },
     )
     return out
+
+
+def _q(value: Decimal, quantum: Decimal) -> Decimal:
+    """Quantize to MySQL column precision; falls back to value on overflow."""
+    try:
+        return value.quantize(quantum, rounding=ROUND_HALF_UP)
+    except InvalidOperation:
+        return value
 
 
 def _fetch_all_closed_orders(upbit: Any) -> list[ExternalTrade]:
@@ -289,8 +312,8 @@ def _map_native_order(raw: dict[str, Any]) -> ExternalTrade | None:
         symbol=base_raw.upper(),
         quote_currency=quote_raw.upper(),
         side=TransactionType.BUY if side == "bid" else TransactionType.SELL,
-        quantity=qty,
-        price=price,
+        quantity=_q(qty, _QTY_QUANTUM),
+        price=_q(price, _PRICE_QUANTUM),
         traded_at=traded_at,
     )
 
@@ -376,8 +399,8 @@ def _map_trade(raw: dict[str, object]) -> ExternalTrade | None:
         symbol=base.upper(),
         quote_currency=quote.upper(),
         side=TransactionType.BUY if side == "buy" else TransactionType.SELL,
-        quantity=Decimal(str(amount)),
-        price=Decimal(str(price)),
+        quantity=_q(Decimal(str(amount)), _QTY_QUANTUM),
+        price=_q(Decimal(str(price)), _PRICE_QUANTUM),
         traded_at=datetime.fromtimestamp(timestamp_ms / 1000, tz=UTC),
     )
 

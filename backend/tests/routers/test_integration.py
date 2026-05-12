@@ -35,7 +35,7 @@ class TestUpbitSyncEndpoint:
 
     async def test_정상_200_결과_반환(self, async_client: AsyncClient) -> None:
         mock_svc = AsyncMock(spec=ExchangeSyncService)
-        mock_svc.import_trades.return_value = SyncResult(
+        mock_svc.replace_trades.return_value = SyncResult(
             fetched=2, inserted=1, skipped_duplicate=1, skipped_no_symbol=0
         )
         fake_trades = [

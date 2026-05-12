@@ -51,7 +51,7 @@ async def sync_upbit(
         secret_key=settings.upbit_secret_key,
     )
     trades = await adapter.fetch_trades()
-    result = await sync_service.import_trades(ExchangeSource.UPBIT, trades)
+    result = await sync_service.replace_trades(ExchangeSource.UPBIT, trades)
     return SyncResultResponse.model_validate(result)
 
 
