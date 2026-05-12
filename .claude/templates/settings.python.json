@@ -24,7 +24,8 @@
       "Bash(mkdir *)",
       "Bash(cp *)",
       "Bash(mv *)",
-      "Bash(touch *)"
+      "Bash(touch *)",
+      "Bash(bash .claude/scripts/*)"
     ],
     "deny": [
       "Bash(rm -rf /)",
@@ -35,17 +36,63 @@
   },
   "hooks": {
     "SessionStart": [
-      { "hooks": [{ "type": "command", "command": "bash .claude/hooks/session-start.sh" }] }
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/session-start.sh"
+          }
+        ]
+      }
     ],
     "PreToolUse": [
-      { "matcher": "Bash", "hooks": [{ "type": "command", "command": "bash .claude/hooks/safety-guard.sh" }] },
-      { "matcher": "Bash", "hooks": [{ "type": "command", "command": "bash .claude/hooks/pre-push.sh" }] }
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/safety-guard.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/pre-push.sh"
+          }
+        ]
+      }
     ],
     "PostToolUse": [
-      { "matcher": "Edit|Write|MultiEdit", "hooks": [{ "type": "command", "command": "bash .claude/hooks/post-edit-lint.sh" }] }
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/post-edit-lint.sh"
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/usage-counter.sh"
+          }
+        ]
+      }
     ],
     "Stop": [
-      { "hooks": [{ "type": "command", "command": "if [ -f pyproject.toml ] && command -v uv &>/dev/null; then echo \"[Harness] ruff + mypy\"; uv run ruff check . 2>&1 | tail -15; uv run mypy . --no-error-summary 2>&1 | tail -15; fi" }] }
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "if [ -f pyproject.toml ] && command -v uv &>/dev/null; then echo \"[Harness] ruff + mypy\"; uv run ruff check . 2>&1 | tail -15; uv run mypy . --no-error-summary 2>&1 | tail -15; fi"
+          }
+        ]
+      }
     ]
   }
 }
