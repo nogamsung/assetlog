@@ -12,6 +12,9 @@ jest.mock("next/navigation", () => ({
 
 jest.mock("@/hooks/use-auth");
 jest.mock("@/hooks/use-export"); // ADDED
+jest.mock("@/components/features/settings/file-import-section", () => ({ /* ADDED */
+  FileImportSection: () => <div data-testid="file-import-section" />,
+}));
 jest.mock("@/stores/theme", () => ({
   useThemeStore: jest.fn(() => ({
     theme: "system",
