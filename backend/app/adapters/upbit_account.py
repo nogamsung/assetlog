@@ -2,7 +2,7 @@
 
 The user issues access/secret keys at https://upbit.com/mypage/open_api_management
 and provides them via env vars (``UPBIT_ACCESS_KEY``, ``UPBIT_SECRET_KEY``).
-The adapter only ever calls ``fetch_my_trades`` / ``fetch_balance`` — it never
+The adapter only ever calls ``fetch_closed_orders`` / ``fetch_balance`` — it never
 places orders.
 """
 
@@ -19,50 +19,67 @@ from app.exceptions import ExternalIntegrationError
 
 logger = logging.getLogger("app.adapters.upbit_account")
 
+_FETCH_LIMIT = 200
+_QUOTE_PREFERENCE = ("KRW", "BTC", "USDT")
+
 
 def _trades_sync(access_key: str, secret_key: str) -> list[ExternalTrade]:
-    """Fetch all trades for every market the user has traded — sync.
+    """Fetch all closed orders for every market the user currently holds — sync.
 
-    Upbit's /v1/orders/closed (which ccxt's fetch_my_trades calls under the hood)
-    paginates by 100 by default and only returns recent orders unless `start_time`
-    is provided. We loop through coins the user currently holds and pull up to
-    `_FETCH_LIMIT` orders per market, going back `_LOOKBACK_DAYS`.
+    Steps:
+      1. load_markets() so we know which trading pairs Upbit actually exposes.
+      2. fetch_balance() for the user's positive holdings.
+      3. For each held coin pick the first available quote (KRW > BTC > USDT)
+         — Upbit lists some coins only on /BTC or /USDT.
+      4. fetch_closed_orders(symbol, limit=200) per resolved market.
+
+    We deliberately omit `since`: in production Upbit's /v1/orders/closed returned
+    empty when called with start_time, but returns the latest 100 closed orders
+    when called without it.
     """
-    import time  # noqa: PLC0415
-
     import ccxt  # noqa: PLC0415
 
     upbit = ccxt.upbit({"apiKey": access_key, "secret": secret_key, "enableRateLimit": True})
-    balances = upbit.fetch_balance()
+    upbit.load_markets()
+    available_markets: set[str] = set(upbit.markets.keys() if upbit.markets else [])
 
+    balances = upbit.fetch_balance()
     total_map = balances.get("total") or {}
     coins = sorted(
         asset
         for asset, val in total_map.items()
         if isinstance(val, int | float) and val > 0 and asset != "KRW"
     )
-    logger.info(
+
+    markets: list[str] = []
+    skipped_no_market: list[str] = []
+    for coin in coins:
+        chosen: str | None = None
+        for quote in _QUOTE_PREFERENCE:
+            symbol = f"{coin}/{quote}"
+            if symbol in available_markets:
+                chosen = symbol
+                break
+        if chosen is None:
+            skipped_no_market.append(coin)
+        else:
+            markets.append(chosen)
+
+    # WARNING level so it surfaces even when production log filters hide INFO.
+    logger.warning(
         "upbit balance summary",
         extra={
             "event": "upbit_balance",
-            "total_keys": sorted(total_map.keys()),
             "positive_coins": coins,
-            "info_type": type(balances.get("info")).__name__,
+            "matched_markets": markets,
+            "skipped_no_market": skipped_no_market,
         },
     )
-    markets: list[str] = [f"{coin}/KRW" for coin in coins if coin]
 
-    since_ms = int((time.time() - _LOOKBACK_DAYS * 86400) * 1000)
     trades: list[ExternalTrade] = []
     for market in markets:
-        # ccxt's Upbit class does not implement fetch_my_trades — use
-        # fetch_closed_orders (maps to Upbit /v1/orders/closed). For market/limit
-        # orders the closed-order row carries the executed qty + average price,
-        # so 1 order ≈ 1 trade for our import purposes.
         try:
-            raw_orders = upbit.fetch_closed_orders(
-                symbol=market, since=since_ms, limit=_FETCH_LIMIT
-            )
+            raw_orders = upbit.fetch_closed_orders(symbol=market, limit=_FETCH_LIMIT)
         except Exception as exc:  # noqa: BLE001
             logger.warning(
                 "upbit fetch_closed_orders failed for %s: %s",
@@ -77,7 +94,7 @@ def _trades_sync(access_key: str, secret_key: str) -> list[ExternalTrade]:
             if mapped is not None:
                 trades.append(mapped)
                 mapped_count += 1
-        logger.info(
+        logger.warning(
             "upbit market trades",
             extra={
                 "event": "upbit_market_trades",
@@ -89,22 +106,16 @@ def _trades_sync(access_key: str, secret_key: str) -> list[ExternalTrade]:
     return trades
 
 
-_LOOKBACK_DAYS = 365 * 3
-_FETCH_LIMIT = 200
-
-
 def _map_trade(raw: dict[str, object]) -> ExternalTrade | None:
-    """Convert a ccxt order/trade dict to an ExternalTrade — None if malformed.
+    """Convert a ccxt closed-order dict to an ExternalTrade — None if malformed.
 
-    Accepts either:
-      - a trade row (raw['amount'], raw['price'])  — fetch_my_trades shape
-      - a closed-order row (raw['filled'], raw['average']) — fetch_closed_orders shape
+    Closed-order rows carry the executed qty in `filled` and the executed price
+    in `average`; older trade-shaped rows use `amount` / `price`. Both supported.
     """
     external_id = raw.get("id")
     side = raw.get("side")
     symbol = raw.get("symbol")
     timestamp_ms = raw.get("timestamp")
-    # Prefer order-shaped fields (filled/average) since fetch_my_trades is unsupported on Upbit.
     amount = raw.get("filled")
     if not isinstance(amount, int | float):
         amount = raw.get("amount")
