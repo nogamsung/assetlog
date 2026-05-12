@@ -1,14 +1,13 @@
-import { format } from "date-fns";
-import { ko } from "date-fns/locale";
 import { formatCurrency } from "@/lib/format"; /* ADDED */
+import { formatChartTickKST } from "@/lib/datetime"; /* ADDED */
 import type { HistoryPeriod } from "@/types/portfolio-history";
 
-export function formatTimestamp(date: Date, period: HistoryPeriod): string {
-  if (period === "1D") return format(date, "HH:mm", { locale: ko });
-  if (period === "1W") return format(date, "M/d", { locale: ko });
-  if (period === "1M") return format(date, "M/d", { locale: ko });
-  if (period === "1Y") return format(date, "yy/MM", { locale: ko });
-  return format(date, "yyyy/MM", { locale: ko });
+export function formatTimestamp(date: Date, period: HistoryPeriod): string { /* MODIFIED: KST via formatChartTickKST */
+  if (period === "1D") return formatChartTickKST(date, "HH:mm");
+  if (period === "1W") return formatChartTickKST(date, "M/d");
+  if (period === "1M") return formatChartTickKST(date, "M/d");
+  if (period === "1Y") return formatChartTickKST(date, "yy/MM");
+  return formatChartTickKST(date, "yyyy/MM");
 }
 
 export function formatCompactNumber(value: number): string {
@@ -24,7 +23,11 @@ export function formatCurrencyValue(value: unknown, currency: string): string {
   return formatCurrency(str, currency);
 }
 
-export function formatTooltipLabel(label: unknown): string {
+export function formatTooltipLabel(label: unknown): string { /* MODIFIED: KST */
   const d = label instanceof Date ? label : new Date(label as string);
-  return format(d, "yyyy년 M월 d일 HH:mm", { locale: ko });
+  const year = formatChartTickKST(d, "yyyy");
+  const month = formatChartTickKST(d, "M");
+  const day = formatChartTickKST(d, "d");
+  const time = formatChartTickKST(d, "HH:mm");
+  return `${year}년 ${month}월 ${day}일 ${time}`;
 }

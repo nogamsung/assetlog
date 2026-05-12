@@ -2,6 +2,7 @@
 
 import { Pencil, Trash2 } from "lucide-react"; /* MODIFIED: added Trash2 */
 import { useTransactions, useDeleteTransaction } from "@/hooks/use-transactions";
+import { formatDateTimeKST } from "@/lib/datetime"; /* ADDED */
 import type { TransactionResponse } from "@/types/transaction"; // ADDED
 
 interface TransactionListProps {
@@ -54,14 +55,7 @@ export function TransactionList({ userAssetId, onEdit, onTagClick, activeTag }: 
   return (
     <div className="space-y-2">
       {transactions.map((tx) => {
-        const tradedAtDate = new Date(tx.tradedAt);
-        const formattedDate = tradedAtDate.toLocaleString("ko-KR", {
-          year: "numeric",
-          month: "2-digit",
-          day: "2-digit",
-          hour: "2-digit",
-          minute: "2-digit",
-        });
+        const formattedDate = formatDateTimeKST(tx.tradedAt); /* MODIFIED */
 
         return (
           <div

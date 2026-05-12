@@ -3,6 +3,7 @@
 import { useRef, useState } from "react";
 import { isAxiosError } from "axios";
 import { useImportTransactionsCsv } from "@/hooks/use-transactions";
+import { formatDateKST } from "@/lib/datetime"; /* ADDED */
 import { Button } from "@/components/ui/button";
 import type { CsvImportError, TransactionResponse } from "@/types/transaction";
 
@@ -277,7 +278,7 @@ export function TransactionImport({ userAssetId, onSuccess }: TransactionImportP
                     <td className="px-3 py-1.5">{tx.type === "buy" ? "매수" : "매도"}</td>
                     <td className="px-3 py-1.5">{tx.quantity}</td>
                     <td className="px-3 py-1.5">{tx.price}</td>
-                    <td className="px-3 py-1.5">{new Date(tx.tradedAt).toLocaleDateString("ko-KR")}</td>
+                    <td className="px-3 py-1.5">{formatDateKST(tx.tradedAt)}</td> {/* MODIFIED */}
                     <td className="px-3 py-1.5">{tx.memo ?? "—"}</td>
                   </tr>
                 ))}
