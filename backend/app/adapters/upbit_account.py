@@ -39,23 +39,42 @@ _PAGE_PROGRESS_REQUIRED = True  # break if oldest_at doesn't move
 
 
 def _trades_sync(access_key: str, secret_key: str) -> list[ExternalTrade]:
-    """Fetch the user's full closed-order history from Upbit — sync."""
+    """Fetch the user's Upbit holdings AND closed-order history — sync.
+
+    Returns a combined list of:
+      - ExternalTrades from /v1/orders/closed (real history, when available)
+      - Synthetic BUY trades from current holdings (qty=balance, price=avg_buy_price)
+        for any held coin that wasn't represented in the history fetch.
+
+    Synthetic trades carry a stable external_id (`upbit:holding:<COIN>`) so a
+    re-sync dedupes them (they don't double-count balance).
+    """
     import ccxt  # noqa: PLC0415
 
     upbit = ccxt.upbit({"apiKey": access_key, "secret": secret_key, "enableRateLimit": True})
     upbit.load_markets()
 
-    # Phase 0: walk all closed orders across all markets via Upbit private API.
-    trades = _fetch_all_closed_orders(upbit)
-    if trades:
-        return trades
+    # Step 1: pull every closed order across all markets (real trade history).
+    history = _fetch_all_closed_orders(upbit)
+    if not history:
+        # Fallback per-market in case the no-symbol form ever stops working.
+        logger.warning(
+            "upbit primary all-orders fetch returned nothing; falling back to per-market",
+            extra={"event": "upbit_phase0_empty"},
+        )
+        history = _fetch_history_per_held_market(upbit)
 
-    logger.warning(
-        "upbit primary all-orders fetch returned nothing; falling back to per-market",
-        extra={"event": "upbit_phase0_empty"},
-    )
+    covered_symbols: set[str] = {t.symbol for t in history}
 
-    # Fallback: iterate per held coin with ccxt's standard helper.
+    # Step 2: synthesize BUY trades from holdings the history didn't cover.
+    balances = upbit.fetch_balance()
+    synthetic = _balance_to_synthetic_trades(balances, exclude_symbols=covered_symbols)
+
+    return history + synthetic
+
+
+def _fetch_history_per_held_market(upbit: Any) -> list[ExternalTrade]:
+    """Per-market fallback when no-symbol /orders/closed returns nothing."""
     available_markets: set[str] = set(upbit.markets.keys() if upbit.markets else [])
     balances = upbit.fetch_balance()
     total_map = balances.get("total") or {}
@@ -71,9 +90,70 @@ def _trades_sync(access_key: str, secret_key: str) -> list[ExternalTrade]:
             if symbol in available_markets:
                 primary_markets.append(symbol)
                 break
-
     fallback_trades, _ = _fetch_orders_for_markets(upbit, primary_markets)
     return fallback_trades
+
+
+def _balance_to_synthetic_trades(
+    balances: dict[str, Any], exclude_symbols: set[str]
+) -> list[ExternalTrade]:
+    """Build placeholder BUY trades from current holdings.
+
+    Uses Upbit's raw `info` list (each row has currency / balance / avg_buy_price)
+    so the user's "보유 자산" view is populated even when the trade history is
+    empty (deposit-only assets or trades pre-dating the order log).
+
+    Skipped:
+      - KRW (cash)
+      - balance <= 0
+      - avg_buy_price <= 0 (deposit-only without a recorded cost basis)
+      - currencies already covered by real trade history
+    """
+    info = balances.get("info")
+    if not isinstance(info, list):
+        return []
+    out: list[ExternalTrade] = []
+    skipped_no_avg: list[str] = []
+    skipped_covered: list[str] = []
+    now = datetime.now(UTC)
+    for row in info:
+        if not isinstance(row, dict):
+            continue
+        currency = row.get("currency")
+        if not isinstance(currency, str) or currency.upper() == "KRW":
+            continue
+        symbol_upper = currency.upper()
+        if symbol_upper in exclude_symbols:
+            skipped_covered.append(currency)
+            continue
+        balance = _to_decimal(row.get("balance"))
+        avg_buy = _to_decimal(row.get("avg_buy_price"))
+        if balance is None or balance <= 0:
+            continue
+        if avg_buy is None or avg_buy <= 0:
+            skipped_no_avg.append(currency)
+            continue
+        out.append(
+            ExternalTrade(
+                external_id=f"upbit:holding:{symbol_upper}",
+                symbol=symbol_upper,
+                quote_currency="KRW",
+                side=TransactionType.BUY,
+                quantity=balance,
+                price=avg_buy,
+                traded_at=now,
+            )
+        )
+    logger.warning(
+        "upbit synthetic holdings",
+        extra={
+            "event": "upbit_synthetic_holdings",
+            "synthesized": [t.symbol for t in out],
+            "skipped_no_avg": skipped_no_avg,
+            "skipped_covered_by_history": skipped_covered,
+        },
+    )
+    return out
 
 
 def _fetch_all_closed_orders(upbit: Any) -> list[ExternalTrade]:
