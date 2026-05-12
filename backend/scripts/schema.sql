@@ -188,8 +188,8 @@ CREATE TABLE IF NOT EXISTS `dividends` (
 -- Dedupe by (external_source, external_id) when populated by file imports.
 -- ----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS `cash_account_transactions` (
-  `id`                BIGINT          NOT NULL AUTO_INCREMENT,
-  `cash_account_id`   BIGINT          NULL,
+  `id`                INT             NOT NULL AUTO_INCREMENT,
+  `cash_account_id`   INT             NULL,
   `kind`              VARCHAR(32)     NOT NULL COMMENT 'deposit | withdraw | interest | interest_tax | transfer_in | transfer_out',
   `amount`            DECIMAL(20, 8)  NOT NULL,
   `currency`          VARCHAR(8)      NOT NULL,
