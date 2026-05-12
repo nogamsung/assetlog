@@ -150,3 +150,51 @@ PRD 오픈 이슈 #4 (JWT storage) 해소. 사용자 요청("JWT 는 backend, fr
 - **포트**: backend `8000`, frontend `3000`. `frontend/.env.local` 의 `NEXT_PUBLIC_API_URL` 은 `http://localhost:8000` (과거 8080 오타 수정됨).
 
 **기동 순서:** MySQL 기동 확인 → `cd backend && uv run alembic upgrade head` → `uv run uvicorn app.main:app --port 8000 --reload` → 다른 터미널에서 `cd frontend && nvm use 20 && npm run dev`.
+
+---
+
+## 2026-05-12: 외부 거래내역 import — 합성 external_id 정책 (#93)
+
+**카테고리:** 규칙
+
+토스증권/신한증권/케이뱅크/카카오뱅크 등 외부 import 의 dedupe 키 정책. Upbit OpenAPI (#87) 처럼 거래소 고유 주문 ID 가 있으면 그걸 그대로 쓰지만, **PDF/Excel 파일 import 는 거래 ID 가 없어 합성키가 필요**.
+
+- **원칙**: 거래의 **본질적 고유성** 만 사용. PDF 출력 컨텍스트 (잔액·합산·발급번호) 는 **제외**.
+  - Transaction (BUY/SELL): `sha256("{date}|{BUY|SELL}|{symbol}|{qty}|{price}")[:32]`
+  - Dividend: `sha256("{date}|{symbol}|{amount}|{currency}")[:32]`
+  - CashAccountTransaction (이자): `sha256("{date}|INTEREST|{amount}|{currency}")[:32]`
+- **이유**: 잔액을 키에 포함하면 같은 거래라도 다른 기간 PDF 재발급 시 잔액 컬럼이 달라져 dedupe 실패. 사용자 요청.
+- **부작용 (수용)**: 같은 일자·동일 가격·동일 수량 매매 N건은 1건으로 합쳐짐. 토스 PDF 는 거래 시각이 없어 어차피 구분 불가.
+- **DB 보장**: `(external_source, external_id)` UNIQUE 인덱스 — Transaction (`#87`), Dividend (`b4d3bc99048f`), CashAccountTransaction (`d5e8d86ff010`).
+- **시간 정책**: PDF 거래일자(YYYY.MM.DD) → KST 자정 (00:00 Asia/Seoul) → UTC 변환 후 저장.
+
+**관련 파일**: `backend/app/adapters/parsers/{base,toss_securities}.py`, `backend/app/services/exchange_sync.py` (`import_records` 분기), `backend/app/tools/parse_preview.py` (CLI dry-run).
+
+---
+
+## 2026-05-12: KST + 24시간 시간 표기 통일 (#122)
+
+**카테고리:** 규칙
+
+프론트엔드의 모든 시간 표시는 **`frontend/src/lib/datetime.ts`** 의 헬퍼 (`formatDateTimeKST`, `formatDateKST`, `formatTimeKST`, `formatChartTickKST`) 를 통해서만 출력. **Asia/Seoul + hour12: false 강제**.
+
+- **이유**: `toLocaleString("ko-KR", { hour: "2-digit" })` 는 hour12 미지정 시 일부 브라우저에서 "오후 3:30" (12h) 출력. 사용자 OS 시간대에 따라 시간이 달라짐.
+- **백엔드는 변경 없음** — UTC tz-aware 저장 유지. 프론트에서만 변환.
+- **금지**: 컴포넌트에서 `new Date(x).toLocaleString(...)` 직접 호출, date-fns `format` 의 timeZone 미지정 사용. 새 시간 표시 추가 시 반드시 datetime.ts 헬퍼 도입.
+
+**관련 파일**: `frontend/src/lib/datetime.ts`, `frontend/src/lib/chart-format.ts`.
+
+---
+
+## 2026-05-12: Upbit API key — env-only 정책 (#125)
+
+**카테고리:** 결정
+
+업비트 read-only API 키 (`UPBIT_ACCESS_KEY` / `UPBIT_SECRET_KEY`) 는 **서버 환경변수에만** 보관. **DB 저장하지 않음**.
+
+- **전제**: 단일 사용자 self-host 환경 (CLAUDE.md "단일 사용자 계정"). 키 회전 시 `.env` 수정 → 재시작.
+- **다중 사용자가 되면 재검토** — 사용자별 키 관리 (암호화 저장 + UI 등록 폼) 가 필요해짐. 현재는 YAGNI.
+- **UX**: 설정 → 거래소 동기화 → "지금 동기화" 버튼만. 키 미설정 시 502 → "환경변수 안내" 토스트.
+- **자동 트리거**: `app/scheduler` 에서 일 1회 자동 sync (#87 도입).
+
+**관련 파일**: `backend/app/core/config.py` (`upbit_access_key`/`upbit_secret_key`), `backend/app/routers/integration.py` (`sync_upbit`), `frontend/src/components/features/settings/exchange-sync-section.tsx`.
