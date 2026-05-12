@@ -55,18 +55,24 @@ def _trades_sync(access_key: str, secret_key: str) -> list[ExternalTrade]:
     since_ms = int((time.time() - _LOOKBACK_DAYS * 86400) * 1000)
     trades: list[ExternalTrade] = []
     for market in markets:
+        # ccxt's Upbit class does not implement fetch_my_trades — use
+        # fetch_closed_orders (maps to Upbit /v1/orders/closed). For market/limit
+        # orders the closed-order row carries the executed qty + average price,
+        # so 1 order ≈ 1 trade for our import purposes.
         try:
-            raw_trades = upbit.fetch_my_trades(symbol=market, since=since_ms, limit=_FETCH_LIMIT)
+            raw_orders = upbit.fetch_closed_orders(
+                symbol=market, since=since_ms, limit=_FETCH_LIMIT
+            )
         except Exception as exc:  # noqa: BLE001
             logger.warning(
-                "upbit fetch_my_trades failed for %s: %s",
+                "upbit fetch_closed_orders failed for %s: %s",
                 market,
                 exc,
-                extra={"event": "upbit_trades_fail", "market": market},
+                extra={"event": "upbit_orders_fail", "market": market},
             )
             continue
         mapped_count = 0
-        for raw in raw_trades:
+        for raw in raw_orders:
             mapped = _map_trade(raw)
             if mapped is not None:
                 trades.append(mapped)
@@ -76,7 +82,7 @@ def _trades_sync(access_key: str, secret_key: str) -> list[ExternalTrade]:
             extra={
                 "event": "upbit_market_trades",
                 "market": market,
-                "raw_count": len(raw_trades),
+                "raw_count": len(raw_orders),
                 "mapped_count": mapped_count,
             },
         )
@@ -88,13 +94,23 @@ _FETCH_LIMIT = 200
 
 
 def _map_trade(raw: dict[str, object]) -> ExternalTrade | None:
-    """Convert a ccxt trade dict to an ExternalTrade — None if malformed."""
+    """Convert a ccxt order/trade dict to an ExternalTrade — None if malformed.
+
+    Accepts either:
+      - a trade row (raw['amount'], raw['price'])  — fetch_my_trades shape
+      - a closed-order row (raw['filled'], raw['average']) — fetch_closed_orders shape
+    """
     external_id = raw.get("id")
     side = raw.get("side")
     symbol = raw.get("symbol")
     timestamp_ms = raw.get("timestamp")
-    amount = raw.get("amount")
-    price = raw.get("price")
+    # Prefer order-shaped fields (filled/average) since fetch_my_trades is unsupported on Upbit.
+    amount = raw.get("filled")
+    if not isinstance(amount, int | float):
+        amount = raw.get("amount")
+    price = raw.get("average")
+    if not isinstance(price, int | float):
+        price = raw.get("price")
     if (
         not isinstance(external_id, str)
         or not isinstance(side, str)
@@ -102,6 +118,8 @@ def _map_trade(raw: dict[str, object]) -> ExternalTrade | None:
         or not isinstance(timestamp_ms, int | float)
         or not isinstance(amount, int | float)
         or not isinstance(price, int | float)
+        or amount <= 0
+        or price <= 0
     ):
         return None
 
