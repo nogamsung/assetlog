@@ -74,14 +74,18 @@ export function FileImportSection() {
     mutation.mutate(
       { source, file, password: password || undefined, dryRun: false },
       {
-        onSuccess: () => {
+        onSuccess: (result) => {
+          setPreviewResult(result);
           setFile(null);
           setPassword("");
-          setPreviewResult(null);
           if (fileInputRef.current) fileInputRef.current.value = "";
         },
       },
     );
+  }
+
+  function handleResetResult() {
+    setPreviewResult(null);
   }
 
   const isPending = mutation.isPending;
@@ -204,11 +208,34 @@ export function FileImportSection() {
 
         {/* 결과 패널 */}
         {previewResult && (
-          <div className="space-y-4 rounded-xl border border-toss-border p-4" role="region" aria-label="미리보기 결과">
-            <div className="space-y-2">
+          <div
+            className={[
+              "space-y-4 rounded-xl border p-4",
+              previewResult.dryRun
+                ? "border-toss-border"
+                : "border-toss-up/40 bg-toss-up/5",
+            ].join(" ")}
+            role="region"
+            aria-label={previewResult.dryRun ? "미리보기 결과" : "가져오기 결과"}
+          >
+            <div className="flex items-start justify-between gap-3">
               <p className="text-sm font-medium">
-                {previewResult.dryRun ? "미리보기 결과" : "가져오기 결과"}
+                {previewResult.dryRun
+                  ? "미리보기 결과 — 아래 '가져오기' 버튼을 눌러 실제 import 하세요"
+                  : "✅ 가져오기 완료"}
               </p>
+              {!previewResult.dryRun && (
+                <button
+                  type="button"
+                  onClick={handleResetResult}
+                  aria-label="결과 닫기"
+                  className="text-xs text-muted-foreground hover:text-toss-textStrong"
+                >
+                  닫기
+                </button>
+              )}
+            </div>
+            <div className="space-y-2">
               <dl className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm sm:grid-cols-3">
                 <div className="flex justify-between">
                   <dt className="text-muted-foreground">거래</dt>

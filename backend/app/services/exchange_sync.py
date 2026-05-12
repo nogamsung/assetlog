@@ -15,6 +15,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Iterable
 from dataclasses import dataclass
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -26,6 +27,7 @@ from app.adapters.parsers.base import (
     ParseResult,
 )
 from app.domain.asset_type import AssetType
+from app.domain.dividend import DividendSource
 from app.domain.exchange_sync import ExchangeSource, ExternalTrade, SyncResult
 from app.models.asset_symbol import AssetSymbol
 from app.models.cash_account_transaction import CashAccountTransaction, CashTxKind
@@ -34,6 +36,8 @@ from app.models.transaction import Transaction
 from app.models.user_asset import UserAsset
 
 logger = logging.getLogger(__name__)
+
+_KST = ZoneInfo("Asia/Seoul")
 
 
 _UPBIT_EXCHANGE_LABEL = "UPBIT"
@@ -293,10 +297,10 @@ class ExchangeSyncService:
             self._session.add(
                 Dividend(
                     asset_symbol_id=symbol.id,
-                    ex_date=div.traded_at.date(),
+                    ex_date=div.traded_at.astimezone(_KST).date(),
                     amount=div.gross_amount,
                     currency=div.currency,
-                    source="toss_securities",
+                    source=DividendSource.TOSS_SECURITIES,
                     external_source=source.value,
                     external_id=div.external_id,
                 )

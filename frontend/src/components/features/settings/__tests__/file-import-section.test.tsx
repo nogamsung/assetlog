@@ -252,6 +252,54 @@ describe("FileImportSection", () => {
     expect(screen.getByRole("button", { name: "가져오기" })).toBeDisabled();
   });
 
+  it("'가져오기' 성공 후 결과 패널이 유지되고 '✅ 가져오기 완료' 가 표시된다", async () => {
+    let onSuccessFn: ((result: ImportFileResult) => void) | undefined;
+    const mutate = jest.fn((_args, opts: { onSuccess: (r: ImportFileResult) => void }) => {
+      onSuccessFn = opts.onSuccess;
+    });
+    setupMutation({ mutateFn: mutate });
+    render(<FileImportSection />);
+
+    const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement;
+    fireEvent.change(fileInput, { target: { files: [makePdfFile("statement.pdf")] } });
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "가져오기" })).not.toBeDisabled(),
+    );
+    await userEvent.click(screen.getByRole("button", { name: "가져오기" }));
+
+    onSuccessFn?.(fakeImportResult);
+
+    await waitFor(() => {
+      expect(screen.getByText(/가져오기 완료/)).toBeInTheDocument();
+    });
+    expect(screen.getByText(`${fakeImportResult.insertedTrades}건`)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "결과 닫기" })).toBeInTheDocument();
+  });
+
+  it("'가져오기 완료' 패널의 '결과 닫기' 클릭 시 패널이 사라진다", async () => {
+    let onSuccessFn: ((result: ImportFileResult) => void) | undefined;
+    const mutate = jest.fn((_args, opts: { onSuccess: (r: ImportFileResult) => void }) => {
+      onSuccessFn = opts.onSuccess;
+    });
+    setupMutation({ mutateFn: mutate });
+    render(<FileImportSection />);
+
+    const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement;
+    fireEvent.change(fileInput, { target: { files: [makePdfFile("statement.pdf")] } });
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "가져오기" })).not.toBeDisabled(),
+    );
+    await userEvent.click(screen.getByRole("button", { name: "가져오기" }));
+    onSuccessFn?.(fakeImportResult);
+
+    await waitFor(() => {
+      expect(screen.getByText(/가져오기 완료/)).toBeInTheDocument();
+    });
+
+    await userEvent.click(screen.getByRole("button", { name: "결과 닫기" }));
+    expect(screen.queryByText(/가져오기 완료/)).not.toBeInTheDocument();
+  });
+
   it("drag-and-drop 으로 파일을 선택할 수 있다", async () => {
     setupMutation();
     render(<FileImportSection />);
