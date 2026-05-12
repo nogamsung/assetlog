@@ -38,6 +38,7 @@ class Dividend(Base):
             name="uq_dividend_symbol_ex_date",
         ),
         Index("ix_dividend_ex_date", "ex_date"),
+        Index("uq_dividend_external", "external_source", "external_id", unique=True),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
@@ -53,6 +54,8 @@ class Dividend(Base):
         nullable=False,
         default=DividendSource.YFINANCE,
     )
+    external_source: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    external_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),

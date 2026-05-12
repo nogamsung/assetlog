@@ -18,6 +18,7 @@ class ExchangeSource(enum.StrEnum):
     BINANCE = "binance"
     SHINHAN = "shinhan"
     KIS = "kis"
+    TOSS_SECURITIES = "toss_securities"
 
 
 @dataclass(frozen=True)
