@@ -32,6 +32,7 @@
 - **다중 통화 환산** — Frankfurter (ECB) 환율로 USD↔KRW 동적 변환. summary / holdings 모두 지원
 - **태그별 분석** — DCA / 스윙 / 장기보유 등 태그로 거래 분류 → 매수/매도 flow 집계
 - **CSV import / export** — 기존 거래 일괄 등록, 전체 데이터 백업 (JSON · CSV ZIP)
+- **외부 거래내역 연동** — Upbit read-only API 동기화 + 토스증권 거래내역서 PDF 업로드 (매매·배당·이자 자동 import + dedupe)
 - **단일 사용자 보안** — 비밀번호 해시 환경변수 저장, DB 영속화 brute-force 방어, CSP 적용
 - **다크 모드** — light / dark / system, FOUC 방지 inline script
 - **샘플 데이터 1-클릭 시드** — 빈 계정에서 BTC · AAPL · 삼성전자 등 5개 자산 + 거래 자동 생성
@@ -52,10 +53,18 @@
 - **태그별 flow**: 매수/매도 횟수와 통화별 합계
 - **자산 비중 (allocation)**: asset_type 별 도넛 차트
 
+### 외부 거래내역 연동
+- **Upbit read-only API 동기화** — `UPBIT_ACCESS_KEY` / `UPBIT_SECRET_KEY` 환경변수 설정 후 설정 페이지의 "지금 동기화" 클릭 (또는 일 1회 자동). 주문 ID 기반 dedupe.
+- **토스증권 PDF 업로드** — 토스 앱의 "거래내역서" PDF 발급 → 설정 페이지에서 업로드. 매매/배당/이자 자동 import.
+  - 합성 `external_id = sha256(date|side|symbol|qty|price)` 로 동일 거래 재업로드 시 SKIP
+  - **dry-run 모드** + **CLI 미리보기** (`uv run python -m app.tools.parse_preview --source toss_securities --file <pdf>`) 로 import 전 검증 가능
+  - 비밀번호 보호 PDF 도 지원 (`password` form field)
+
 ### 인프라
 - **시간별 가격 갱신 스케줄러** (yfinance, pykrx, ccxt 어댑터)
 - **시간별 환율 갱신** (Frankfurter ECB)
 - **로그인 시도 정리 잡** (90일 cutoff)
+- **시간 표기**: 모든 UI 시간은 KST + 24시간 표기 통일 (`frontend/src/lib/datetime.ts`)
 
 ### 보안
 - 단일 사용자 password-only 로그인 (env 기반 bcrypt 해시)

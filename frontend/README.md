@@ -80,3 +80,21 @@ npm run test:ci
 npx tsc --noEmit
 npx eslint
 ```
+
+## 외부 거래내역 가져오기 (UI)
+
+설정 페이지(`/settings`) 에 두 가지 import 카드가 있습니다.
+
+### 거래소 동기화 (Upbit)
+- 백엔드 환경변수 `UPBIT_ACCESS_KEY` / `UPBIT_SECRET_KEY` 필요 (read-only).
+- "지금 동기화" 클릭 → `POST /api/integrations/upbit/sync` → 매매 기록 자동 import + 캐시 무효화 + 결과 카운트 표시.
+- 일 1회 자동 동기화도 백엔드 스케줄러에서 실행.
+
+### 파일에서 거래내역 가져오기 (토스증권)
+- 토스 앱 → 고객센터 → "거래내역서" PDF 발급 → 설정 페이지에서 업로드.
+- 흐름: source 선택 → 파일 드롭/선택 → (옵션) PDF 비밀번호 → **미리보기** (dry-run) → 결과 확인 → **가져오기**.
+- 매매 / 배당 / 이자입금 자동 import. 합성 dedupe 키로 동일 PDF 재업로드는 안전.
+
+## 시간 표기 정책
+
+모든 시간 표시는 **`src/lib/datetime.ts`** 헬퍼 (`formatDateTimeKST`, `formatDateKST`, `formatTimeKST`, `formatChartTickKST`) 를 통해서만 출력합니다 — Asia/Seoul + 24시간 강제. 컴포넌트에서 `toLocaleString` 직접 호출 금지.
