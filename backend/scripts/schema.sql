@@ -170,13 +170,40 @@ CREATE TABLE IF NOT EXISTS `dividends` (
   `ex_date`           DATE            NOT NULL,
   `amount`            DECIMAL(20, 8)  NOT NULL,
   `currency`          VARCHAR(10)     NOT NULL,
-  `source`            VARCHAR(16)     NOT NULL COMMENT 'yfinance | pykrx | manual',
+  `source`            VARCHAR(16)     NOT NULL COMMENT 'yfinance | pykrx | manual | toss_securities',
+  `external_source`   VARCHAR(32)     NULL,
+  `external_id`       VARCHAR(64)     NULL,
   `created_at`        DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
   UNIQUE KEY `uq_dividend_symbol_ex_date` (`asset_symbol_id`, `ex_date`),
+  UNIQUE KEY `uq_dividend_external`       (`external_source`, `external_id`),
   KEY `ix_dividend_ex_date`               (`ex_date`),
   CONSTRAINT `fk_dividends_asset_symbol_id`
     FOREIGN KEY (`asset_symbol_id`) REFERENCES `asset_symbols`(`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ----------------------------------------------------------------------------
+-- cash_account_transactions — append-only ledger of cash-flow events
+-- (interest, deposit, withdraw, ...) imported from broker statements.
+-- Dedupe by (external_source, external_id) when populated by file imports.
+-- ----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS `cash_account_transactions` (
+  `id`                BIGINT          NOT NULL AUTO_INCREMENT,
+  `cash_account_id`   BIGINT          NULL,
+  `kind`              VARCHAR(32)     NOT NULL COMMENT 'deposit | withdraw | interest | interest_tax | transfer_in | transfer_out',
+  `amount`            DECIMAL(20, 8)  NOT NULL,
+  `currency`          VARCHAR(8)      NOT NULL,
+  `traded_at`         DATETIME(6)     NOT NULL,
+  `external_source`   VARCHAR(32)     NULL,
+  `external_id`       VARCHAR(64)     NULL,
+  `created_at`        DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at`        DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_cash_tx_external`                  (`external_source`, `external_id`),
+  KEY `ix_cash_tx_traded_at`                        (`traded_at`),
+  KEY `ix_cash_account_transactions_cash_account_id` (`cash_account_id`),
+  CONSTRAINT `fk_cash_tx_cash_account_id`
+    FOREIGN KEY (`cash_account_id`) REFERENCES `cash_accounts`(`id`) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ----------------------------------------------------------------------------
@@ -202,7 +229,7 @@ CREATE TABLE IF NOT EXISTS `alembic_version` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 INSERT INTO `alembic_version` (`version_num`)
-  VALUES ('a4b7e293c8d1')
+  VALUES ('d5e8d86ff010')
   ON DUPLICATE KEY UPDATE `version_num` = VALUES(`version_num`);
 
 SET FOREIGN_KEY_CHECKS = 1;
