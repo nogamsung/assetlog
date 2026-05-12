@@ -1,0 +1,223 @@
+openapi: 3.1.0
+info:
+  title: AssetLog Integrations API
+  version: 0.1.0
+  description: |
+    외부 거래내역 import 엔드포인트.
+
+    두 가지 경로:
+      1. **Online sync** — Upbit read-only OpenAPI (#87)
+      2. **File upload** — broker statement (PDF / Excel) parser (#93)
+
+    Dedupe 정책: `Transaction.external_source` + `external_id` UNIQUE 인덱스.
+    파일 import 의 경우 `external_id` 는 합성키:
+    `sha256("{date}|{side}|{symbol}|{qty}|{price}")[:32]` (거래 본질 기준, PDF 출력 컨텍스트 제외).
+
+    관련 메모리: `memory/MEMORY.md` 의 "외부 거래내역 import — 합성 external_id 정책".
+
+servers:
+  - url: http://localhost:8000
+    description: Local
+
+tags:
+  - name: integrations
+    description: External data source integrations
+
+security:
+  - cookieAuth: []
+
+paths:
+
+  /api/integrations/upbit/sync:
+    post:
+      tags: [integrations]
+      summary: Upbit account sync (read-only API)
+      description: |
+        서버 환경변수 `UPBIT_ACCESS_KEY` / `UPBIT_SECRET_KEY` 로 Upbit private API 호출,
+        매매 기록을 Transaction 으로 import. `(external_source, external_id)` dedupe.
+
+        스케줄러에서 일 1회 자동 실행. 매뉴얼 트리거는 이 엔드포인트.
+      operationId: syncUpbit
+      responses:
+        '200':
+          description: Sync result counts
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SyncResultResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '502':
+          description: Upbit API keys not configured or upstream call failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/integrations/import-file:
+    post:
+      tags: [integrations]
+      summary: Import transactions from a broker statement file
+      description: |
+        Broker statement PDF (또는 향후 Excel) 을 업로드해서 매매 / 배당 / 이자입금을
+        import. `dry_run=true` 로 DB write 없이 카운트·preview 만 받아 미리보기 가능.
+
+        지원 source (Phase 1):
+          - `toss_securities` — 토스증권 거래내역서 PDF (pdfplumber)
+
+        지원 예정 (Phase 2):
+          - `shinhan_securities` — 신한투자증권 매매내역서 PDF
+          - `kbank` — 케이뱅크 거래내역
+          - `kakao_bank` — 카카오뱅크 거래내역
+
+        합성 `external_id` 정책: 동일 statement 재업로드는 안전하게 SKIP 됨.
+        잔액·합산 컬럼은 키에서 제외 (다른 기간 PDF 재발급 호환).
+
+        password-protected PDF 는 `password` form field 로 비밀번호 전달.
+      operationId: importFile
+      parameters:
+        - in: query
+          name: source
+          required: true
+          schema:
+            type: string
+            enum: [toss_securities]
+          description: Broker identifier
+        - in: query
+          name: dry_run
+          required: false
+          schema:
+            type: boolean
+            default: false
+          description: When true, parse and count without persisting to DB
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: Statement PDF file
+                password:
+                  type: string
+                  description: Optional decryption password for encrypted PDFs
+      responses:
+        '200':
+          description: Import result counts (with preview if dry_run)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ImportFileResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          description: Unsupported source, empty file, or wrong PDF password
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+components:
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: session
+
+  responses:
+    Unauthorized:
+      description: Not authenticated
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+  schemas:
+    ErrorResponse:
+      type: object
+      required: [detail]
+      properties:
+        detail:
+          type: string
+          example: "Unsupported source 'unknown'. Supported: ['toss_securities']"
+
+    SyncResultResponse:
+      type: object
+      required: [fetched, inserted, skipped_duplicate, skipped_no_symbol]
+      properties:
+        fetched:
+          type: integer
+          example: 50
+          description: Total external trades fetched
+        inserted:
+          type: integer
+          example: 12
+          description: New transactions persisted
+        skipped_duplicate:
+          type: integer
+          example: 38
+          description: Trades skipped because (source, external_id) already exists
+        skipped_no_symbol:
+          type: integer
+          example: 0
+          description: Trades skipped because the symbol could not be resolved
+
+    ImportPreviewItem:
+      type: object
+      required: [type, external_id, traded_at]
+      properties:
+        type:
+          type: string
+          enum: [ParsedTrade, ParsedDividend, ParsedCashTx]
+        external_id:
+          type: string
+          example: "a1b2c3d4e5f60718a2b3c4d5e6f70819"
+        traded_at:
+          type: string
+          format: date-time
+          example: "2025-05-14T15:00:00+00:00"
+
+    ImportFileResponse:
+      type: object
+      required:
+        - inserted_trades
+        - inserted_dividends
+        - inserted_cash_txs
+        - skipped_duplicate
+        - skipped_unsupported
+        - dry_run
+        - preview
+      properties:
+        inserted_trades:
+          type: integer
+          example: 159
+          description: New Transaction rows inserted
+        inserted_dividends:
+          type: integer
+          example: 7
+          description: New Dividend rows inserted
+        inserted_cash_txs:
+          type: integer
+          example: 10
+          description: New CashAccountTransaction rows inserted
+        skipped_duplicate:
+          type: integer
+          example: 0
+          description: Records skipped because (source, external_id) already exists
+        skipped_unsupported:
+          type: integer
+          example: 196
+          description: Records skipped because the transaction type is not yet supported
+        dry_run:
+          type: boolean
+          description: True when no DB writes were performed
+        preview:
+          type: array
+          maxItems: 20
+          description: Sample records (dry_run only — empty otherwise)
+          items:
+            $ref: '#/components/schemas/ImportPreviewItem'
