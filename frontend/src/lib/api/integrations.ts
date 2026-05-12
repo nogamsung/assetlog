@@ -78,3 +78,30 @@ export async function importFile(args: ImportFileArgs): Promise<ImportFileResult
   );
   return mapRaw(response.data);
 }
+
+// ── Upbit sync ─────────────────────────────────────────────────────────────────
+
+export interface UpbitSyncResult {
+  fetched: number;
+  inserted: number;
+  skippedDuplicate: number;
+  skippedNoSymbol: number;
+}
+
+interface RawUpbitSyncResult {
+  fetched: number;
+  inserted: number;
+  skipped_duplicate: number;
+  skipped_no_symbol: number;
+}
+
+export async function syncUpbit(): Promise<UpbitSyncResult> {
+  const response = await apiClient.post<RawUpbitSyncResult>("/api/integrations/upbit/sync");
+  const raw = response.data;
+  return {
+    fetched: raw.fetched,
+    inserted: raw.inserted,
+    skippedDuplicate: raw.skipped_duplicate,
+    skippedNoSymbol: raw.skipped_no_symbol,
+  };
+}
