@@ -51,7 +51,8 @@ def _trades_sync(access_key: str, secret_key: str) -> list[ExternalTrade]:
         if isinstance(val, int | float) and val > 0 and asset != "KRW"
     )
 
-    markets: list[str] = []
+    # Phase 1: held coins, preferred quote per coin (KRW > BTC > USDT).
+    primary_markets: list[str] = []
     skipped_no_market: list[str] = []
     for coin in coins:
         chosen: str | None = None
@@ -63,23 +64,69 @@ def _trades_sync(access_key: str, secret_key: str) -> list[ExternalTrade]:
         if chosen is None:
             skipped_no_market.append(coin)
         else:
-            markets.append(chosen)
+            primary_markets.append(chosen)
 
-    # WARNING level so it surfaces even when production log filters hide INFO.
     logger.warning(
         "upbit balance summary",
         extra={
             "event": "upbit_balance",
             "positive_coins": coins,
-            "matched_markets": markets,
+            "matched_markets": primary_markets,
             "skipped_no_market": skipped_no_market,
         },
     )
 
+    trades, attempted = _fetch_orders_for_markets(upbit, primary_markets)
+
+    # Phase 2 (fallback): if Phase 1 returned nothing, expand to ALL quotes
+    # for ALL held coins. Held coin may have been bought on /BTC or /USDT
+    # before being moved into /KRW deposits, etc.
+    if not trades and coins:
+        fallback_markets = [
+            f"{coin}/{quote}"
+            for coin in coins
+            for quote in _QUOTE_PREFERENCE
+            if f"{coin}/{quote}" in available_markets and f"{coin}/{quote}" not in attempted
+        ]
+        logger.warning(
+            "upbit fallback — expanding to all quotes for held coins",
+            extra={
+                "event": "upbit_fallback_expand",
+                "fallback_markets": fallback_markets,
+            },
+        )
+        more_trades, _ = _fetch_orders_for_markets(upbit, fallback_markets)
+        trades.extend(more_trades)
+
+    # Phase 3 (fallback²): still nothing → user might be holding only via
+    # external deposits, or the trades pre-date the closed-orders window.
+    # Sweep every KRW market on Upbit. This is rate-limited (~10s for ~200
+    # markets thanks to enableRateLimit) but only runs when Phase 1+2 returned 0.
+    if not trades:
+        all_krw = sorted(m for m in available_markets if m.endswith("/KRW") and m not in attempted)
+        logger.warning(
+            "upbit fallback² — sweeping all KRW markets",
+            extra={
+                "event": "upbit_fallback_sweep",
+                "market_count": len(all_krw),
+            },
+        )
+        more_trades, _ = _fetch_orders_for_markets(upbit, all_krw)
+        trades.extend(more_trades)
+
+    return trades
+
+
+def _fetch_orders_for_markets(
+    upbit: object, markets: list[str]
+) -> tuple[list[ExternalTrade], set[str]]:
+    """Call fetch_closed_orders on each market, return (trades, markets_attempted)."""
     trades: list[ExternalTrade] = []
+    attempted: set[str] = set()
     for market in markets:
+        attempted.add(market)
         try:
-            raw_orders = upbit.fetch_closed_orders(symbol=market, limit=_FETCH_LIMIT)
+            raw_orders = upbit.fetch_closed_orders(symbol=market, limit=_FETCH_LIMIT)  # type: ignore[attr-defined]
         except Exception as exc:  # noqa: BLE001
             logger.warning(
                 "upbit fetch_closed_orders failed for %s: %s",
@@ -94,16 +141,17 @@ def _trades_sync(access_key: str, secret_key: str) -> list[ExternalTrade]:
             if mapped is not None:
                 trades.append(mapped)
                 mapped_count += 1
-        logger.warning(
-            "upbit market trades",
-            extra={
-                "event": "upbit_market_trades",
-                "market": market,
-                "raw_count": len(raw_orders),
-                "mapped_count": mapped_count,
-            },
-        )
-    return trades
+        if raw_orders or mapped_count:
+            logger.warning(
+                "upbit market trades",
+                extra={
+                    "event": "upbit_market_trades",
+                    "market": market,
+                    "raw_count": len(raw_orders),
+                    "mapped_count": mapped_count,
+                },
+            )
+    return trades, attempted
 
 
 def _map_trade(raw: dict[str, object]) -> ExternalTrade | None:
