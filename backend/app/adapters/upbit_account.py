@@ -2,8 +2,20 @@
 
 The user issues access/secret keys at https://upbit.com/mypage/open_api_management
 and provides them via env vars (``UPBIT_ACCESS_KEY``, ``UPBIT_SECRET_KEY``).
-The adapter only ever calls ``fetch_closed_orders`` / ``fetch_balance`` — it never
-places orders.
+The adapter only ever reads — it never places orders.
+
+Strategy
+--------
+Phase 0 (primary): call Upbit's /v1/orders/closed *without a market filter*
+    via ccxt's implicit method (``private_get_orders_closed``). This returns
+    every closed order across every market, paginated by ``start_time``/
+    ``end_time``. We walk back in time until the page is short or empty,
+    capturing the user's full trade history — including coins the user no
+    longer holds.
+
+Phase 1+ (fallback): if Phase 0 yields nothing (e.g. API rejects the
+    no-symbol form on a future Upbit change), iterate per-market with
+    ``fetch_closed_orders(symbol=...)`` over the user's currently held coins.
 """
 
 from __future__ import annotations
@@ -12,6 +24,7 @@ import asyncio
 import logging
 from datetime import UTC, datetime
 from decimal import Decimal
+from typing import Any
 
 from app.domain.exchange_sync import ExternalTrade
 from app.domain.transaction_type import TransactionType
@@ -19,30 +32,31 @@ from app.exceptions import ExternalIntegrationError
 
 logger = logging.getLogger("app.adapters.upbit_account")
 
-_FETCH_LIMIT = 200
+_FETCH_LIMIT = 100  # Upbit /v1/orders/closed default; max 1000 but 100 is safer
 _QUOTE_PREFERENCE = ("KRW", "BTC", "USDT")
+_MAX_PAGES = 200  # safety: 200 × 100 = 20,000 orders cap
+_PAGE_PROGRESS_REQUIRED = True  # break if oldest_at doesn't move
 
 
 def _trades_sync(access_key: str, secret_key: str) -> list[ExternalTrade]:
-    """Fetch all closed orders for every market the user currently holds — sync.
-
-    Steps:
-      1. load_markets() so we know which trading pairs Upbit actually exposes.
-      2. fetch_balance() for the user's positive holdings.
-      3. For each held coin pick the first available quote (KRW > BTC > USDT)
-         — Upbit lists some coins only on /BTC or /USDT.
-      4. fetch_closed_orders(symbol, limit=200) per resolved market.
-
-    We deliberately omit `since`: in production Upbit's /v1/orders/closed returned
-    empty when called with start_time, but returns the latest 100 closed orders
-    when called without it.
-    """
+    """Fetch the user's full closed-order history from Upbit — sync."""
     import ccxt  # noqa: PLC0415
 
     upbit = ccxt.upbit({"apiKey": access_key, "secret": secret_key, "enableRateLimit": True})
     upbit.load_markets()
-    available_markets: set[str] = set(upbit.markets.keys() if upbit.markets else [])
 
+    # Phase 0: walk all closed orders across all markets via Upbit private API.
+    trades = _fetch_all_closed_orders(upbit)
+    if trades:
+        return trades
+
+    logger.warning(
+        "upbit primary all-orders fetch returned nothing; falling back to per-market",
+        extra={"event": "upbit_phase0_empty"},
+    )
+
+    # Fallback: iterate per held coin with ccxt's standard helper.
+    available_markets: set[str] = set(upbit.markets.keys() if upbit.markets else [])
     balances = upbit.fetch_balance()
     total_map = balances.get("total") or {}
     coins = sorted(
@@ -50,83 +64,177 @@ def _trades_sync(access_key: str, secret_key: str) -> list[ExternalTrade]:
         for asset, val in total_map.items()
         if isinstance(val, int | float) and val > 0 and asset != "KRW"
     )
-
-    # Phase 1: held coins, preferred quote per coin (KRW > BTC > USDT).
     primary_markets: list[str] = []
-    skipped_no_market: list[str] = []
     for coin in coins:
-        chosen: str | None = None
         for quote in _QUOTE_PREFERENCE:
             symbol = f"{coin}/{quote}"
             if symbol in available_markets:
-                chosen = symbol
+                primary_markets.append(symbol)
                 break
-        if chosen is None:
-            skipped_no_market.append(coin)
-        else:
-            primary_markets.append(chosen)
 
-    logger.warning(
-        "upbit balance summary",
-        extra={
-            "event": "upbit_balance",
-            "positive_coins": coins,
-            "matched_markets": primary_markets,
-            "skipped_no_market": skipped_no_market,
-        },
-    )
+    fallback_trades, _ = _fetch_orders_for_markets(upbit, primary_markets)
+    return fallback_trades
 
-    trades, attempted = _fetch_orders_for_markets(upbit, primary_markets)
 
-    # Phase 2 (fallback): if Phase 1 returned nothing, expand to ALL quotes
-    # for ALL held coins. Held coin may have been bought on /BTC or /USDT
-    # before being moved into /KRW deposits, etc.
-    if not trades and coins:
-        fallback_markets = [
-            f"{coin}/{quote}"
-            for coin in coins
-            for quote in _QUOTE_PREFERENCE
-            if f"{coin}/{quote}" in available_markets and f"{coin}/{quote}" not in attempted
-        ]
+def _fetch_all_closed_orders(upbit: Any) -> list[ExternalTrade]:
+    """Page through Upbit /v1/orders/closed without a market filter.
+
+    Upbit returns up to ``_FETCH_LIMIT`` orders sorted desc by created_at.
+    For the next page we set ``end_time`` to just before the oldest order's
+    timestamp, so each page strictly precedes the previous one.
+    """
+    trades: list[ExternalTrade] = []
+    seen_uuids: set[str] = set()
+    end_time: str | None = None  # ISO8601 with TZ; None = "now"
+
+    for page in range(_MAX_PAGES):
+        params: dict[str, Any] = {
+            "state": "done",
+            "limit": _FETCH_LIMIT,
+            "order_by": "desc",
+        }
+        if end_time is not None:
+            params["end_time"] = end_time
+
+        try:
+            raw_page = upbit.private_get_orders_closed(params)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "upbit private_get_orders_closed page %d failed: %s",
+                page,
+                exc,
+                extra={"event": "upbit_all_orders_fail", "page": page, "error": str(exc)},
+            )
+            break
+
+        if not isinstance(raw_page, list) or not raw_page:
+            logger.warning(
+                "upbit private_get_orders_closed page %d empty",
+                page,
+                extra={"event": "upbit_all_orders_done", "page": page, "total": len(trades)},
+            )
+            break
+
+        new_in_page = 0
+        oldest_iso: str | None = None
+        for raw in raw_page:
+            uuid = raw.get("uuid") if isinstance(raw, dict) else None
+            if not isinstance(uuid, str) or uuid in seen_uuids:
+                continue
+            seen_uuids.add(uuid)
+            mapped = _map_native_order(raw)
+            if mapped is not None:
+                trades.append(mapped)
+                new_in_page += 1
+            created_at = raw.get("created_at") if isinstance(raw, dict) else None
+            if isinstance(created_at, str) and (oldest_iso is None or created_at < oldest_iso):
+                oldest_iso = created_at
+
         logger.warning(
-            "upbit fallback — expanding to all quotes for held coins",
+            "upbit all-orders page",
             extra={
-                "event": "upbit_fallback_expand",
-                "fallback_markets": fallback_markets,
+                "event": "upbit_all_orders_page",
+                "page": page,
+                "raw_count": len(raw_page),
+                "mapped_in_page": new_in_page,
+                "running_total": len(trades),
+                "oldest_iso": oldest_iso,
             },
         )
-        more_trades, _ = _fetch_orders_for_markets(upbit, fallback_markets)
-        trades.extend(more_trades)
 
-    # Phase 3 (fallback²): still nothing → user might be holding only via
-    # external deposits, or the trades pre-date the closed-orders window.
-    # Sweep every KRW market on Upbit. This is rate-limited (~10s for ~200
-    # markets thanks to enableRateLimit) but only runs when Phase 1+2 returned 0.
-    if not trades:
-        all_krw = sorted(m for m in available_markets if m.endswith("/KRW") and m not in attempted)
-        logger.warning(
-            "upbit fallback² — sweeping all KRW markets",
-            extra={
-                "event": "upbit_fallback_sweep",
-                "market_count": len(all_krw),
-            },
-        )
-        more_trades, _ = _fetch_orders_for_markets(upbit, all_krw)
-        trades.extend(more_trades)
+        if len(raw_page) < _FETCH_LIMIT:
+            break  # last page
+        if oldest_iso is None:
+            break  # nothing to use as cursor
+        if _PAGE_PROGRESS_REQUIRED and oldest_iso == end_time:
+            break  # cursor stuck — defensive
+        end_time = oldest_iso
 
     return trades
 
 
+def _map_native_order(raw: dict[str, Any]) -> ExternalTrade | None:
+    """Map an Upbit-native /v1/orders/closed row to ExternalTrade.
+
+    Upbit shape (selected fields)::
+
+        {
+          "uuid": "9bf...c5",
+          "side": "bid" | "ask",
+          "market": "KRW-BTC",
+          "state": "done",
+          "price": "50000000.0",          # limit price (None for market orders)
+          "avg_price": "50100000.0",      # actual executed avg (use this)
+          "executed_volume": "0.001",
+          "volume": "0.001",
+          "created_at": "2024-09-15T10:30:00+09:00",
+          ...
+        }
+    """
+    uuid = raw.get("uuid")
+    side = raw.get("side")
+    market = raw.get("market")
+    state = raw.get("state")
+    if not (
+        isinstance(uuid, str)
+        and isinstance(side, str)
+        and isinstance(market, str)
+        and isinstance(state, str)
+    ):
+        return None
+    if state != "done":
+        return None
+    if side not in {"bid", "ask"}:
+        return None
+    if "-" not in market:
+        return None
+    quote_raw, _, base_raw = market.partition("-")  # Upbit: QUOTE-BASE
+    if not quote_raw or not base_raw:
+        return None
+
+    qty = _to_decimal(raw.get("executed_volume"))
+    price = _to_decimal(raw.get("avg_price")) or _to_decimal(raw.get("price"))
+    created_at = raw.get("created_at")
+    if qty is None or price is None or qty <= 0 or price <= 0:
+        return None
+    if not isinstance(created_at, str):
+        return None
+    try:
+        traded_at = datetime.fromisoformat(created_at).astimezone(UTC)
+    except ValueError:
+        return None
+
+    return ExternalTrade(
+        external_id=uuid,
+        symbol=base_raw.upper(),
+        quote_currency=quote_raw.upper(),
+        side=TransactionType.BUY if side == "bid" else TransactionType.SELL,
+        quantity=qty,
+        price=price,
+        traded_at=traded_at,
+    )
+
+
+def _to_decimal(v: object) -> Decimal | None:
+    """Tolerant Decimal conversion — Upbit returns numerics as strings."""
+    if v is None:
+        return None
+    try:
+        return Decimal(str(v))
+    except (ArithmeticError, ValueError):
+        return None
+
+
 def _fetch_orders_for_markets(
-    upbit: object, markets: list[str]
+    upbit: Any, markets: list[str]
 ) -> tuple[list[ExternalTrade], set[str]]:
-    """Call fetch_closed_orders on each market, return (trades, markets_attempted)."""
+    """Fallback: per-market closed orders via ccxt's standard helper."""
     trades: list[ExternalTrade] = []
     attempted: set[str] = set()
     for market in markets:
         attempted.add(market)
         try:
-            raw_orders = upbit.fetch_closed_orders(symbol=market, limit=_FETCH_LIMIT)  # type: ignore[attr-defined]
+            raw_orders = upbit.fetch_closed_orders(symbol=market, limit=_FETCH_LIMIT)
         except Exception as exc:  # noqa: BLE001
             logger.warning(
                 "upbit fetch_closed_orders failed for %s: %s",
@@ -141,25 +249,20 @@ def _fetch_orders_for_markets(
             if mapped is not None:
                 trades.append(mapped)
                 mapped_count += 1
-        if raw_orders or mapped_count:
-            logger.warning(
-                "upbit market trades",
-                extra={
-                    "event": "upbit_market_trades",
-                    "market": market,
-                    "raw_count": len(raw_orders),
-                    "mapped_count": mapped_count,
-                },
-            )
+        logger.warning(
+            "upbit market trades",
+            extra={
+                "event": "upbit_market_trades",
+                "market": market,
+                "raw_count": len(raw_orders),
+                "mapped_count": mapped_count,
+            },
+        )
     return trades, attempted
 
 
 def _map_trade(raw: dict[str, object]) -> ExternalTrade | None:
-    """Convert a ccxt closed-order dict to an ExternalTrade — None if malformed.
-
-    Closed-order rows carry the executed qty in `filled` and the executed price
-    in `average`; older trade-shaped rows use `amount` / `price`. Both supported.
-    """
+    """Convert a ccxt closed-order dict to ExternalTrade — None if malformed."""
     external_id = raw.get("id")
     side = raw.get("side")
     symbol = raw.get("symbol")
@@ -209,11 +312,7 @@ class UpbitAccountAdapter:
         self._secret_key = secret_key
 
     async def fetch_trades(self) -> list[ExternalTrade]:
-        """Return every trade for every market the user has touched.
-
-        Sorted ascending by traded_at. Empty list on transient errors so that
-        callers can retry on the next scheduler tick.
-        """
+        """Return every closed trade for the account, sorted ascending by traded_at."""
         try:
             trades = await asyncio.to_thread(_trades_sync, self._access_key, self._secret_key)
         except Exception as exc:
