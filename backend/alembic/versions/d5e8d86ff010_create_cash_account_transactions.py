@@ -20,8 +20,8 @@ depends_on: str | Sequence[str] | None = None
 def upgrade() -> None:
     op.create_table(
         "cash_account_transactions",
-        sa.Column("id", sa.BigInteger(), autoincrement=True, nullable=False),
-        sa.Column("cash_account_id", sa.BigInteger(), nullable=True),
+        sa.Column("id", sa.Integer(), autoincrement=True, nullable=False),
+        sa.Column("cash_account_id", sa.Integer(), nullable=True),
         sa.Column(
             "kind",
             sa.Enum(

@@ -138,6 +138,16 @@ python -c 'import bcrypt; print(bcrypt.hashpw(b"내-비밀번호", bcrypt.gensal
 
 > ⚠️ `APP_PASSWORD_HASH` 미설정 시 로그인 시도하면 503 "Owner password not configured" 응답. 의도된 동작입니다.
 
+**Upbit 동기화 (선택)** — 설정 페이지의 "거래소 동기화" 카드를 쓰려면 read-only API 키가 필요합니다:
+
+```bash
+# backend/.env.local 에 추가
+UPBIT_ACCESS_KEY=...
+UPBIT_SECRET_KEY=...
+```
+
+키 발급: <https://upbit.com/mypage/open_api_management> → "자산 조회" + "주문내역 조회" 권한만 체크 (출금/주문 권한 불필요). 키 미설정 시 sync API 는 502 + 안내 메시지를 반환합니다.
+
 ### 4. 실행
 
 ```bash
@@ -197,6 +207,10 @@ COOKIE_DOMAIN=.example.com
 
 # 스케줄러
 ENABLE_SCHEDULER=true
+
+# Upbit read-only API (선택 — /api/integrations/upbit/sync 사용 시 필요)
+UPBIT_ACCESS_KEY=
+UPBIT_SECRET_KEY=
 ```
 
 ### 3. 통신 흐름 검증
