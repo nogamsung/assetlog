@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.13.0](https://github.com/nogamsung/assetlog/compare/v0.12.2...v0.13.0) (2026-05-12)
+
+
+### Features
+
+* **backend:** Toss Securities PDF transaction import ([#93](https://github.com/nogamsung/assetlog/issues/93)) ([#123](https://github.com/nogamsung/assetlog/issues/123)) ([435cb88](https://github.com/nogamsung/assetlog/commit/435cb88f523816115df0b17c0ebb091a767a5f84))
+
+
+### Documentation
+
+* README updates for [#93](https://github.com/nogamsung/assetlog/issues/93) (file import + Upbit sync UI + KST display) ([#127](https://github.com/nogamsung/assetlog/issues/127)) ([96a6947](https://github.com/nogamsung/assetlog/commit/96a6947fbc4e6c7faed0614ed318ec5f11dfe522))
+
+
+### Chores
+
+* upgrade claude code starter to v1.36.0 ([#120](https://github.com/nogamsung/assetlog/issues/120)) ([fa50804](https://github.com/nogamsung/assetlog/commit/fa50804bc0a469ff11643c6fba2005fc72a88b4a))
+
 ## [0.12.2](https://github.com/nogamsung/assetlog/compare/v0.12.1...v0.12.2) (2026-05-11)
 
 

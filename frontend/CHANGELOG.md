@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.13.0](https://github.com/nogamsung/assetlog/compare/v0.12.0...v0.13.0) (2026-05-12)
+
+
+### Features
+
+* **frontend:** file-based transaction import UI ([#93](https://github.com/nogamsung/assetlog/issues/93)) ([#124](https://github.com/nogamsung/assetlog/issues/124)) ([5b5a8af](https://github.com/nogamsung/assetlog/commit/5b5a8aff7fa268ed3c270d5a2e6258c3495fd567))
+* **frontend:** KST + 24-hour time display unified ([#122](https://github.com/nogamsung/assetlog/issues/122)) ([80d010f](https://github.com/nogamsung/assetlog/commit/80d010f487422dfd65cff919c75b41f5a82c0e19))
+* **frontend:** Upbit sync trigger UI in settings ([#93](https://github.com/nogamsung/assetlog/issues/93)) ([#125](https://github.com/nogamsung/assetlog/issues/125)) ([eefaed8](https://github.com/nogamsung/assetlog/commit/eefaed8f37695f0b736ecdc4895f5a506739cdcd))
+
+
+### Documentation
+
+* README updates for [#93](https://github.com/nogamsung/assetlog/issues/93) (file import + Upbit sync UI + KST display) ([#127](https://github.com/nogamsung/assetlog/issues/127)) ([96a6947](https://github.com/nogamsung/assetlog/commit/96a6947fbc4e6c7faed0614ed318ec5f11dfe522))
+
 ## [0.12.0](https://github.com/nogamsung/assetlog/compare/v0.11.0...v0.12.0) (2026-05-11)
 
 
