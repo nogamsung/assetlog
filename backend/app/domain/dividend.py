@@ -14,6 +14,7 @@ class DividendSource(enum.StrEnum):
     YFINANCE = "yfinance"
     PYKRX = "pykrx"
     MANUAL = "manual"
+    TOSS_SECURITIES = "toss_securities"
 
 
 @dataclass(frozen=True)
