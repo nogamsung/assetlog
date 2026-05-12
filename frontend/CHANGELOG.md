@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.13.1](https://github.com/nogamsung/assetlog/compare/v0.13.0...v0.13.1) (2026-05-12)
+
+
+### Bug Fixes
+
+* **#93:** preserve import result panel + Dividend enum/timezone ([#129](https://github.com/nogamsung/assetlog/issues/129)) ([f3bb012](https://github.com/nogamsung/assetlog/commit/f3bb012517ce3466b3fa3e360fb13fb0d70df781))
+
 ## [0.13.0](https://github.com/nogamsung/assetlog/compare/v0.12.0...v0.13.0) (2026-05-12)
 
 
