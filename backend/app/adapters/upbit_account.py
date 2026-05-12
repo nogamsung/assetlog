@@ -21,25 +21,42 @@ logger = logging.getLogger("app.adapters.upbit_account")
 
 
 def _trades_sync(access_key: str, secret_key: str) -> list[ExternalTrade]:
-    """Fetch all trades for every market the user has traded — sync."""
-    import ccxt  # noqa: PLC0415  # lazy import for testability
+    """Fetch all trades for every market the user has traded — sync.
+
+    Upbit's /v1/orders/closed (which ccxt's fetch_my_trades calls under the hood)
+    paginates by 100 by default and only returns recent orders unless `start_time`
+    is provided. We loop through coins the user currently holds and pull up to
+    `_FETCH_LIMIT` orders per market, going back `_LOOKBACK_DAYS`.
+    """
+    import time  # noqa: PLC0415
+
+    import ccxt  # noqa: PLC0415
 
     upbit = ccxt.upbit({"apiKey": access_key, "secret": secret_key, "enableRateLimit": True})
     balances = upbit.fetch_balance()
-    # ccxt's standard `total` map is dict[str, float] keyed by currency.
-    # We previously parsed `info` (the raw exchange payload), but Upbit's
-    # /v1/accounts returns a list — caused 'list has no attribute items'.
+
+    total_map = balances.get("total") or {}
     coins = sorted(
         asset
-        for asset, val in (balances.get("total") or {}).items()
+        for asset, val in total_map.items()
         if isinstance(val, int | float) and val > 0 and asset != "KRW"
+    )
+    logger.info(
+        "upbit balance summary",
+        extra={
+            "event": "upbit_balance",
+            "total_keys": sorted(total_map.keys()),
+            "positive_coins": coins,
+            "info_type": type(balances.get("info")).__name__,
+        },
     )
     markets: list[str] = [f"{coin}/KRW" for coin in coins if coin]
 
+    since_ms = int((time.time() - _LOOKBACK_DAYS * 86400) * 1000)
     trades: list[ExternalTrade] = []
     for market in markets:
         try:
-            raw_trades = upbit.fetch_my_trades(symbol=market)
+            raw_trades = upbit.fetch_my_trades(symbol=market, since=since_ms, limit=_FETCH_LIMIT)
         except Exception as exc:  # noqa: BLE001
             logger.warning(
                 "upbit fetch_my_trades failed for %s: %s",
@@ -48,11 +65,26 @@ def _trades_sync(access_key: str, secret_key: str) -> list[ExternalTrade]:
                 extra={"event": "upbit_trades_fail", "market": market},
             )
             continue
+        mapped_count = 0
         for raw in raw_trades:
             mapped = _map_trade(raw)
             if mapped is not None:
                 trades.append(mapped)
+                mapped_count += 1
+        logger.info(
+            "upbit market trades",
+            extra={
+                "event": "upbit_market_trades",
+                "market": market,
+                "raw_count": len(raw_trades),
+                "mapped_count": mapped_count,
+            },
+        )
     return trades
+
+
+_LOOKBACK_DAYS = 365 * 3
+_FETCH_LIMIT = 200
 
 
 def _map_trade(raw: dict[str, object]) -> ExternalTrade | None:
