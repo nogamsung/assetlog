@@ -153,6 +153,73 @@ class ExchangeSyncService:
             skipped_no_symbol=0,
         )
 
+    async def replace_trades(
+        self,
+        source: ExchangeSource,
+        trades: Iterable[ExternalTrade],
+    ) -> SyncResult:
+        """Delete all transactions for ``source`` then insert ``trades`` fresh.
+
+        Used by Upbit sync so that re-running the sync always produces holdings
+        that match the exchange's live balance, even when:
+          - the upstream history has gaps (airdrops, external deposits, ...)
+          - the user previously synced an out-of-date snapshot
+
+        User-entered transactions (``external_source IS NULL``) are NOT touched.
+        """
+        from sqlalchemy import delete  # noqa: PLC0415
+
+        trade_list = list(trades)
+
+        await self._session.execute(
+            delete(Transaction).where(Transaction.external_source == source.value)
+        )
+        await self._session.flush()
+
+        if not trade_list:
+            return SyncResult(0, 0, 0, 0)
+
+        symbol_cache: dict[str, AssetSymbol] = {}
+        asset_cache: dict[int, UserAsset] = {}
+        inserted = 0
+        for trade in trade_list:
+            symbol = symbol_cache.get(trade.symbol)
+            if symbol is None:
+                symbol = await self._get_or_create_symbol(source, trade)
+                symbol_cache[trade.symbol] = symbol
+            asset = asset_cache.get(symbol.id)
+            if asset is None:
+                asset = await self._get_or_create_user_asset(symbol.id)
+                asset_cache[symbol.id] = asset
+            self._session.add(
+                Transaction(
+                    user_asset_id=asset.id,
+                    type=trade.side,
+                    quantity=trade.quantity,
+                    price=trade.price,
+                    traded_at=trade.traded_at,
+                    external_source=source.value,
+                    external_id=trade.external_id,
+                )
+            )
+            inserted += 1
+        await self._session.flush()
+        logger.info(
+            "exchange_sync replaced",
+            extra={
+                "event": "exchange_sync_replaced",
+                "source": source.value,
+                "inserted": inserted,
+                "fetched": len(trade_list),
+            },
+        )
+        return SyncResult(
+            fetched=len(trade_list),
+            inserted=inserted,
+            skipped_duplicate=0,
+            skipped_no_symbol=0,
+        )
+
     # ------------------------------------------------------------------
     # Public API — file-based import (Toss Securities, etc.)
     # ------------------------------------------------------------------
