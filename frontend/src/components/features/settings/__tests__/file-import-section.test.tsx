@@ -5,6 +5,12 @@ import * as useImportFileModule from "@/hooks/use-import-file";
 import type { ImportFileResult } from "@/lib/api/integrations";
 
 jest.mock("@/hooks/use-import-file");
+jest.mock("@/hooks/use-portfolio-history", () => ({
+  useBackfillPortfolioHistory: () => ({
+    mutate: jest.fn(),
+    isPending: false,
+  }),
+}));
 jest.mock("sonner", () => ({
   toast: { success: jest.fn(), error: jest.fn() },
 }));

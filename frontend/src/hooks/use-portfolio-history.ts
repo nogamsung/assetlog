@@ -1,7 +1,11 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
-import { getPortfolioHistory } from "@/lib/api/portfolio-history";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  backfillPortfolioHistory,
+  getPortfolioHistory,
+} from "@/lib/api/portfolio-history";
+import type { BackfillResult } from "@/lib/api/portfolio-history";
 import type { PortfolioHistoryResponse, HistoryPeriod } from "@/types/portfolio-history";
 
 // ── Query keys (co-located) ───────────────────────────────────────────────────
@@ -24,5 +28,17 @@ export function usePortfolioHistory({ period, currency }: UsePortfolioHistoryPar
     queryFn: () => getPortfolioHistory({ period, currency }),
     staleTime: 60_000,
     enabled: currency.length > 0,
+  });
+}
+
+export function useBackfillPortfolioHistory() {
+  const queryClient = useQueryClient();
+  return useMutation<BackfillResult, Error>({
+    mutationFn: backfillPortfolioHistory,
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["portfolioHistory"] });
+      void queryClient.invalidateQueries({ queryKey: ["portfolioSummary"] });
+      void queryClient.invalidateQueries({ queryKey: ["portfolio", "holdings"] });
+    },
   });
 }

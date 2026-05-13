@@ -11,6 +11,7 @@ from app.core.deps import (
     PerformanceServiceDep,
     PortfolioHistoryServiceDep,
     PortfolioServiceDep,
+    PriceHistoryBackfillServiceDep,
     RiskServiceDep,
     TagBreakdownServiceDep,
 )
@@ -134,6 +135,31 @@ async def get_portfolio_history(
 ) -> PortfolioHistoryResponse:
     """Return portfolio value time series."""
     return await history_service.get_history(period, currency.upper())
+
+
+@router.post(
+    "/history/backfill",
+    status_code=status.HTTP_200_OK,
+    summary="Back-fill historical daily prices from earliest trade date",
+    description=(
+        "Pulls daily closing prices from yfinance going back to each symbol's "
+        "earliest transaction date and writes them to price_points. Run this "
+        "after importing historical brokerage statements so the portfolio "
+        "history chart can render the full timeline."
+    ),
+    responses={401: {"model": ErrorResponse, "description": "Not authenticated"}},
+)
+async def backfill_portfolio_history(
+    _current_user: CurrentUser,
+    backfill_service: PriceHistoryBackfillServiceDep,
+) -> dict[str, int]:
+    """Back-fill historical price points for every symbol with transactions."""
+    result = await backfill_service.backfill_all()
+    return {
+        "symbols_attempted": result.symbols_attempted,
+        "symbols_skipped": result.symbols_skipped,
+        "points_inserted": result.points_inserted,
+    }
 
 
 @router.get(
