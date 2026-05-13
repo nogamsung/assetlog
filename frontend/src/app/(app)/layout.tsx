@@ -43,6 +43,13 @@ function AppHeader() {
           >
             보유 자산
           </Link>
+          <Link
+            href="/interest"
+            className={navLinkClass("/interest")}
+            aria-current={pathname === "/interest" ? "page" : undefined}
+          >
+            이자
+          </Link>
         </nav>
       </div>
       <div className="flex items-center gap-2 sm:gap-4">

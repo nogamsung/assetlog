@@ -6,3 +6,21 @@ export interface CashAccount {
   createdAt: string; // ISO-8601
   updatedAt: string;
 }
+
+export type CashTxKind =
+  | "deposit"
+  | "withdraw"
+  | "interest"
+  | "interest_tax"
+  | "transfer_in"
+  | "transfer_out";
+
+export interface CashAccountTransaction {
+  id: number;
+  cashAccountId: number | null;
+  kind: CashTxKind;
+  amount: string;
+  currency: string;
+  tradedAt: string;
+  externalSource: string | null;
+}

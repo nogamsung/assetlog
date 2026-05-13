@@ -140,3 +140,30 @@ class CashAccountResponse(BaseModel):
     @field_serializer("interest_rate_annual")
     def _serialize_interest(self, v: Decimal | None) -> str | None:
         return str(v) if v is not None else None
+
+
+class CashAccountTransactionResponse(BaseModel):
+    """Response schema for a cash account transaction (interest, deposit, etc.)."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int = Field(..., description="Transaction primary key", examples=[1])
+    cash_account_id: int | None = Field(
+        default=None,
+        description="Owning cash account id (nullable for unattached events like file-imported interest)",
+        examples=[None],
+    )
+    kind: str = Field(..., description="Transaction kind", examples=["interest"])
+    amount: Decimal = Field(
+        ..., description="Transaction amount (positive); for tax/withdraw the sign convention is documented in the kind."
+    )
+    currency: str = Field(..., description="ISO 4217 currency code", examples=["KRW"])
+    traded_at: datetime = Field(..., description="When the transaction occurred (UTC)")
+    external_source: str | None = Field(
+        default=None,
+        description="Origin tag set by file-imports (e.g. 'toss_securities')",
+    )
+
+    @field_serializer("amount")
+    def _serialize_amount(self, v: Decimal) -> str:
+        return str(v)

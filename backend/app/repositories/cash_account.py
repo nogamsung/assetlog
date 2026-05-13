@@ -10,6 +10,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.cash_account import CashAccount
+from app.models.cash_account_transaction import CashAccountTransaction, CashTxKind
 
 logger = logging.getLogger(__name__)
 
@@ -85,6 +86,21 @@ class CashAccountRepository:
         await self._session.delete(entity)
         await self._session.flush()
         logger.debug("CashAccount deleted: id=%s", entity.id)
+
+    async def list_transactions(
+        self,
+        *,
+        kind: CashTxKind | None = None,
+    ) -> Sequence[CashAccountTransaction]:
+        """Return cash account transactions, newest first. Optional kind filter."""
+        stmt = select(CashAccountTransaction).order_by(
+            CashAccountTransaction.traded_at.desc(),
+            CashAccountTransaction.id.desc(),
+        )
+        if kind is not None:
+            stmt = stmt.where(CashAccountTransaction.kind == kind)
+        result = await self._session.execute(stmt)
+        return result.scalars().all()
 
     async def sum_balance_by_currency(self) -> dict[str, Decimal]:
         """Return total balance per currency across all cash accounts.

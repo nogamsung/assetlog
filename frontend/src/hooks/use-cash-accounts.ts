@@ -6,9 +6,10 @@ import {
   createCashAccount,
   updateCashAccount,
   deleteCashAccount,
+  listCashTransactions,
 } from "@/lib/api/cash-account";
 import { portfolioKeys } from "@/hooks/use-portfolio";
-import type { CashAccount } from "@/types/cash-account";
+import type { CashAccount, CashAccountTransaction } from "@/types/cash-account";
 import type {
   CashAccountCreateInput,
   CashAccountUpdateInput,
@@ -18,6 +19,7 @@ import type {
 
 export const cashAccountKeys = {
   all: ["cash-accounts"] as const,
+  interestTransactions: () => ["cash-transactions", "interest"] as const,
 } as const;
 
 // ── Hooks ─────────────────────────────────────────────────────────────────────
@@ -55,6 +57,14 @@ export function useUpdateCashAccount() {
       void queryClient.invalidateQueries({ queryKey: cashAccountKeys.all });
       void queryClient.invalidateQueries({ queryKey: portfolioKeys.summary() });
     },
+  });
+}
+
+export function useInterestTransactions() {
+  return useQuery<CashAccountTransaction[]>({
+    queryKey: cashAccountKeys.interestTransactions(),
+    queryFn: () => listCashTransactions({ kind: "interest" }),
+    staleTime: 60_000,
   });
 }
 
