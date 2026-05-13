@@ -82,10 +82,12 @@ class ExchangeSyncService:
 
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
-        # Lazy-imported to avoid a hard dependency for callers that don't need ISIN resolution
+        # Lazy-imported to avoid a hard dependency for callers that don't need resolution
         from app.services.isin_resolver import IsinResolver  # noqa: PLC0415
+        from app.services.kr_name_resolver import KrNameResolver  # noqa: PLC0415
 
         self._isin_resolver = IsinResolver(session)
+        self._kr_name_resolver = KrNameResolver(session)
 
     # ------------------------------------------------------------------
     # Public API — ExternalTrade (Upbit / brokerage OpenAPI)
@@ -535,11 +537,18 @@ class ExchangeSyncService:
         # try the resolver chain (static map → DB cache → OpenFIGI) before
         # creating an AssetSymbol row that would otherwise carry the ISIN.
         from app.services.isin_resolver import looks_like_isin  # noqa: PLC0415
+        from app.services.kr_name_resolver import looks_like_kr_name  # noqa: PLC0415
 
         if asset_type == AssetType.US_STOCK and looks_like_isin(symbol):
             resolved = await self._isin_resolver.resolve(symbol)
             if resolved:
                 symbol = resolved
+        elif asset_type == AssetType.KR_STOCK and looks_like_kr_name(symbol):
+            # Shinhan rows carry a Korean security name as symbol — translate
+            # to the canonical KRX 6-digit code via Naver autocomplete + cache.
+            resolved_kr = await self._kr_name_resolver.resolve(symbol)
+            if resolved_kr:
+                symbol = resolved_kr
 
         stmt = select(AssetSymbol).where(
             AssetSymbol.asset_type == asset_type,
