@@ -33,6 +33,7 @@ class ParsedTrade:
     price: Decimal
     currency: str
     traded_at: datetime
+    name: str = ""
 
 
 @dataclass(frozen=True)
@@ -46,6 +47,7 @@ class ParsedDividend:
     gross_amount: Decimal
     currency: str
     traded_at: datetime
+    name: str = ""
 
 
 @dataclass(frozen=True)

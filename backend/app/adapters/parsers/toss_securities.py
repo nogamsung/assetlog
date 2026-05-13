@@ -32,6 +32,7 @@ from app.adapters.parsers.base import (
     ParsedTrade,
     ParseResult,
 )
+from app.adapters.parsers.isin_ticker_map import lookup_us_ticker
 from app.domain.asset_type import AssetType
 from app.domain.transaction_type import TransactionType
 
@@ -119,8 +120,9 @@ def _extract_symbol_and_name(raw_name: str) -> tuple[str, str, AssetType, str]:
     """Parse 'NAME(CODE)' → (ticker, name, asset_type, exchange).
 
     Returns:
-        ticker  — normalized ticker/ISIN
-        name    — display name (stripped)
+        ticker  — normalized ticker (mapped exchange ticker for known US ISINs,
+                  6-digit code for KR stocks, raw ISIN as fallback)
+        name    — display name (stripped, code parens removed)
         asset_type — KR_STOCK or US_STOCK
         exchange — 'KRX' or 'NYSE'
     """
@@ -133,10 +135,16 @@ def _extract_symbol_and_name(raw_name: str) -> tuple[str, str, AssetType, str]:
     isin_match = _ISIN_RE.search(raw_name)
     if isin_match:
         isin = isin_match.group(1)
-        name = raw_name[: isin_match.start()].strip()
-        return isin, name, AssetType.US_STOCK, "NYSE"
+        # Display name is everything up to the code, plus any name fragment
+        # after the closing paren (defensive — usually empty).
+        before = raw_name[: isin_match.start()].strip()
+        after = raw_name[isin_match.end() :].strip()
+        name = f"{before} {after}".strip() if after else before
+        ticker = lookup_us_ticker(isin) or isin
+        return ticker, name, AssetType.US_STOCK, "NYSE"
 
-    return raw_name.strip(), raw_name.strip(), AssetType.US_STOCK, "NYSE"
+    cleaned = raw_name.strip()
+    return cleaned, cleaned, AssetType.US_STOCK, "NYSE"
 
 
 def _split_krw_line(line: str) -> tuple[str, str, str, list[str]] | None:
@@ -234,6 +242,7 @@ def _parse_krw_line(line: str, result: ParseResult) -> None:
                 price=price,
                 currency="KRW",
                 traded_at=traded_at,
+                name=name,
             )
         )
 
@@ -263,6 +272,7 @@ def _parse_krw_line(line: str, result: ParseResult) -> None:
                 gross_amount=amount,
                 currency="KRW",
                 traded_at=traded_at,
+                name=name,
             )
         )
 
@@ -296,9 +306,9 @@ def _parse_krw_line(line: str, result: ParseResult) -> None:
 
 
 # ----- USD section parser -------------------------------------------------------
-# Line 1 format: {date} {kind} {name}{(CODE)} {8 numeric} OR {name continues on L2}
+# Line 1 format: {date} {kind} {name}{(CODE)} {9 numeric} OR {name continues on L2}
 # Line 2 format: ({ISIN}) ($ val) ($ val) ... OR just ($ val) ($ val) ...
-# Numeric cols line 1: qty amount price fee tax2 repay balance_qty balance_amount
+# Numeric cols line 1 (after code): rate qty amount price fee tax2 repay balance_qty balance_amount
 # USD values line 2: ($ amount_usd) ($ price_usd) ($ fee_usd) ($ tax2_usd) ($ repay_usd) ($ balance_usd)
 
 
@@ -379,23 +389,27 @@ def _parse_usd_block(line1: str, line2: str, result: ParseResult) -> None:
     final_name_code = name_code
     l2_stripped = line2.strip()
     if not name_code or not (_KR_CODE_RE.search(name_code) or _ISIN_RE.search(name_code)):
-        # Code may be anywhere in line2 (e.g. "ETF(US38747R6291) ($ ...)")
-        isin_m = _ISIN_RE.search(l2_stripped)
-        kr_m = _KR_CODE_RE.search(l2_stripped)
-        if isin_m or kr_m:
-            code_m = isin_m or kr_m
-            assert code_m is not None
-            final_name_code = f"{name_code} {code_m.group(0)}".strip()
+        # Code may be anywhere in line2 (e.g. "ETF(US38747R6291) ($ ...)").
+        # Take everything on line2 up to the first ($-detail block — that
+        # captures the "ETF" (or similar) tail that belongs to the name plus
+        # the code in parens.
+        paren_idx = l2_stripped.find("($")
+        l2_name_part = (
+            l2_stripped[:paren_idx].strip() if paren_idx > 0 else l2_stripped
+        )
+        if _ISIN_RE.search(l2_name_part) or _KR_CODE_RE.search(l2_name_part):
+            final_name_code = f"{name_code} {l2_name_part}".strip()
 
     # USD amounts from line2
     usd_values = _extract_usd_paren_values(line2)
 
     if kind_raw in (_BUY_KIND, _SELL_KIND):
-        if len(numeric_tokens) < 1 or len(usd_values) < 2:
+        if len(numeric_tokens) < 2 or len(usd_values) < 2:
             result.skipped.append(ParsedSkip(raw_kind=kind_raw, reason="parse_error"))
             return
 
-        qty_str = numeric_tokens[0]
+        # numeric_tokens[0] is FX rate (환율); actual qty starts at index 1.
+        qty_str = numeric_tokens[1]
         price_usd = usd_values[1]  # ($ price_usd) is second paren value
 
         ticker, name, asset_type, exchange = _extract_symbol_and_name(final_name_code)
@@ -418,6 +432,7 @@ def _parse_usd_block(line1: str, line2: str, result: ParseResult) -> None:
                 price=price_usd,
                 currency="USD",
                 traded_at=traded_at,
+                name=name,
             )
         )
 
@@ -443,6 +458,7 @@ def _parse_usd_block(line1: str, line2: str, result: ParseResult) -> None:
                 gross_amount=amount_usd,
                 currency="USD",
                 traded_at=traded_at,
+                name=name,
             )
         )
 

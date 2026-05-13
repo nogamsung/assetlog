@@ -52,6 +52,7 @@ class ImportResult:
     inserted_cash_txs: int
     skipped_duplicate: int
     skipped_unsupported: int
+    skipped_breakdown: dict[str, int]
 
 
 def _asset_type_for(source: ExchangeSource) -> AssetType:
@@ -245,6 +246,10 @@ class ExchangeSyncService:
         dividends = [r for r in parse_result.records if isinstance(r, ParsedDividend)]
         cash_txs = [r for r in parse_result.records if isinstance(r, ParsedCashTx)]
 
+        breakdown: dict[str, int] = {}
+        for skip in parse_result.skipped:
+            breakdown[skip.raw_kind] = breakdown.get(skip.raw_kind, 0) + 1
+
         if dry_run:
             return ImportResult(
                 inserted_trades=len(trades),
@@ -252,6 +257,7 @@ class ExchangeSyncService:
                 inserted_cash_txs=len(cash_txs),
                 skipped_duplicate=0,
                 skipped_unsupported=len(parse_result.skipped),
+                skipped_breakdown=breakdown,
             )
 
         ins_trades = await self._import_parsed_trades(source, trades)
@@ -264,6 +270,7 @@ class ExchangeSyncService:
             inserted_cash_txs=ins_cash,
             skipped_duplicate=0,
             skipped_unsupported=len(parse_result.skipped),
+            skipped_breakdown=breakdown,
         )
 
     # ------------------------------------------------------------------
@@ -296,7 +303,11 @@ class ExchangeSyncService:
             symbol = symbol_cache.get(cache_key)
             if symbol is None:
                 symbol = await self._get_or_create_symbol_by_attrs(
-                    trade.symbol, trade.asset_type, trade.exchange, trade.currency
+                    trade.symbol,
+                    trade.asset_type,
+                    trade.exchange,
+                    trade.currency,
+                    name=trade.name or None,
                 )
                 symbol_cache[cache_key] = symbol
 
@@ -357,7 +368,11 @@ class ExchangeSyncService:
             symbol = symbol_cache.get(cache_key)
             if symbol is None:
                 symbol = await self._get_or_create_symbol_by_attrs(
-                    div.symbol, div.asset_type, div.exchange, div.currency
+                    div.symbol,
+                    div.asset_type,
+                    div.exchange,
+                    div.currency,
+                    name=div.name or None,
                 )
                 symbol_cache[cache_key] = symbol
 
@@ -510,6 +525,7 @@ class ExchangeSyncService:
         asset_type: AssetType,
         exchange: str,
         currency: str,
+        name: str | None = None,
     ) -> AssetSymbol:
         stmt = select(AssetSymbol).where(
             AssetSymbol.asset_type == asset_type,
@@ -518,13 +534,17 @@ class ExchangeSyncService:
         )
         existing = (await self._session.execute(stmt)).scalar_one_or_none()
         if existing is not None:
+            # Upgrade fallback name (name == symbol) once we learn the real one
+            # from a parser. Don't overwrite a non-fallback display name.
+            if name and existing.name == existing.symbol and name != existing.symbol:
+                existing.name = name
             return existing
 
         new_symbol = AssetSymbol(
             asset_type=asset_type,
             symbol=symbol,
             exchange=exchange,
-            name=symbol,
+            name=name or symbol,
             currency=currency,
         )
         self._session.add(new_symbol)

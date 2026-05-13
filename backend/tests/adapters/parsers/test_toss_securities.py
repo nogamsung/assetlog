@@ -91,11 +91,13 @@ class TestKrStock:
 
 class TestUsStock:
     def test_us_stock_trade_parsed(self, parse_result) -> None:  # type: ignore[no-untyped-def]
-        """AMD (US0079031078) trade should be detected as US_STOCK, price in USD."""
+        """AMD ISIN US0079031078 should map to the AMD exchange ticker, price in USD."""
+        from decimal import Decimal
+
         amd_trades = [
             r
             for r in parse_result.records
-            if isinstance(r, ParsedTrade) and r.symbol == "US0079031078"
+            if isinstance(r, ParsedTrade) and r.symbol == "AMD"
         ]
         assert len(amd_trades) >= 1
         trade = amd_trades[0]
@@ -103,6 +105,36 @@ class TestUsStock:
         assert trade.currency == "USD"
         # Price should be USD-denominated (well under KRW prices)
         assert trade.price < 1000
+        # Quantity must be the share count, NOT the FX rate (~1,300–1,500).
+        # AMD buys in the fixture are 2–10 shares.
+        for t in amd_trades:
+            assert t.quantity < Decimal("1000"), (
+                f"AMD qty looks like FX rate: {t.quantity}"
+            )
+
+    def test_us_long_name_includes_etf_tail(self, parse_result) -> None:  # type: ignore[no-untyped-def]
+        """When the US name spills onto line 2, the 'ETF' fragment must be kept."""
+        nvd_trades = [
+            r
+            for r in parse_result.records
+            if isinstance(r, ParsedTrade) and r.symbol == "NVD"
+        ]
+        assert len(nvd_trades) >= 1
+        # 종목명 = "그래닛셰어즈 엔비디아 데일리 2배 인버스 ETF"
+        assert any("ETF" in t.name for t in nvd_trades), (
+            f"ETF fragment missing from names: {[t.name for t in nvd_trades]}"
+        )
+
+    def test_isin_fallback_when_unmapped(self, parse_result) -> None:  # type: ignore[no-untyped-def]
+        """Unmapped ISINs keep the ISIN as the symbol (ticker)."""
+        # 조비 에비에이션 (KYG651631007) is not in the ISIN→ticker map yet
+        joby = [
+            r
+            for r in parse_result.records
+            if isinstance(r, ParsedTrade) and r.symbol == "KYG651631007"
+        ]
+        assert len(joby) >= 1
+        assert "조비" in joby[0].name
 
     def test_us_dividend_parsed(self, parse_result) -> None:  # type: ignore[no-untyped-def]
         """외화증권배당금입금 should produce a ParsedDividend with USD."""
@@ -147,10 +179,14 @@ class TestTimezone:
 
 class TestLongName:
     def test_long_name_trade_parsed(self, parse_result) -> None:  # type: ignore[no-untyped-def]
-        """Tickers that span two lines (name on line1, code on line2) must be parsed."""
-        two_line_symbols = [
+        """Tickers that span two lines (name on line1, code on line2) must be parsed.
+
+        US25461A8412 maps to GGLL (Direxion 2X GOOGL). Both the mapped ticker
+        AND the unmapped ISIN must not both appear — the mapping should win.
+        """
+        ggll_trades = [
             r
             for r in parse_result.records
-            if isinstance(r, ParsedTrade) and r.symbol == "US25461A8412"
+            if isinstance(r, ParsedTrade) and r.symbol == "GGLL"
         ]
-        assert len(two_line_symbols) >= 1
+        assert len(ggll_trades) >= 1
