@@ -12,15 +12,20 @@ US_ISIN_TO_TICKER: dict[str, str] = {
     # Single-name US equities
     "US0079031078": "AMD",
     "US02079K3059": "GOOGL",
+    "US0378331005": "AAPL",
     "US08862E1091": "BYND",
+    "US25400Q1058": "DJT",   # Trump Media & Technology Group
     "US30303M1027": "META",
+    "US69608A1088": "PLTR",  # Palantir Technologies
     # Cayman / non-US-domiciled but US-listed
     "KYG651631007": "JOBY",  # Joby Aviation
     # Direxion 2x daily leveraged single-stock ETFs
+    "US25461A4452": "PLTU",  # Direxion Daily PLTR Bull 2X
     "US25461A5285": "MUU",   # Direxion Daily MU Bull 2X
     "US25461A8099": "METU",  # Direxion Daily META Bull 2X
     "US25461A8412": "GGLL",  # Direxion Daily GOOGL Bull 2X
     "US25461A8743": "AAPU",  # Direxion Daily AAPL Bull 1.5X / 2X
+    "US25461H8126": "LINT",  # Direxion Daily INTC Bull 2X
     # GraniteShares leveraged single-stock ETFs
     "US38747R6291": "NVD",   # GraniteShares 2X Short NVDA Daily
     "US38747R7513": "AMDL",  # GraniteShares 2X Long AMD Daily
