@@ -7,6 +7,7 @@ from collections.abc import Sequence
 
 from app.exceptions import NotFoundError
 from app.models.cash_account import CashAccount
+from app.models.cash_account_transaction import CashAccountTransaction, CashTxKind
 from app.repositories.cash_account import CashAccountRepository
 from app.schemas.cash_account import CashAccountCreate, CashAccountUpdate
 
@@ -22,6 +23,14 @@ class CashAccountService:
     async def list(self) -> Sequence[CashAccount]:
         """Return all cash accounts ordered by creation date descending."""
         return await self._repo.list_all()
+
+    async def list_transactions(
+        self,
+        *,
+        kind: CashTxKind | None = None,
+    ) -> Sequence[CashAccountTransaction]:
+        """Return cash transactions (newest first), optionally filtered by kind."""
+        return await self._repo.list_transactions(kind=kind)
 
     async def create(self, data: CashAccountCreate) -> CashAccount:
         """Create a new cash account.

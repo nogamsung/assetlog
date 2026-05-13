@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Path, status
+from fastapi import APIRouter, Path, Query, status
 
 from app.core.deps import CashAccountServiceDep, CurrentUser
+from app.models.cash_account_transaction import CashTxKind
 from app.schemas.auth import ErrorResponse
 from app.schemas.cash_account import (
     CashAccountCreate,
     CashAccountResponse,
+    CashAccountTransactionResponse,
     CashAccountUpdate,
 )
 
@@ -31,6 +33,28 @@ async def list_cash_accounts(
     """Return all cash accounts ordered by creation date descending."""
     accounts = await service.list()
     return [CashAccountResponse.model_validate(a) for a in accounts]
+
+
+@router.get(
+    "/transactions",
+    response_model=list[CashAccountTransactionResponse],
+    status_code=status.HTTP_200_OK,
+    summary="List cash account transactions (interest, deposits, etc.)",
+    responses={
+        401: {"model": ErrorResponse, "description": "Not authenticated"},
+    },
+)
+async def list_cash_account_transactions(
+    _current_user: CurrentUser,
+    service: CashAccountServiceDep,
+    kind: CashTxKind | None = Query(
+        default=None,
+        description="Optional kind filter (e.g. ``interest`` to return only interest payments)",
+    ),
+) -> list[CashAccountTransactionResponse]:
+    """Return cash account transactions newest-first; optional kind filter."""
+    txs = await service.list_transactions(kind=kind)
+    return [CashAccountTransactionResponse.model_validate(t) for t in txs]
 
 
 @router.post(

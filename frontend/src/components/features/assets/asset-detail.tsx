@@ -9,6 +9,7 @@ import { TransactionList } from "./transaction-list";
 import { TransactionForm } from "./transaction-form";
 import { TransactionImport } from "./transaction-import";
 import { AssetTypeBadge } from "./asset-type-badge";
+import { DividendList } from "./dividend-list";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -360,6 +361,17 @@ export function AssetDetail({ userAssetId }: AssetDetailProps) {
           /> {/* MODIFIED */}
         </CardContent>
       </Card>
+
+      {holding && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">배당 내역</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <DividendList assetSymbolId={holding.assetSymbol.id} />
+          </CardContent>
+        </Card>
+      )}
 
     </div>
   );
