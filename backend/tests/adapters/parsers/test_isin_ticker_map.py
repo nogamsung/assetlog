@@ -1,55 +1,32 @@
-"""Unit tests for the ISIN→ticker mapping table.
+"""Static-map shim tests.
 
-The fixture-based parser test only covers ISINs present in the bundled sample.
-This file directly asserts that real-world ISINs encountered in historical
-Toss statements (2022–2026) all resolve to a proper exchange ticker.
+The static `US_ISIN_TO_TICKER` table is deliberately empty — all ISIN→ticker
+resolution flows through ``IsinResolver`` (DB cache + OpenFIGI). The shim
+remains so the resolver's three-tier interface still has a "static" tier
+that can be re-populated locally for tests or temporary overrides.
 """
 
 from __future__ import annotations
 
-import pytest
-
+from app.adapters.parsers import isin_ticker_map
 from app.adapters.parsers.isin_ticker_map import lookup_us_ticker
 
 
-@pytest.mark.parametrize(
-    ("isin", "ticker"),
-    [
-        # Single-name US equities
-        ("US0079031078", "AMD"),
-        ("US02079K3059", "GOOGL"),
-        ("US0378331005", "AAPL"),
-        ("US08862E1091", "BYND"),
-        ("US25400Q1058", "DJT"),
-        ("US30303M1027", "META"),
-        ("US69608A1088", "PLTR"),
-        # Cayman-domiciled US-listed
-        ("KYG651631007", "JOBY"),
-        # Direxion 2X leveraged single-stock ETFs
-        ("US25461A4452", "PLTU"),
-        ("US25461A5285", "MUU"),
-        ("US25461A8099", "METU"),
-        ("US25461A8412", "GGLL"),
-        ("US25461A8743", "AAPU"),
-        ("US25461H8126", "LINT"),
-        # GraniteShares leveraged ETFs
-        ("US38747R6291", "NVD"),
-        ("US38747R7513", "AMDL"),
-        # ProShares leveraged ETFs
-        ("US74347X8314", "TQQQ"),
-        ("US74347Y8883", "UCO"),
-        # T-REX & Tradr & Defiance
-        ("US26923Q5642", "BMNU"),
-        ("US46092D3843", "TSLQ"),
-        ("US46152A4866", "JOBX"),
-        ("US88636W2474", "IONZ"),
-        ("US88636W2540", "PLTZ"),
-        ("US88636W5519", "BMNZ"),
-    ],
-)
-def test_known_isin_maps_to_ticker(isin: str, ticker: str) -> None:
-    assert lookup_us_ticker(isin) == ticker
+def test_static_map_is_empty_in_production() -> None:
+    assert isin_ticker_map.US_ISIN_TO_TICKER == {}
 
 
-def test_unknown_isin_returns_none() -> None:
-    assert lookup_us_ticker("US0000000000") is None
+def test_lookup_always_returns_none_when_static_map_empty() -> None:
+    for isin in (
+        "US0079031078",
+        "US30303M1027",
+        "KYG651631007",
+        "US9999999999",
+    ):
+        assert lookup_us_ticker(isin) is None
+
+
+def test_lookup_respects_runtime_override(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    """If a test or temporary override populates the map, lookup should hit it."""
+    monkeypatch.setitem(isin_ticker_map.US_ISIN_TO_TICKER, "US0079031078", "AMD")
+    assert lookup_us_ticker("US0079031078") == "AMD"
