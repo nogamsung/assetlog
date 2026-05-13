@@ -27,14 +27,26 @@ class TestLooksLikeIsin:
 
 class TestIsinResolver:
     @pytest.mark.asyncio
-    async def test_static_map_hit_skips_db_and_openfigi(self) -> None:
+    async def test_static_map_hit_skips_db_and_openfigi(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A populated static map short-circuits both DB and OpenFIGI.
+
+        Production keeps the static map empty, but this test temporarily
+        seeds it to lock down the three-tier short-circuit behaviour.
+        """
+        from app.adapters.parsers import isin_ticker_map
+
+        monkeypatch.setitem(
+            isin_ticker_map.US_ISIN_TO_TICKER, "US0079031078", "AMD"
+        )
         session = AsyncMock()
         resolver = IsinResolver(session)
         with patch(
             "app.services.isin_resolver.fetch_ticker_from_openfigi",
             new=AsyncMock(),
         ) as mocked_fetch:
-            result = await resolver.resolve("US0079031078")  # AMD in static map
+            result = await resolver.resolve("US0079031078")
         assert result == "AMD"
         session.get.assert_not_called()
         mocked_fetch.assert_not_called()
