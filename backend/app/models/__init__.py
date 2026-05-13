@@ -7,6 +7,7 @@ from app.models.dividend import Dividend
 from app.models.fx_rate import FxRate
 from app.models.fx_rate_snapshot import FxRateSnapshot
 from app.models.isin_ticker_cache import IsinTickerCache
+from app.models.kr_name_cache import KrNameCache
 from app.models.login_attempt import LoginAttempt
 from app.models.target_allocation import TargetAllocation
 from app.models.transaction import Transaction
@@ -20,6 +21,7 @@ __all__ = [
     "FxRate",
     "FxRateSnapshot",
     "IsinTickerCache",
+    "KrNameCache",
     "LoginAttempt",
     "TargetAllocation",
     "Transaction",
