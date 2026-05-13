@@ -34,3 +34,7 @@ build/
 # Claude Code
 .claude/settings.local.json
 .claude/.skip-coverage
+
+# Brokerage statement PDFs — originals contain PII; only PII-masked text
+# fixtures (tests/fixtures/parsers/<broker>/sample_extracted.txt) are tracked.
+*.pdf

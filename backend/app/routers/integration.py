@@ -13,7 +13,7 @@ from app.schemas.integration import ImportFileResponse, SyncResultResponse
 
 router = APIRouter(prefix="/api/integrations", tags=["integrations"])
 
-_SUPPORTED_FILE_SOURCES: frozenset[str] = frozenset(["toss_securities"])
+_SUPPORTED_FILE_SOURCES: frozenset[str] = frozenset(["toss_securities", "shinhan"])
 
 
 @router.post(
@@ -97,7 +97,10 @@ async def import_file(
     if not file_bytes:
         raise ValidationError("Uploaded file is empty.")
 
-    from app.adapters.parsers.toss_securities import parse_pdf  # noqa: PLC0415  # lazy
+    if source == "shinhan":
+        from app.adapters.parsers.shinhan_securities import parse_pdf  # noqa: PLC0415
+    else:
+        from app.adapters.parsers.toss_securities import parse_pdf  # noqa: PLC0415
 
     try:
         parse_result = parse_pdf(file_bytes, password=password)
