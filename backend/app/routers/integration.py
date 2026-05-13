@@ -131,6 +131,7 @@ async def import_file(
         inserted_cash_txs=import_result.inserted_cash_txs,
         skipped_duplicate=import_result.skipped_duplicate,
         skipped_unsupported=import_result.skipped_unsupported,
+        skipped_breakdown=import_result.skipped_breakdown,
         dry_run=dry_run,
         preview=preview,
     )

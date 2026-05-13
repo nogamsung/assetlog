@@ -46,6 +46,15 @@ class ImportFileResponse(BaseModel):
         description="Records skipped because the transaction type is not yet supported",
         examples=[196],
     )
+    skipped_breakdown: dict[str, int] = Field(
+        default_factory=dict,
+        description=(
+            "Per-kind count of skipped records (e.g. {'대차거래 대여출고': 73, "
+            "'환전외화입금': 9}). Useful for understanding what was skipped — most "
+            "entries are intentional (cash transfers, FX, securities lending)."
+        ),
+        examples=[{"대차거래 대여출고": 73, "환전외화입금": 9, "이체입금": 18}],
+    )
     dry_run: bool = Field(
         default=False,
         description="When True no DB writes were performed — counts reflect what would be inserted",
