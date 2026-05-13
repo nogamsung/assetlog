@@ -197,6 +197,19 @@ class TestPortfolioServiceGetHoldings:
         holdings = await svc.get_holdings()
         assert holdings == []
 
+    async def test_quantity_0인_holding은_숨겨짐(self) -> None:
+        """Closed positions (전량 매도된 종목) should be filtered out."""
+        sym_open = _make_symbol(last_price=Decimal("100"), refreshed_at=datetime.now(UTC))
+        sym_closed = _make_symbol(last_price=Decimal("50"), refreshed_at=datetime.now(UTC))
+        rows = [
+            _make_row(1, "10", "1000", sym_open),
+            _make_row(2, "0", "0", sym_closed),
+        ]
+        svc = _make_service(rows)
+        holdings = await svc.get_holdings()
+        assert len(holdings) == 1
+        assert holdings[0].quantity == Decimal("10")
+
 
 # ---------------------------------------------------------------------------
 # get_holdings with convert_to

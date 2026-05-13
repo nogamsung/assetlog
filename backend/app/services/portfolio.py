@@ -170,7 +170,9 @@ class PortfolioService:
 
                 await self._compute_split(h, row, from_currency, convert_to, fx_now)
 
-        return holdings
+        # Hide fully closed positions (quantity == 0) from the holdings view.
+        # Realized PnL for those is still captured in the per-symbol PnL report.
+        return [h for h in holdings if h.quantity > Decimal("0")]
 
     async def _compute_split(
         self,
