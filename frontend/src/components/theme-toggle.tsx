@@ -35,13 +35,15 @@ export function ThemeToggle() {
             aria-label={`${label} 테마`}
             aria-pressed={isPressed}
             className={`
-              inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium transition-colors
+              inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium
+              transition-[background-color,color,transform] duration-150
+              active:scale-[0.96]
               first:rounded-l-md last:rounded-r-md
               focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1
               ${
                 isPressed
-                  ? "bg-primary text-primary-foreground"
-                  : "text-muted-foreground hover:text-foreground hover:bg-accent"
+                  ? "bg-primary text-primary-foreground shadow-inner"
+                  : "text-muted-foreground hover:text-foreground hover:bg-accent active:bg-accent/70"
               }
             `}
           >

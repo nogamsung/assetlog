@@ -270,10 +270,10 @@ export function AssetDetail({ userAssetId }: AssetDetailProps) {
                 onClick={() => setActiveTag(null)}
                 aria-label="모든 거래 보기"
                 aria-pressed={activeTag === null}
-                className={`rounded px-2 py-0.5 text-xs transition-colors ${
+                className={`rounded-full px-2.5 py-0.5 text-xs transition-[background-color,color,transform] duration-150 active:scale-[0.94] ${
                   activeTag === null
                     ? "bg-primary text-primary-foreground"
-                    : "bg-muted text-foreground hover:bg-muted/70"
+                    : "bg-muted text-foreground hover:bg-muted/70 active:bg-muted/60"
                 }`}
               >
                 모든 거래
@@ -285,10 +285,10 @@ export function AssetDetail({ userAssetId }: AssetDetailProps) {
                   onClick={() => setActiveTag(tag)}
                   aria-label={`태그 ${tag} 필터`}
                   aria-pressed={activeTag === tag}
-                  className={`rounded px-2 py-0.5 text-xs transition-colors ${
+                  className={`rounded-full px-2.5 py-0.5 text-xs transition-[background-color,color,transform] duration-150 active:scale-[0.94] ${
                     activeTag === tag
                       ? "bg-primary text-primary-foreground"
-                      : "bg-muted text-foreground hover:bg-muted/70"
+                      : "bg-muted text-foreground hover:bg-muted/70 active:bg-muted/60"
                   }`}
                 >
                   {tag}
