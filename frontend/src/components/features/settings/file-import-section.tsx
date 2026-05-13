@@ -10,6 +10,7 @@ import type { ImportFileResult, ImportSource } from "@/lib/api/integrations";
 
 const SOURCE_OPTIONS: { value: ImportSource; label: string }[] = [
   { value: "toss_securities", label: "토스증권 거래내역서 PDF" },
+  { value: "shinhan", label: "신한투자증권 거래내역서 PDF" },
 ];
 
 export function FileImportSection() {
