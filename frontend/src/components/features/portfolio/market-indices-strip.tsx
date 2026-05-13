@@ -5,9 +5,21 @@ import { formatPercent, pnlColor } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import type { IndexQuote } from "@/types/market-index";
 
+// Market indices (S&P 500, NASDAQ, KOSPI, KOSDAQ) come from Yahoo Finance with
+// a "^" symbol prefix. They are unit-less points, not money — so we drop the
+// currency sign for them. BTC and any other ticker keeps its currency.
+function isUnitlessIndex(quote: IndexQuote): boolean {
+  return quote.symbol.startsWith("^");
+}
+
 function formatIndexPrice(quote: IndexQuote): string {
   const n = Number(quote.price);
   if (Number.isNaN(n)) return "—";
+
+  if (isUnitlessIndex(quote)) {
+    return n.toLocaleString("ko-KR", { maximumFractionDigits: 2 });
+  }
+
   if (quote.currency === "KRW" || quote.currency === "JPY") {
     return new Intl.NumberFormat("ko-KR", {
       style: "currency",

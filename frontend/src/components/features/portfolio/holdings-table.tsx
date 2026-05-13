@@ -96,48 +96,63 @@ export function HoldingsTable({ holdings }: HoldingsTableProps) {
   }
 
   return (
-    <div className="hidden sm:block overflow-x-auto rounded-2xl border border-toss-border bg-toss-card"> {/* MODIFIED: hidden sm:block + toss tokens */}
+    <div className="hidden sm:block overflow-x-auto rounded-2xl border border-toss-border bg-toss-card">
       <table className="w-full text-sm">
         <caption className="sr-only">보유 자산 목록 — 열 헤더를 클릭하면 정렬됩니다</caption>
         <thead>
-          <tr className="border-b text-left text-muted-foreground">
-            <th scope="col" className="px-4 py-3 font-medium">심볼</th>
-            <th scope="col" className="px-4 py-3 font-medium">종목명</th>
-            <th scope="col" className="px-4 py-3 font-medium text-right">수량</th>
-            <th scope="col" className="px-4 py-3 font-medium text-right">평균단가</th>
-            <th scope="col" className="px-4 py-3 font-medium text-right">현재가</th>
+          <tr className="border-b text-left text-xs uppercase tracking-wide text-muted-foreground">
+            <th scope="col" className="px-4 py-3 font-semibold">심볼</th>
+            <th scope="col" className="px-4 py-3 font-semibold">종목명</th>
+            <th scope="col" className="px-4 py-3 font-semibold text-right tabular-nums">수량</th>
+            <th scope="col" className="px-4 py-3 font-semibold text-right tabular-nums">평균단가</th>
+            <th scope="col" className="px-4 py-3 font-semibold text-right tabular-nums">현재가</th>
             <th
               scope="col"
-              className="cursor-pointer px-4 py-3 font-medium text-right hover:text-foreground transition-colors"
+              className="cursor-pointer px-4 py-3 font-semibold text-right tabular-nums hover:text-foreground transition-colors select-none"
               aria-sort={ariaSortAttr("latestValue")}
               onClick={() => handleSort("latestValue")}
               onKeyDown={(e) => e.key === "Enter" && handleSort("latestValue")}
               tabIndex={0}
               role="columnheader"
             >
-              평가액{sortKey === "latestValue" && (sortDir === "desc" ? " ▼" : " ▲")}
+              <span className="inline-flex items-baseline gap-1">
+                평가액
+                <span aria-hidden="true" className="inline-block w-3 text-xs">
+                  {sortKey === "latestValue" ? (sortDir === "desc" ? "▼" : "▲") : ""}
+                </span>
+              </span>
             </th>
             <th
               scope="col"
-              className="cursor-pointer px-4 py-3 font-medium text-right hover:text-foreground transition-colors"
+              className="cursor-pointer px-4 py-3 font-semibold text-right tabular-nums hover:text-foreground transition-colors select-none"
               aria-sort={ariaSortAttr("pnlAbs")}
               onClick={() => handleSort("pnlAbs")}
               onKeyDown={(e) => e.key === "Enter" && handleSort("pnlAbs")}
               tabIndex={0}
               role="columnheader"
             >
-              손익{sortKey === "pnlAbs" && (sortDir === "desc" ? " ▼" : " ▲")}
+              <span className="inline-flex items-baseline gap-1">
+                손익
+                <span aria-hidden="true" className="inline-block w-3 text-xs">
+                  {sortKey === "pnlAbs" ? (sortDir === "desc" ? "▼" : "▲") : ""}
+                </span>
+              </span>
             </th>
             <th
               scope="col"
-              className="cursor-pointer px-4 py-3 font-medium text-right hover:text-foreground transition-colors"
+              className="cursor-pointer px-4 py-3 font-semibold text-right tabular-nums hover:text-foreground transition-colors select-none"
               aria-sort={ariaSortAttr("weightPct")}
               onClick={() => handleSort("weightPct")}
               onKeyDown={(e) => e.key === "Enter" && handleSort("weightPct")}
               tabIndex={0}
               role="columnheader"
             >
-              비중{sortKey === "weightPct" && (sortDir === "desc" ? " ▼" : " ▲")}
+              <span className="inline-flex items-baseline gap-1">
+                비중
+                <span aria-hidden="true" className="inline-block w-3 text-xs">
+                  {sortKey === "weightPct" ? (sortDir === "desc" ? "▼" : "▲") : ""}
+                </span>
+              </span>
             </th>
           </tr>
         </thead>
@@ -164,19 +179,19 @@ export function HoldingsTable({ holdings }: HoldingsTableProps) {
                 <td className="px-4 py-3 text-muted-foreground">
                   {holding.assetSymbol.name}
                 </td>
-                <td className="px-4 py-3 text-right">
+                <td className="px-4 py-3 text-right tabular-nums">
                   {formatQuantity(holding.quantity, holding.assetSymbol.assetType)}
                 </td>
-                <td className="px-4 py-3 text-right">
+                <td className="px-4 py-3 text-right tabular-nums">
                   {/* 평균단가: native 통화 그대로 */}
                   {formatCurrency(holding.avgCost, nativeCurrency)}
                 </td>
-                <td className="px-4 py-3 text-right">
+                <td className="px-4 py-3 text-right tabular-nums">
                   {/* 현재가: native 통화 그대로 */}
                   {holding.isPending ? (
                     <span className="text-muted-foreground">—</span>
                   ) : (
-                    <span className="inline-flex items-center gap-1">
+                    <span className="inline-flex items-center justify-end gap-1">
                       {holding.latestPrice !== null
                         ? formatCurrency(holding.latestPrice, nativeCurrency)
                         : "—"}
@@ -184,10 +199,10 @@ export function HoldingsTable({ holdings }: HoldingsTableProps) {
                     </span>
                   )}
                 </td>
-                <td className="px-4 py-3 text-right">
-                  {/* 평가액: 환산 모드 시 converted, 없으면 native — MODIFIED */}
+                <td className="px-4 py-3 text-right tabular-nums">
+                  {/* 평가액: 환산 모드 시 converted, 없으면 native */}
                   {holding.isPending ? (
-                    <span className="inline-flex items-center gap-1">
+                    <span className="inline-flex items-center justify-end gap-1">
                       <span className="text-muted-foreground">—</span>
                       <PendingBadge />
                     </span>
@@ -197,7 +212,7 @@ export function HoldingsTable({ holdings }: HoldingsTableProps) {
                       : "—"
                   )}
                 </td>
-                <td className={`px-4 py-3 text-right ${pnlColorClass}`}>
+                <td className={`px-4 py-3 text-right tabular-nums ${pnlColorClass}`}>
                   {/* 손익: 환산 모드 시 converted, 없으면 native — MODIFIED */}
                   {holding.isPending ? (
                     <span className="text-muted-foreground">—</span>
@@ -227,7 +242,7 @@ export function HoldingsTable({ holdings }: HoldingsTableProps) {
                       </div>
                     )}
                 </td>
-                <td className="px-4 py-3 text-right">
+                <td className="px-4 py-3 text-right tabular-nums">
                   {holding.isPending ? (
                     <span className="text-muted-foreground">—</span>
                   ) : (
