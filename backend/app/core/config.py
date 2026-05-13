@@ -59,6 +59,9 @@ class Settings(BaseSettings):
     upbit_access_key: str | None = None
     upbit_secret_key: str | None = None
 
+    # External integrations — OpenFIGI (ISIN→ticker; optional API key raises rate limit)
+    openfigi_api_key: str | None = None
+
     @field_validator("cors_origins", mode="before")
     @classmethod
     def parse_cors_origins(cls, v: object) -> list[str]:

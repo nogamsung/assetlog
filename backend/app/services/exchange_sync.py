@@ -82,6 +82,10 @@ class ExchangeSyncService:
 
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
+        # Lazy-imported to avoid a hard dependency for callers that don't need ISIN resolution
+        from app.services.isin_resolver import IsinResolver  # noqa: PLC0415
+
+        self._isin_resolver = IsinResolver(session)
 
     # ------------------------------------------------------------------
     # Public API — ExternalTrade (Upbit / brokerage OpenAPI)
@@ -527,6 +531,16 @@ class ExchangeSyncService:
         currency: str,
         name: str | None = None,
     ) -> AssetSymbol:
+        # If the symbol still looks like a raw ISIN (parser couldn't map it),
+        # try the resolver chain (static map → DB cache → OpenFIGI) before
+        # creating an AssetSymbol row that would otherwise carry the ISIN.
+        from app.services.isin_resolver import looks_like_isin  # noqa: PLC0415
+
+        if asset_type == AssetType.US_STOCK and looks_like_isin(symbol):
+            resolved = await self._isin_resolver.resolve(symbol)
+            if resolved:
+                symbol = resolved
+
         stmt = select(AssetSymbol).where(
             AssetSymbol.asset_type == asset_type,
             AssetSymbol.symbol == symbol,
