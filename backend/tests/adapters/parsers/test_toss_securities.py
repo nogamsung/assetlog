@@ -125,13 +125,30 @@ class TestUsStock:
             f"ETF fragment missing from names: {[t.name for t in nvd_trades]}"
         )
 
-    def test_isin_fallback_when_unmapped(self, parse_result) -> None:  # type: ignore[no-untyped-def]
-        """Unmapped ISINs keep the ISIN as the symbol (ticker)."""
-        # 조비 에비에이션 (KYG651631007) is not in the ISIN→ticker map yet
+    def test_no_isin_leaks_for_known_us_securities(self, parse_result) -> None:  # type: ignore[no-untyped-def]
+        """Every US-listed security in this fixture has a known ticker mapping.
+
+        If a future PDF introduces a new ISIN we don't recognize, this test
+        won't fail (it only asserts the *fixture's* ISINs are covered), but it
+        will catch regressions in existing mappings.
+        """
+        us_trades = [
+            r
+            for r in parse_result.records
+            if isinstance(r, ParsedTrade) and r.asset_type == AssetType.US_STOCK
+        ]
+        leaked = [t for t in us_trades if t.symbol.startswith(("US", "KY"))]
+        assert not leaked, (
+            "ISIN leaked as ticker for: "
+            + ", ".join(f"{t.symbol} ({t.name})" for t in leaked)
+        )
+
+    def test_joby_mapped(self, parse_result) -> None:  # type: ignore[no-untyped-def]
+        """KYG ISIN for Joby Aviation maps to the JOBY ticker."""
         joby = [
             r
             for r in parse_result.records
-            if isinstance(r, ParsedTrade) and r.symbol == "KYG651631007"
+            if isinstance(r, ParsedTrade) and r.symbol == "JOBY"
         ]
         assert len(joby) >= 1
         assert "조비" in joby[0].name

@@ -14,7 +14,9 @@ US_ISIN_TO_TICKER: dict[str, str] = {
     "US02079K3059": "GOOGL",
     "US08862E1091": "BYND",
     "US30303M1027": "META",
-    # Direxion 2x daily bull leveraged single-stock ETFs
+    # Cayman / non-US-domiciled but US-listed
+    "KYG651631007": "JOBY",  # Joby Aviation
+    # Direxion 2x daily leveraged single-stock ETFs
     "US25461A5285": "MUU",   # Direxion Daily MU Bull 2X
     "US25461A8099": "METU",  # Direxion Daily META Bull 2X
     "US25461A8412": "GGLL",  # Direxion Daily GOOGL Bull 2X
@@ -25,6 +27,15 @@ US_ISIN_TO_TICKER: dict[str, str] = {
     # ProShares leveraged ETFs
     "US74347X8314": "TQQQ",  # ProShares UltraPro QQQ
     "US74347Y8883": "UCO",   # ProShares Ultra Bloomberg Crude Oil
+    # T-REX 2x daily leveraged single-stock ETFs (Tuttle / REX Shares)
+    "US26923Q5642": "BMNU",  # T-REX 2X Long BMNR Daily Target ETF
+    # Tradr 2x daily ETFs (formerly AXS)
+    "US46092D3843": "TSLQ",  # Tradr 2X Short TSLA Daily
+    "US46152A4866": "JOBX",  # Tradr 2X Long JOBY Daily
+    # Defiance Daily Target 2X Short ETFs
+    "US88636W2474": "IONZ",  # Defiance Daily Target 2X Short IONQ
+    "US88636W2540": "PLTZ",  # Defiance Daily Target 2X Short PLTR
+    "US88636W5519": "BMNZ",  # Defiance Daily Target 2X Short BMNR
 }
 
 
