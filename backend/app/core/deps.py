@@ -36,6 +36,7 @@ from app.services.market_index import MarketIndexService
 from app.services.performance import PerformanceService
 from app.services.portfolio import PortfolioService
 from app.services.portfolio_history import PortfolioHistoryService
+from app.services.price_history_backfill import PriceHistoryBackfillService
 from app.services.price_refresh import PriceRefreshService
 from app.services.sample_seed import SampleSeedService
 from app.services.symbol import SymbolService
@@ -286,6 +287,19 @@ def get_price_refresh_service(
 
 
 PriceRefreshServiceDep = Annotated[PriceRefreshService, Depends(get_price_refresh_service)]
+
+
+def get_price_history_backfill_service(
+    session: DbSession,
+    price_point_repo: PricePointRepositoryDep,
+) -> PriceHistoryBackfillService:
+    return PriceHistoryBackfillService(session=session, price_point_repo=price_point_repo)
+
+
+PriceHistoryBackfillServiceDep = Annotated[
+    PriceHistoryBackfillService,
+    Depends(get_price_history_backfill_service),
+]
 
 # ---------------------------------------------------------------------------
 # Tag breakdown DI

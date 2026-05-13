@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useImportFile } from "@/hooks/use-import-file";
+import { useBackfillPortfolioHistory } from "@/hooks/use-portfolio-history";
 import { formatDateTimeKST } from "@/lib/datetime";
 import type { ImportFileResult, ImportSource } from "@/lib/api/integrations";
 
@@ -24,6 +25,7 @@ export function FileImportSection() {
   const [previewResult, setPreviewResult] = useState<ImportFileResult | null>(null);
 
   const mutation = useImportFile();
+  const backfillMutation = useBackfillPortfolioHistory();
 
   function applyFile(f: File | null) {
     setFile(f);
@@ -80,6 +82,9 @@ export function FileImportSection() {
           setFile(null);
           setPassword("");
           if (fileInputRef.current) fileInputRef.current.value = "";
+          // Fire-and-forget: pull historical prices so the portfolio chart can
+          // render the value/cost timeline from the imported trade dates.
+          backfillMutation.mutate();
         },
       },
     );

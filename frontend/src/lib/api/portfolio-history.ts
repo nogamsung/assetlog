@@ -58,3 +58,27 @@ export async function getPortfolioHistory(
     points: raw.points.map(toHistoryPoint),
   };
 }
+
+export interface BackfillResult {
+  symbolsAttempted: number;
+  symbolsSkipped: number;
+  pointsInserted: number;
+}
+
+interface RawBackfillResult {
+  symbols_attempted: number;
+  symbols_skipped: number;
+  points_inserted: number;
+}
+
+export async function backfillPortfolioHistory(): Promise<BackfillResult> {
+  const response = await apiClient.post<RawBackfillResult>(
+    "/api/portfolio/history/backfill",
+  );
+  const r = response.data;
+  return {
+    symbolsAttempted: r.symbols_attempted,
+    symbolsSkipped: r.symbols_skipped,
+    pointsInserted: r.points_inserted,
+  };
+}
