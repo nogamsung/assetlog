@@ -43,18 +43,38 @@ class KrNameResolver:
         """Return the 6-digit KRX code for *name*, or None if unknown.
 
         Result is persisted to ``kr_name_cache`` so future calls are O(1).
+        Any failure (missing cache table, Naver outage, network error)
+        degrades to ``None`` so callers fall back to the original Korean
+        name — never propagates an exception that would abort the
+        surrounding import.
         """
         # 1) DB cache — including negative entries
-        cached = await self._session.get(KrNameCache, name)
-        if cached is not None:
-            return cached.code
+        try:
+            cached = await self._session.get(KrNameCache, name)
+            if cached is not None:
+                return cached.code
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "kr_name_resolver: cache lookup failed (%s) — skipping cache tier",
+                exc,
+            )
 
         # 2) Naver autocomplete — network call, then persist outcome
-        code = await fetch_kr_code_from_naver(name)
-        self._session.add(KrNameCache(name=name, code=code, source="naver"))
-        await self._session.flush()
+        try:
+            code = await fetch_kr_code_from_naver(name)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("kr_name_resolver: naver call failed: %s", exc)
+            return None
+
+        try:
+            self._session.add(KrNameCache(name=name, code=code, source="naver"))
+            await self._session.flush()
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "kr_name_resolver: failed to persist cache row (%s) — returning result without caching",
+                exc,
+            )
+
         if code:
             logger.info("kr_name_resolver: naver mapped %s → %s", name, code)
-        else:
-            logger.info("kr_name_resolver: naver could not map %s (negative cache)", name)
         return code
