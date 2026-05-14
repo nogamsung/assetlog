@@ -60,17 +60,53 @@ class TestFetchPriceSync:
 
         assert price == Decimal("73000")
 
-    def test_raises_value_error_when_both_fail(self) -> None:
+    def test_raises_value_error_when_all_sources_fail(self) -> None:
         import pandas as pd
 
         empty_fdr = pd.DataFrame({"Close": []})
 
+        # Stub yfinance Ticker so its fast_info returns nothing for both KS/KQ
+        class _StubFastInfo:
+            def get(self, _key: str) -> None:
+                return None
+
+        class _StubTicker:
+            def __init__(self, _t: str) -> None:
+                self.fast_info = _StubFastInfo()
+
+        import yfinance as yf
+
         with (
             patch("pykrx.stock.get_market_ohlcv", side_effect=RuntimeError("fail")),
             patch("FinanceDataReader.DataReader", return_value=empty_fdr),
+            patch.object(yf, "Ticker", _StubTicker),
         ):
-            with pytest.raises(ValueError, match="Both pykrx and FinanceDataReader failed"):
+            with pytest.raises(ValueError, match="No KR price data available"):
                 _fetch_price_sync("005930")
+
+    def test_yfinance_ks_fallback_returns_price(self) -> None:
+        """When both pykrx and FDR return nothing, .KS yfinance is tried."""
+        import pandas as pd
+
+        empty_fdr = pd.DataFrame({"Close": []})
+
+        class _StubFastInfo:
+            def get(self, key: str) -> float | None:
+                return 75000.0 if key == "last_price" else None
+
+        class _StubTicker:
+            def __init__(self, ticker: str) -> None:
+                self.fast_info = _StubFastInfo()
+
+        import yfinance as yf
+
+        with (
+            patch("pykrx.stock.get_market_ohlcv", side_effect=RuntimeError("fail")),
+            patch("FinanceDataReader.DataReader", return_value=empty_fdr),
+            patch.object(yf, "Ticker", _StubTicker),
+        ):
+            price = _fetch_price_sync("005930")
+        assert price == Decimal("75000.0")
 
     def test_pykrx_uses_most_recent_row(self) -> None:
         import pandas as pd

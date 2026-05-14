@@ -550,6 +550,17 @@ class ExchangeSyncService:
             if resolved_kr:
                 symbol = resolved_kr
 
+        # Crypto trade payloads (Upbit etc.) only carry the ticker, so we look
+        # up a human display name so AssetSymbol.name doesn't fall back to the
+        # ticker itself.
+        if asset_type == AssetType.CRYPTO and not name:
+            from app.adapters.crypto_name_map import lookup_crypto_name  # noqa: PLC0415
+
+            base = symbol.split("/", maxsplit=1)[0] if "/" in symbol else symbol
+            mapped = lookup_crypto_name(base)
+            if mapped:
+                name = mapped
+
         stmt = select(AssetSymbol).where(
             AssetSymbol.asset_type == asset_type,
             AssetSymbol.symbol == symbol,
