@@ -22,9 +22,14 @@ _LOOKBACK_DAYS = 10
 
 
 def _fetch_price_sync(symbol: str) -> Decimal:
-    """Fetch the latest closing price for *symbol* using pykrx (sync).
+    """Fetch the latest closing price for *symbol* (sync, runs in a thread).
 
-    Falls back to FinanceDataReader if pykrx raises or returns empty data.
+    Three-tier fallback so a single library outage doesn't black-hole KR
+    prices:
+
+      1. pykrx — official KRX data source
+      2. FinanceDataReader — same data via a different scraper
+      3. yfinance with ``.KS`` / ``.KQ`` suffix — last-resort external source
 
     Args:
         symbol: 6-digit zero-padded KRX ticker.
@@ -33,42 +38,61 @@ def _fetch_price_sync(symbol: str) -> Decimal:
         Most recent closing price as Decimal.
 
     Raises:
-        ValueError: If no price data could be obtained from either source.
+        ValueError: If no price data could be obtained from any source.
     """
-    import pykrx.stock as pykrx  # noqa: PLC0415  # lazy import for testability
-
     today = datetime.now(tz=UTC).strftime("%Y%m%d")
     lookback_start = (datetime.now(tz=UTC) - timedelta(days=_LOOKBACK_DAYS)).strftime("%Y%m%d")
 
+    # --- Primary: pykrx ---
     try:
+        import pykrx.stock as pykrx  # noqa: PLC0415
+
         df = pykrx.get_market_ohlcv(lookback_start, today, symbol)
         if df is not None and not df.empty:
             close_price = df["종가"].iloc[-1]
             return Decimal(str(close_price))
-        # Empty frame → pykrx found nothing (holiday / ticker mismatch)
-        raise ValueError(f"pykrx returned empty DataFrame for {symbol}")
     except Exception as primary_exc:  # noqa: BLE001
         logger.debug(
-            "pykrx failed for %s (%s: %s) — trying FinanceDataReader fallback",
+            "pykrx failed for %s: %s — trying FinanceDataReader",
             symbol,
-            type(primary_exc).__name__,
             primary_exc,
             extra={"event": "kr_stock_pykrx_fallback", "symbol": symbol},
         )
 
-    # --- FinanceDataReader fallback ---
+    # --- Secondary: FinanceDataReader ---
     try:
-        import FinanceDataReader as fdr  # noqa: PLC0415  # lazy import for testability
+        import FinanceDataReader as fdr  # noqa: PLC0415
 
         fdr_df = fdr.DataReader(symbol, lookback_start, today)
         if fdr_df is not None and not fdr_df.empty:
             close_price = fdr_df["Close"].iloc[-1]
             return Decimal(str(close_price))
-        raise ValueError(f"FinanceDataReader returned empty DataFrame for {symbol}")
-    except Exception as fallback_exc:  # noqa: BLE001
+    except Exception as fdr_exc:  # noqa: BLE001
+        logger.debug(
+            "FDR failed for %s: %s — trying yfinance .KS/.KQ",
+            symbol,
+            fdr_exc,
+            extra={"event": "kr_stock_fdr_fallback", "symbol": symbol},
+        )
+
+    # --- Tertiary: yfinance with KOSPI (.KS) then KOSDAQ (.KQ) suffix ---
+    try:
+        import yfinance as yf  # noqa: PLC0415
+
+        for suffix in (".KS", ".KQ"):
+            try:
+                fast = yf.Ticker(f"{symbol}{suffix}").fast_info
+                last = fast.get("last_price")
+                if last is not None and last > 0:
+                    return Decimal(str(last))
+            except Exception:  # noqa: BLE001  # try next suffix
+                continue
+    except Exception as yf_exc:  # noqa: BLE001
         raise ValueError(
-            f"Both pykrx and FinanceDataReader failed for {symbol}: {fallback_exc}"
-        ) from fallback_exc
+            f"All KR price sources (pykrx/FDR/yfinance) failed for {symbol}: {yf_exc}"
+        ) from yf_exc
+
+    raise ValueError(f"No KR price data available for {symbol}")
 
 
 def _load_symbol_list_sync() -> list[SymbolCandidate]:  # ADDED
