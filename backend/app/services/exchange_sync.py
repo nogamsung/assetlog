@@ -362,6 +362,12 @@ class ExchangeSyncService:
         )
 
         symbol_cache: dict[tuple[str, AssetType, str], AssetSymbol] = {}
+        # Tracks (asset_symbol_id, ex_date) pairs that already have a row —
+        # required because ``dividends`` has a UNIQUE on (symbol_id, ex_date)
+        # in addition to (external_source, external_id). A different broker
+        # statement reporting the same dividend would otherwise crash the
+        # whole transaction with a PendingRollbackError.
+        seen_pairs: set[tuple[int, object]] = set()
         inserted = 0
         skipped_dup = 0
 
@@ -382,10 +388,28 @@ class ExchangeSyncService:
                 )
                 symbol_cache[cache_key] = symbol
 
+            ex_date = div.traded_at.astimezone(_KST).date()
+            pair_key = (symbol.id, ex_date)
+            if pair_key in seen_pairs:
+                skipped_dup += 1
+                continue
+            existing_pair = (
+                await self._session.execute(
+                    select(Dividend.id).where(
+                        Dividend.asset_symbol_id == symbol.id,
+                        Dividend.ex_date == ex_date,
+                    )
+                )
+            ).scalar_one_or_none()
+            if existing_pair is not None:
+                skipped_dup += 1
+                seen_pairs.add(pair_key)
+                continue
+
             self._session.add(
                 Dividend(
                     asset_symbol_id=symbol.id,
-                    ex_date=div.traded_at.astimezone(_KST).date(),
+                    ex_date=ex_date,
                     amount=div.gross_amount,
                     currency=div.currency,
                     source=DividendSource.TOSS_SECURITIES,
@@ -394,6 +418,7 @@ class ExchangeSyncService:
                 )
             )
             existing_ids.add(div.external_id)
+            seen_pairs.add(pair_key)
             inserted += 1
 
         if inserted > 0:
