@@ -237,7 +237,9 @@ class PortfolioService:
 
         total_value: dict[str, Decimal] = {}
         total_cost: dict[str, Decimal] = {}
-        allocation_value: dict[str, Decimal] = {}  # asset_type → Decimal
+        # asset_type → currency → native value. We delay FX conversion until
+        # after the loop so we can fetch every rate we need in one batch.
+        alloc_native: dict[str, dict[str, Decimal]] = {}
         realized_pnl_acc: dict[str, Decimal] = {}  # ADDED — currency → realized_pnl
 
         pending_count = 0
@@ -279,9 +281,8 @@ class PortfolioService:
             total_value[cur] = total_value.get(cur, Decimal("0")) + latest_value
             total_cost[cur] = total_cost.get(cur, Decimal("0")) + row.total_cost
 
-            allocation_value[asset_type] = (
-                allocation_value.get(asset_type, Decimal("0")) + latest_value
-            )
+            by_cur = alloc_native.setdefault(asset_type, {})
+            by_cur[cur] = by_cur.get(cur, Decimal("0")) + latest_value
 
         # Cash holdings aggregation.
         cash_totals: dict[str, Decimal] = {}
@@ -303,8 +304,46 @@ class PortfolioService:
                 pnl_pct = 0.0
             pnl_by_currency[cur] = PnlEntry(abs=pnl_abs, pct=round(pnl_pct, 2))
 
-        # Allocation — include cash as a separate entry when > 0.
-        cash_grand_total = sum(cash_totals.values(), Decimal("0"))
+        # ------------------------------------------------------------------
+        # Allocation — convert every native total into a single base currency
+        # so KR/US/crypto buckets are actually comparable. Pie wedges should
+        # answer "how is my net worth split", not "how does USD compare to
+        # KRW numerically". Falls back to native sums only if FX is missing.
+        # ------------------------------------------------------------------
+        alloc_base_ccy = (convert_to or "KRW").upper()
+        currencies_in_play = (
+            {c for d in alloc_native.values() for c in d}
+            | set(cash_totals.keys())
+        )
+
+        alloc_rate_map: dict[str, Decimal] | None = None
+        if self._fx_service is not None and currencies_in_play:
+            try:
+                alloc_rate_map = await self._fx_service.get_all_rates_for_conversion(
+                    list(currencies_in_play), alloc_base_ccy
+                )
+            except Exception:  # noqa: BLE001
+                alloc_rate_map = None
+
+        def _to_base(value: Decimal, ccy: str) -> Decimal:
+            if ccy == alloc_base_ccy:
+                return value
+            if alloc_rate_map is None:
+                return value  # fallback: native (legacy behaviour)
+            rate = alloc_rate_map.get(ccy)
+            return value * rate if rate is not None else value
+
+        allocation_value: dict[str, Decimal] = {}
+        for asset_type_str, by_cur in alloc_native.items():
+            total = Decimal("0")
+            for ccy, v in by_cur.items():
+                total += _to_base(v, ccy)
+            allocation_value[asset_type_str] = total
+
+        cash_grand_total = Decimal("0")
+        for ccy, v in cash_totals.items():
+            cash_grand_total += _to_base(v, ccy)
+
         grand_total = sum(allocation_value.values(), Decimal("0")) + cash_grand_total
         allocation: list[AllocationEntry] = []
         if grand_total > Decimal("0"):

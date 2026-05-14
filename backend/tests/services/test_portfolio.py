@@ -375,6 +375,43 @@ class TestPortfolioServiceGetSummary:
         total_pct = sum(a.pct for a in summary.allocation)
         assert abs(total_pct - 100.0) < 0.1
 
+    async def test_allocation_converts_to_base_currency(self) -> None:
+        """KR + US holdings must be FX-normalised before computing pie pct.
+
+        Without conversion, a 100 USD US-stock holding (≈ 140,000 KRW at 1,400)
+        would look smaller than a 1,000,000 KRW KR-stock holding solely
+        because their numeric values live in different unit systems.
+        """
+        # US: 5 shares × 200 USD = 1,000 USD  → 1,400,000 KRW @ 1,400
+        sym_us = _make_symbol(1, "AAPL", "USD", AssetType.US_STOCK, Decimal("200"), datetime.now(UTC))
+        # KR: 10 shares × 80,000 KRW = 800,000 KRW
+        sym_kr = _make_symbol(2, "005930", "KRW", AssetType.KR_STOCK, Decimal("80000"), datetime.now(UTC))
+        rows = [
+            _make_row(1, "5", "800", sym_us),
+            _make_row(2, "10", "70000", sym_kr),
+        ]
+        fx = _make_fx_service({("USD", "KRW"): Decimal("1400")})
+        svc = _make_service(rows, fx_service=fx)
+
+        summary = await svc.get_summary()
+        alloc = {a.asset_type: a.pct for a in summary.allocation}
+        # US in KRW = 1,400,000 ; KR = 800,000 ; grand = 2,200,000
+        # US ≈ 63.6%, KR ≈ 36.4%
+        assert abs(alloc["us_stock"] - 63.64) < 0.5
+        assert abs(alloc["kr_stock"] - 36.36) < 0.5
+
+    async def test_allocation_falls_back_to_native_when_fx_missing(self) -> None:
+        """If FX rates are unavailable, allocation degrades to native sums."""
+        sym_us = _make_symbol(1, "AAPL", "USD", AssetType.US_STOCK, Decimal("100"), datetime.now(UTC))
+        sym_kr = _make_symbol(2, "005930", "KRW", AssetType.KR_STOCK, Decimal("1000"), datetime.now(UTC))
+        rows = [_make_row(1, "1", "90", sym_us), _make_row(2, "1", "900", sym_kr)]
+        # fx_service=None — no rates available
+        svc = _make_service(rows, fx_service=None)
+        summary = await svc.get_summary()
+        # Both buckets still appear; sum is still ≈ 100 (graceful degradation)
+        total_pct = sum(a.pct for a in summary.allocation)
+        assert abs(total_pct - 100.0) < 0.1
+
     async def test_last_price_refreshed_at_max값(self) -> None:
         older = datetime(2026, 1, 1, tzinfo=UTC)
         newer = datetime(2026, 6, 1, tzinfo=UTC)
