@@ -1,6 +1,8 @@
 "use client";
 
 import { useState } from "react";
+import { RefreshCw } from "lucide-react";
+import { toast } from "sonner";
 import {
   LineChart,
   Line,
@@ -11,7 +13,10 @@ import {
   Brush, /* ADDED */
   ReferenceLine, /* ADDED */
 } from "recharts";
-import { usePortfolioHistory } from "@/hooks/use-portfolio-history";
+import {
+  useBackfillPortfolioHistory,
+  usePortfolioHistory,
+} from "@/hooks/use-portfolio-history";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   formatCompactNumber,
@@ -72,6 +77,21 @@ export function PortfolioHistoryChart({ currency }: PortfolioHistoryChartProps) 
     currency,
   });
 
+  const backfill = useBackfillPortfolioHistory();
+
+  function handleRefresh() {
+    backfill.mutate(undefined, {
+      onSuccess: () => {
+        toast.success("과거 가격을 다시 받아오고 있어요. 잠시 후 차트가 갱신됩니다.");
+      },
+      onError: () => {
+        // The endpoint returns 202 immediately and runs in the background, so
+        // a "soft" error here usually still means the work was scheduled.
+        toast.error("새로고침 요청에 실패했어요. 잠시 후 다시 시도해 주세요.");
+      },
+    });
+  }
+
   const chartData =
     data?.points.map((p) => ({
       timestamp: p.timestamp,
@@ -86,29 +106,45 @@ export function PortfolioHistoryChart({ currency }: PortfolioHistoryChartProps) 
   return (
     <Card>
       <CardHeader>
-        <div className="flex items-center justify-between flex-wrap gap-2">
+        <div className="flex flex-wrap items-center justify-between gap-2">
           <CardTitle className="text-base">포트폴리오 추이 ({currency})</CardTitle>
-          <div
-            className="flex gap-1"
-            role="group"
-            aria-label="차트 기간 선택"
-          >
-            {PERIODS.map((p) => (
-              <button
-                key={p.value}
-                type="button"
-                onClick={() => setPeriod(p.value)}
-                aria-label={`${p.label} 기간 선택`}
-                aria-pressed={period === p.value}
-                className={`rounded px-3 py-1 text-xs font-medium transition-colors ${
-                  period === p.value
-                    ? "bg-primary text-primary-foreground"
-                    : "bg-muted text-muted-foreground hover:bg-muted/80"
-                }`}
-              >
-                {p.label}
-              </button>
-            ))}
+          <div className="flex flex-wrap items-center gap-2">
+            <div
+              className="flex gap-1"
+              role="group"
+              aria-label="차트 기간 선택"
+            >
+              {PERIODS.map((p) => (
+                <button
+                  key={p.value}
+                  type="button"
+                  onClick={() => setPeriod(p.value)}
+                  aria-label={`${p.label} 기간 선택`}
+                  aria-pressed={period === p.value}
+                  className={`rounded-full px-3 py-1 text-xs font-medium transition-[background-color,color,transform] duration-150 active:scale-[0.94] ${
+                    period === p.value
+                      ? "bg-primary text-primary-foreground"
+                      : "bg-muted text-muted-foreground hover:bg-muted/80 active:bg-muted/70"
+                  }`}
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
+            <button
+              type="button"
+              onClick={handleRefresh}
+              disabled={backfill.isPending}
+              aria-label="과거 가격 새로고침"
+              aria-busy={backfill.isPending}
+              className="inline-flex items-center gap-1 rounded-full border border-toss-border bg-toss-card px-3 py-1 text-xs font-medium text-toss-textWeak transition-[background-color,color,transform] duration-150 hover:text-toss-textStrong active:scale-[0.94] active:bg-muted disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <RefreshCw
+                className={`h-3 w-3 ${backfill.isPending ? "animate-spin" : ""}`}
+                aria-hidden="true"
+              />
+              {backfill.isPending ? "갱신 중" : "새로고침"}
+            </button>
           </div>
         </div>
       </CardHeader>

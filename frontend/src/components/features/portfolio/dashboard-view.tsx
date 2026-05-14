@@ -117,7 +117,9 @@ export function DashboardView() {
       <MarketIndicesStrip />
 
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <span className="text-sm text-muted-foreground">포트폴리오 요약</span>
+        <h2 className="text-base font-semibold text-toss-textStrong">
+          포트폴리오 요약
+        </h2>
         <CurrencySwitcher
           value={displayCurrency}
           onChange={setDisplayCurrency}
@@ -129,7 +131,7 @@ export function DashboardView() {
         <p
           role="status"
           aria-live="polite"
-          className="rounded-md border border-yellow-300 bg-yellow-50 px-3 py-2 text-xs text-yellow-800"
+          className="rounded-xl border border-toss-border bg-toss-card px-4 py-2.5 text-xs text-toss-textWeak"
         >
           {displayCurrency} 환율 준비 중입니다. 잠시 후 다시 시도해 주세요.
         </p>
