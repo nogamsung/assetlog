@@ -18,6 +18,11 @@ class ParsedCashTxKind(enum.StrEnum):
     INTEREST_TAX = "interest_tax"
     DEPOSIT = "deposit"
     WITHDRAW = "withdraw"
+    # FX-leg pairs. An FX trade emits one TRANSFER_OUT (currency A) plus one
+    # TRANSFER_IN (currency B) — keeps each currency's balance accurate without
+    # having to model the two halves of a swap explicitly.
+    TRANSFER_IN = "transfer_in"
+    TRANSFER_OUT = "transfer_out"
 
 
 @dataclass(frozen=True)

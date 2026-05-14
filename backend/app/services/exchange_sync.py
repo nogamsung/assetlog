@@ -459,6 +459,8 @@ class ExchangeSyncService:
                 "interest_tax": CashTxKind.INTEREST_TAX,
                 "deposit": CashTxKind.DEPOSIT,
                 "withdraw": CashTxKind.WITHDRAW,
+                "transfer_in": CashTxKind.TRANSFER_IN,
+                "transfer_out": CashTxKind.TRANSFER_OUT,
             }
             kind = kind_map.get(ctx.kind.value, CashTxKind.INTEREST)
 

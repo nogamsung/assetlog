@@ -41,9 +41,12 @@ class TestCounts:
         """예탁금이용료 → KRW interest."""
         assert parse_result.cash_tx_count >= 1
 
-    def test_cash_transfers_are_skipped(self, parse_result) -> None:  # type: ignore[no-untyped-def]
-        kinds = [s.raw_kind for s in parse_result.skipped]
-        assert any(k.startswith("전자이체") for k in kinds)
+    def test_cash_transfers_emit_cash_tx(self, parse_result) -> None:  # type: ignore[no-untyped-def]
+        """``전자이체*`` events now become ParsedCashTx (deposit/withdraw)."""
+        cash_kinds = [
+            r.kind.value for r in parse_result.records if isinstance(r, ParsedCashTx)
+        ]
+        assert "deposit" in cash_kinds or "withdraw" in cash_kinds
 
 
 class TestKrTrade:

@@ -10,7 +10,9 @@ from fastapi import APIRouter, Query, Request, status
 
 from app.core.deps import (
     BenchmarkServiceDep,
+    CashFlowServiceDep,
     CurrentUser,
+    FxRateServiceDep,
     HeatmapServiceDep,
     PerformanceServiceDep,
     PortfolioHistoryServiceDep,
@@ -330,3 +332,75 @@ async def get_portfolio_heatmap(
 ) -> HeatmapResponse:
     """Return monthly returns matrix."""
     return await heatmap_service.get_heatmap(currency.upper(), years)
+
+
+@router.get(
+    "/net-worth",
+    status_code=status.HTTP_200_OK,
+    summary="Total net worth (holdings value + cash) per currency + converted total",
+    description=(
+        "Combines per-currency holdings valuation with the user's available "
+        "cash balance derived from imported cash-flow records (deposits, "
+        "withdrawals, FX transfers, dividends, buys, sells, interest, taxes). "
+        "Returns each currency's cash + assets, plus an optional sum "
+        "converted into the requested display currency."
+    ),
+    responses={
+        401: {"model": ErrorResponse, "description": "Not authenticated"},
+    },
+)
+async def get_portfolio_net_worth(
+    _current_user: CurrentUser,
+    portfolio_service: PortfolioServiceDep,
+    cash_flow_service: CashFlowServiceDep,
+    fx_service: FxRateServiceDep,
+    display_currency: str | None = Query(
+        default=None,
+        description="ISO 4217 code to express the total in (e.g. KRW). "
+        "Per-currency breakdown is always native.",
+    ),
+) -> dict[str, object]:
+    """Return per-currency net worth + optional converted grand total."""
+    from decimal import Decimal  # noqa: PLC0415
+
+    holdings = await portfolio_service.get_holdings()
+    cash_by_currency = await cash_flow_service.net_cash_by_currency()
+
+    holdings_by_currency: dict[str, Decimal] = {}
+    for h in holdings:
+        if h.latest_value is None:
+            continue
+        cur = h.asset_symbol.currency
+        holdings_by_currency[cur] = holdings_by_currency.get(cur, Decimal("0")) + h.latest_value
+
+    currencies = set(cash_by_currency.keys()) | set(holdings_by_currency.keys())
+    breakdown: dict[str, dict[str, str]] = {}
+    for cur in sorted(currencies):
+        cash = cash_by_currency.get(cur, Decimal("0"))
+        assets = holdings_by_currency.get(cur, Decimal("0"))
+        breakdown[cur] = {
+            "cash": str(cash),
+            "assets": str(assets),
+            "total": str(cash + assets),
+        }
+
+    converted_total: str | None = None
+    if display_currency is not None:
+        target = display_currency.upper()
+        from app.exceptions import FxRateNotAvailableError  # noqa: PLC0415
+
+        grand_total = Decimal("0")
+        for cur, entry in breakdown.items():
+            try:
+                converted = await fx_service.convert(Decimal(entry["total"]), cur, target)
+                grand_total += converted
+            except FxRateNotAvailableError:
+                # Skip currencies without an FX rate — total is partial.
+                continue
+        converted_total = str(grand_total)
+
+    return {
+        "by_currency": breakdown,
+        "display_currency": display_currency.upper() if display_currency else None,
+        "converted_total": converted_total,
+    }
