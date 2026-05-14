@@ -2,11 +2,21 @@
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from app.services.isin_resolver import IsinResolver, looks_like_isin
+
+
+def _async_session_mock() -> AsyncMock:
+    """An ``AsyncMock`` session whose ``begin_nested`` works as a savepoint."""
+    session = AsyncMock()
+    ctx = MagicMock()
+    ctx.__aenter__ = AsyncMock(return_value=None)
+    ctx.__aexit__ = AsyncMock(return_value=False)
+    session.begin_nested = MagicMock(return_value=ctx)
+    return session
 
 
 class TestLooksLikeIsin:
@@ -40,7 +50,7 @@ class TestIsinResolver:
         monkeypatch.setitem(
             isin_ticker_map.US_ISIN_TO_TICKER, "US0079031078", "AMD"
         )
-        session = AsyncMock()
+        session = _async_session_mock()
         resolver = IsinResolver(session)
         with patch(
             "app.services.isin_resolver.fetch_ticker_from_openfigi",
@@ -55,7 +65,7 @@ class TestIsinResolver:
     async def test_db_cache_hit_skips_openfigi(self) -> None:
         from app.models.isin_ticker_cache import IsinTickerCache
 
-        session = AsyncMock()
+        session = _async_session_mock()
         session.get.return_value = IsinTickerCache(
             isin="US0000000099", ticker="FOO", source="openfigi"
         )
@@ -70,7 +80,7 @@ class TestIsinResolver:
 
     @pytest.mark.asyncio
     async def test_openfigi_hit_persists_to_cache(self) -> None:
-        session = AsyncMock()
+        session = _async_session_mock()
         session.get.return_value = None  # cache miss
         resolver = IsinResolver(session)
         with patch(
@@ -89,7 +99,7 @@ class TestIsinResolver:
     @pytest.mark.asyncio
     async def test_openfigi_miss_persists_negative_to_cache(self) -> None:
         """Unknown ISINs are remembered as (ticker=None) so we don't re-hit the API."""
-        session = AsyncMock()
+        session = _async_session_mock()
         session.get.return_value = None
         resolver = IsinResolver(session)
         with patch(
@@ -105,7 +115,7 @@ class TestIsinResolver:
     async def test_db_cache_negative_skips_openfigi(self) -> None:
         from app.models.isin_ticker_cache import IsinTickerCache
 
-        session = AsyncMock()
+        session = _async_session_mock()
         session.get.return_value = IsinTickerCache(
             isin="US9999999999", ticker=None, source="openfigi"
         )

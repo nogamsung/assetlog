@@ -48,11 +48,14 @@ class KrNameResolver:
         name — never propagates an exception that would abort the
         surrounding import.
         """
-        # 1) DB cache — including negative entries
+        # 1) DB cache — including negative entries. Wrapped in a SAVEPOINT
+        # so a missing table (migration not yet applied) doesn't poison the
+        # outer transaction.
         try:
-            cached = await self._session.get(KrNameCache, name)
-            if cached is not None:
-                return cached.code
+            async with self._session.begin_nested():
+                cached = await self._session.get(KrNameCache, name)
+                if cached is not None:
+                    return cached.code
         except Exception as exc:  # noqa: BLE001
             logger.warning(
                 "kr_name_resolver: cache lookup failed (%s) — skipping cache tier",
@@ -66,9 +69,13 @@ class KrNameResolver:
             logger.warning("kr_name_resolver: naver call failed: %s", exc)
             return None
 
+        # Wrap the cache INSERT in a SAVEPOINT so a write failure (most
+        # commonly: ``kr_name_cache`` migration not applied yet in this
+        # environment) only rolls back the cache write, leaving the
+        # surrounding import transaction usable.
         try:
-            self._session.add(KrNameCache(name=name, code=code, source="naver"))
-            await self._session.flush()
+            async with self._session.begin_nested():
+                self._session.add(KrNameCache(name=name, code=code, source="naver"))
         except Exception as exc:  # noqa: BLE001
             logger.warning(
                 "kr_name_resolver: failed to persist cache row (%s) — returning result without caching",

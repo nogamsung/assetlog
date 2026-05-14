@@ -60,14 +60,15 @@ class IsinResolver:
         except Exception:  # noqa: BLE001
             pass
 
-        # 2) DB cache — remember both positive and negative lookups
+        # 2) DB cache — remember both positive and negative lookups. Wrapped in
+        # a SAVEPOINT so a missing table (migration not yet applied) doesn't
+        # poison the outer transaction.
         try:
-            cached = await self._session.get(IsinTickerCache, isin)
-            if cached is not None:
-                return cached.ticker  # may be None for known-unknown
+            async with self._session.begin_nested():
+                cached = await self._session.get(IsinTickerCache, isin)
+                if cached is not None:
+                    return cached.ticker  # may be None for known-unknown
         except Exception as exc:  # noqa: BLE001
-            # Most commonly: the isin_ticker_cache migration hasn't been
-            # applied yet in this environment. Don't block the caller.
             logger.warning(
                 "isin_resolver: cache lookup failed (%s) — skipping cache tier",
                 exc,
@@ -80,11 +81,15 @@ class IsinResolver:
             logger.warning("isin_resolver: openfigi call failed: %s", exc)
             return None
 
+        # Wrap the cache INSERT in a SAVEPOINT so a write failure (most
+        # commonly: ``isin_ticker_cache`` migration not applied yet in this
+        # environment) only rolls back the cache write, leaving the
+        # surrounding import transaction usable.
         try:
-            self._session.add(
-                IsinTickerCache(isin=isin, ticker=ticker, source="openfigi")
-            )
-            await self._session.flush()
+            async with self._session.begin_nested():
+                self._session.add(
+                    IsinTickerCache(isin=isin, ticker=ticker, source="openfigi")
+                )
         except Exception as exc:  # noqa: BLE001
             logger.warning(
                 "isin_resolver: failed to persist cache row (%s) — returning result without caching",
