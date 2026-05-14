@@ -115,11 +115,38 @@ class CryptoAdapter:
         exchange = exchange_cls({"enableRateLimit": True})
         prices: dict[str, Decimal] = {}
         try:
-            tickers = await exchange.fetch_tickers(pairs)
-            for pair, ticker in tickers.items():
-                last = ticker.get("last")
-                if last is not None:
-                    prices[pair] = Decimal(str(last))
+            # Pre-load markets so we can filter out pairs the exchange doesn't
+            # list (a single unknown pair otherwise makes fetch_tickers raise
+            # BadSymbol for the whole batch).
+            try:
+                await exchange.load_markets()
+                supported = [p for p in pairs if p in exchange.markets]
+            except Exception:  # noqa: BLE001
+                supported = pairs
+            if not supported:
+                return prices
+            try:
+                tickers = await exchange.fetch_tickers(supported)
+                for pair, ticker in tickers.items():
+                    last = ticker.get("last")
+                    if last is not None:
+                        prices[pair] = Decimal(str(last))
+            except Exception as exc:  # noqa: BLE001
+                # Batch failed — fall back to one ticker at a time so a single
+                # bad pair doesn't black-hole the rest.
+                logger.debug(
+                    "crypto fetch_tickers batch failed (%s) — per-pair fallback",
+                    exc,
+                    extra={"event": "crypto_batch_fallback", "exchange": exchange_name},
+                )
+                for pair in supported:
+                    try:
+                        t = await exchange.fetch_ticker(pair)
+                    except Exception:  # noqa: BLE001
+                        continue
+                    last = t.get("last")
+                    if last is not None:
+                        prices[pair] = Decimal(str(last))
         finally:
             await exchange.close()
         return prices

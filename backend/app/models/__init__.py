@@ -3,6 +3,7 @@
 from app.models.asset_symbol import AssetSymbol
 from app.models.cash_account import CashAccount
 from app.models.cash_account_transaction import CashAccountTransaction
+from app.models.crypto_name_cache import CryptoNameCache
 from app.models.dividend import Dividend
 from app.models.fx_rate import FxRate
 from app.models.fx_rate_snapshot import FxRateSnapshot
@@ -17,6 +18,7 @@ __all__ = [
     "AssetSymbol",
     "CashAccount",
     "CashAccountTransaction",
+    "CryptoNameCache",
     "Dividend",
     "FxRate",
     "FxRateSnapshot",

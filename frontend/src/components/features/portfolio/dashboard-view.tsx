@@ -9,6 +9,7 @@ import { AllocationDonut } from "./allocation-donut";
 import { HoldingsTable } from "./holdings-table";
 import { HoldingsList } from "./holdings-list"; /* ADDED */
 import { PortfolioHistoryChart } from "./portfolio-history-chart";
+import { NetWorthCard } from "./net-worth-card";
 import { CurrencySwitcher } from "./currency-switcher";
 import { MarketIndicesStrip } from "./market-indices-strip";
 import { TagBreakdownTable } from "./tag-breakdown-table";
@@ -135,6 +136,7 @@ export function DashboardView() {
       )}
 
       <SummaryCards summary={summary} />
+      <NetWorthCard displayCurrency={displayCurrency ?? defaultCurrency} />
       <AllocationDonut allocation={summary.allocation} />
       <PortfolioHistoryChart currency={defaultCurrency} />
       <TagBreakdownTable />
