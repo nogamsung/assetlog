@@ -97,6 +97,30 @@ class TestImportParsedDividends:
         result = await svc.import_records(ExchangeSource.TOSS_SECURITIES, pr)
         assert result.inserted_dividends == 0
 
+    async def test_dedupe_dividend_by_symbol_and_ex_date(
+        self, db_session: AsyncSession
+    ) -> None:
+        """Same (symbol, ex_date) from a *different* external_id must not crash.
+
+        The dividends table has UNIQUE(asset_symbol_id, ex_date) in addition to
+        UNIQUE(external_source, external_id), so two brokers reporting the same
+        dividend with different external_ids would otherwise hit a duplicate
+        key and abort the whole import session with PendingRollbackError.
+        """
+        svc = ExchangeSyncService(db_session)
+        # First import: external_id="src_a"
+        div_a = _make_dividend("src_a")
+        await svc.import_records(
+            ExchangeSource.TOSS_SECURITIES, ParseResult(records=[div_a])
+        )
+        # Second import: same symbol + same ex_date, different external_id
+        div_b = _make_dividend("src_b")
+        result = await svc.import_records(
+            ExchangeSource.TOSS_SECURITIES, ParseResult(records=[div_b])
+        )
+        # Must be silently skipped, not crash
+        assert result.inserted_dividends == 0
+
 
 class TestImportParsedCashTxs:
     async def test_insert_new_cash_tx(self, db_session: AsyncSession) -> None:
