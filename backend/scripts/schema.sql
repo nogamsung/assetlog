@@ -220,6 +220,33 @@ CREATE TABLE IF NOT EXISTS `target_allocations` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ----------------------------------------------------------------------------
+-- isin_ticker_cache — persistent ISIN → exchange ticker cache
+-- Populated by IsinResolver (static map → DB cache → OpenFIGI). NULL ticker
+-- is allowed to remember a negative lookup so we don't re-hit the upstream
+-- API for unknown ISINs.
+-- ----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS `isin_ticker_cache` (
+  `isin`         VARCHAR(12)     NOT NULL,
+  `ticker`       VARCHAR(20)     NULL,
+  `source`       VARCHAR(16)     NOT NULL DEFAULT 'openfigi',
+  `looked_up_at` DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`isin`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ----------------------------------------------------------------------------
+-- kr_name_cache — Korean security name → KRX 6-digit code cache
+-- Populated by KrNameResolver (DB cache → Naver Finance autocomplete). NULL
+-- code keeps a negative lookup so the upstream API isn't hit repeatedly.
+-- ----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS `kr_name_cache` (
+  `name`         VARCHAR(128)    NOT NULL,
+  `code`         VARCHAR(6)      NULL,
+  `source`       VARCHAR(16)     NOT NULL DEFAULT 'naver',
+  `looked_up_at` DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`name`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ----------------------------------------------------------------------------
 -- alembic_version — stamped at latest head so future revisions apply
 -- incrementally without re-running the bootstrap.
 -- ----------------------------------------------------------------------------
@@ -229,7 +256,7 @@ CREATE TABLE IF NOT EXISTS `alembic_version` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 INSERT INTO `alembic_version` (`version_num`)
-  VALUES ('d5e8d86ff010')
+  VALUES ('d7f1c9a3e8b4')
   ON DUPLICATE KEY UPDATE `version_num` = VALUES(`version_num`);
 
 SET FOREIGN_KEY_CHECKS = 1;
