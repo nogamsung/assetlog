@@ -48,25 +48,49 @@ class IsinResolver:
         """Return the ticker for *isin*, or None if unknown.
 
         Result is persisted to ``isin_ticker_cache`` so future calls are O(1).
+        Any failure (missing cache table, OpenFIGI rate-limit, network error)
+        degrades to ``None`` so callers fall back to the raw ISIN — never
+        propagates an exception that would abort the surrounding import.
         """
         # 1) Static curated map — instant
-        static_hit = lookup_us_ticker(isin)
-        if static_hit is not None:
-            return static_hit
+        try:
+            static_hit = lookup_us_ticker(isin)
+            if static_hit is not None:
+                return static_hit
+        except Exception:  # noqa: BLE001
+            pass
 
         # 2) DB cache — remember both positive and negative lookups
-        cached = await self._session.get(IsinTickerCache, isin)
-        if cached is not None:
-            return cached.ticker  # may be None for known-unknown
+        try:
+            cached = await self._session.get(IsinTickerCache, isin)
+            if cached is not None:
+                return cached.ticker  # may be None for known-unknown
+        except Exception as exc:  # noqa: BLE001
+            # Most commonly: the isin_ticker_cache migration hasn't been
+            # applied yet in this environment. Don't block the caller.
+            logger.warning(
+                "isin_resolver: cache lookup failed (%s) — skipping cache tier",
+                exc,
+            )
 
         # 3) OpenFIGI — network call, then persist outcome
-        ticker = await fetch_ticker_from_openfigi(isin)
-        self._session.add(
-            IsinTickerCache(isin=isin, ticker=ticker, source="openfigi")
-        )
-        await self._session.flush()
+        try:
+            ticker = await fetch_ticker_from_openfigi(isin)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("isin_resolver: openfigi call failed: %s", exc)
+            return None
+
+        try:
+            self._session.add(
+                IsinTickerCache(isin=isin, ticker=ticker, source="openfigi")
+            )
+            await self._session.flush()
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "isin_resolver: failed to persist cache row (%s) — returning result without caching",
+                exc,
+            )
+
         if ticker:
             logger.info("isin_resolver: openfigi mapped %s → %s", isin, ticker)
-        else:
-            logger.info("isin_resolver: openfigi could not map %s (cached as miss)", isin)
         return ticker
