@@ -247,6 +247,19 @@ CREATE TABLE IF NOT EXISTS `kr_name_cache` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ----------------------------------------------------------------------------
+-- crypto_name_cache — base ticker → Korean display name from Upbit
+-- Populated by CryptoNameResolver (DB cache → Upbit /v1/market/all). NULL name
+-- keeps a negative lookup so untracked tickers don't keep hitting Upbit.
+-- ----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS `crypto_name_cache` (
+  `base`         VARCHAR(16)     NOT NULL,
+  `name`         VARCHAR(64)     NULL,
+  `source`       VARCHAR(16)     NOT NULL DEFAULT 'upbit',
+  `looked_up_at` DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`base`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ----------------------------------------------------------------------------
 -- alembic_version — stamped at latest head so future revisions apply
 -- incrementally without re-running the bootstrap.
 -- ----------------------------------------------------------------------------
@@ -256,7 +269,7 @@ CREATE TABLE IF NOT EXISTS `alembic_version` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 INSERT INTO `alembic_version` (`version_num`)
-  VALUES ('d7f1c9a3e8b4')
+  VALUES ('e8a4c1f72b5d')
   ON DUPLICATE KEY UPDATE `version_num` = VALUES(`version_num`);
 
 SET FOREIGN_KEY_CHECKS = 1;

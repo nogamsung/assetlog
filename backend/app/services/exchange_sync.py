@@ -83,11 +83,13 @@ class ExchangeSyncService:
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
         # Lazy-imported to avoid a hard dependency for callers that don't need resolution
+        from app.services.crypto_name_resolver import CryptoNameResolver  # noqa: PLC0415
         from app.services.isin_resolver import IsinResolver  # noqa: PLC0415
         from app.services.kr_name_resolver import KrNameResolver  # noqa: PLC0415
 
         self._isin_resolver = IsinResolver(session)
         self._kr_name_resolver = KrNameResolver(session)
+        self._crypto_name_resolver = CryptoNameResolver(session)
 
     # ------------------------------------------------------------------
     # Public API — ExternalTrade (Upbit / brokerage OpenAPI)
@@ -577,14 +579,17 @@ class ExchangeSyncService:
             if resolved_kr:
                 symbol = resolved_kr
 
-        # Crypto trade payloads (Upbit etc.) only carry the ticker, so we look
-        # up a human display name so AssetSymbol.name doesn't fall back to the
-        # ticker itself.
+        # Crypto trade payloads (Upbit etc.) only carry the ticker. Resolve a
+        # human display name via the static shim → DB cache → Upbit market
+        # meta endpoint so AssetSymbol.name carries the Upbit-listed Korean
+        # label (e.g. ``BTC`` → ``비트코인``).
         if asset_type == AssetType.CRYPTO and not name:
             from app.adapters.crypto_name_map import lookup_crypto_name  # noqa: PLC0415
 
             base = symbol.split("/", maxsplit=1)[0] if "/" in symbol else symbol
             mapped = lookup_crypto_name(base)
+            if mapped is None:
+                mapped = await self._crypto_name_resolver.resolve(base)
             if mapped:
                 name = mapped
 
