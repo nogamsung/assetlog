@@ -277,7 +277,17 @@ class CryptoAdapter:
             Up to *limit* SymbolCandidate items.
         """
         exchange_name = self._exchange_name
-        norm = normalize_crypto_pair(query, exchange_name)
+        # Don't run base-only queries through ``normalize_crypto_pair`` — the
+        # normaliser now appends a default quote (BTC → BTC/USDT) which would
+        # collapse base-prefix search to a single exact pair. For search we
+        # want base-only queries to fan out across every quote.
+        has_slash = "/" in query
+        if has_slash:
+            norm = normalize_crypto_pair(query, exchange_name)
+            base = norm.split("/")[0]
+        else:
+            base = query.strip().upper()
+            norm = base
 
         async def _loader() -> list[SymbolCandidate]:
             return await _load_markets_async(exchange_name)
@@ -294,9 +304,6 @@ class CryptoAdapter:
 
         exact: list[SymbolCandidate] = []
         prefix: list[SymbolCandidate] = []
-
-        has_slash = "/" in norm
-        base = norm.split("/")[0] if has_slash else norm
 
         for candidate in all_markets:
             if candidate.symbol == norm:
