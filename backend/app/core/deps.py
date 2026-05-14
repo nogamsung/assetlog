@@ -301,6 +301,16 @@ PriceHistoryBackfillServiceDep = Annotated[
     Depends(get_price_history_backfill_service),
 ]
 
+
+from app.services.cash_flow import CashFlowService  # noqa: E402
+
+
+def get_cash_flow_service(session: DbSession) -> CashFlowService:
+    return CashFlowService(session=session)
+
+
+CashFlowServiceDep = Annotated[CashFlowService, Depends(get_cash_flow_service)]
+
 # ---------------------------------------------------------------------------
 # Tag breakdown DI
 # ---------------------------------------------------------------------------

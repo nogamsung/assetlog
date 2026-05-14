@@ -62,19 +62,10 @@ _USD_PAREN_NUM_RE = re.compile(r"\(\$\s*([\d,\.]+)\)")
 # ----- Kind mappings ------------------------------------------------------------
 
 _SKIP_PREFIXES: tuple[str, ...] = (
+    # Securities-lending events have no cash impact (the loaned shares come
+    # back via 상환입고) and 대여료 itself is tiny — keep parser output clean.
     "대차거래",
     "대여료",
-    "이체입금",
-    "이체출금",
-    "환전원화입금",
-    "환전원화출금",
-    "환전외화입금",
-    "환전외화출금",
-    "환전외화입금취소",
-    "환전원화입금취소",
-    "배당세출금",
-    "외화이자세금출금",
-    "이벤트",
 )
 
 _BUY_KIND = "구매"
@@ -83,6 +74,26 @@ _KRW_DIVIDEND_KIND = "배당금입금"
 _USD_DIVIDEND_KIND = "외화증권배당금입금"
 _KRW_INTEREST_KIND = "이자입금"
 _USD_INTEREST_KIND = "외화이자입금"
+
+# Cash-flow event kinds — KRW section. Each entry is the leading token of
+# the 거래구분 column. The value is a (ParsedCashTxKind, currency) tuple.
+_KRW_CASH_FLOW_MAP: dict[str, tuple[str, str]] = {
+    "이체입금": ("deposit", "KRW"),
+    "이체출금": ("withdraw", "KRW"),
+    "환전원화입금": ("transfer_in", "KRW"),
+    "환전원화출금": ("transfer_out", "KRW"),
+    "이벤트": ("deposit", "KRW"),
+    "배당세출금": ("interest_tax", "KRW"),
+    "외화이자세금출금": ("interest_tax", "KRW"),
+}
+
+_USD_CASH_FLOW_MAP: dict[str, tuple[str, str]] = {
+    "환전외화입금": ("transfer_in", "USD"),
+    "환전외화출금": ("transfer_out", "USD"),
+    # Cancelled FX legs reverse the transfer direction.
+    "환전외화입금취소": ("transfer_out", "USD"),
+    "환전원화입금취소": ("transfer_in", "KRW"),
+}
 
 
 # ----- Helper utilities ---------------------------------------------------------
@@ -95,6 +106,12 @@ def _to_decimal(token: str) -> Decimal:
         return Decimal(cleaned)
     except InvalidOperation:
         return Decimal("0")
+
+
+def _is_num_token(token: str) -> bool:
+    """Return True if *token* looks like a (possibly negative, comma-separated) number."""
+    cleaned = token.replace(",", "").replace(".", "").lstrip("-")
+    return cleaned.isdigit() and bool(cleaned)
 
 
 def _kst_midnight_utc(date_str: str) -> datetime:
@@ -196,6 +213,51 @@ def _split_krw_line(line: str) -> tuple[str, str, str, list[str]] | None:
 #   0(환율) amount 0(price) 0(fee) 0(tax) tax2(interest) 0(repay) 0(balance_qty) balance_amount
 
 
+def _emit_krw_cash_flow(
+    date_str: str,
+    kind_raw: str,
+    cash_kind: str,
+    currency: str,
+    numeric_tokens: list[str],
+    traded_at: datetime,
+    result: ParseResult,
+) -> None:
+    """Emit a ParsedCashTx for a KRW-section cash-flow line.
+
+    KRW cash-flow lines (no symbol) have 9 numeric tokens after the kind:
+    ``[환율, qty(0), amount, price(0), fee(0), tax(0), tax2/세금, repay, bal_qty, bal_amt]``
+
+    For most kinds the 거래대금 column (numeric_tokens[1] after kind) holds the
+    moved amount in KRW. For 배당세출금 / 외화이자세금출금 the tax amount is
+    in tax2 (numeric_tokens[5]). For 이체* / 환전* / 이벤트 amount is at [1].
+    """
+    # The column layout differs slightly between cash-flow kinds (이체* has no
+    # 환율 column; 환전* has one; 이벤트 has neither). The amount we care about
+    # is always the first non-zero numeric on the line, which avoids hard-coding
+    # an index that breaks across variants. We also filter out non-numeric
+    # tokens (e.g. 상대처 name on 이체* rows) up-front.
+    numeric_only = [t for t in numeric_tokens if _is_num_token(t)]
+    amount = Decimal("0")
+    for tok in numeric_only:
+        v = _to_decimal(tok)
+        if v > 0:
+            amount = v
+            break
+    if amount <= 0:
+        result.skipped.append(ParsedSkip(raw_kind=kind_raw, reason="zero_amount"))
+        return
+    ext_id = _sha256_id(date_str, kind_raw, str(amount), currency)
+    result.records.append(
+        ParsedCashTx(
+            external_id=ext_id,
+            kind=ParsedCashTxKind(cash_kind),
+            amount=amount,
+            currency=currency,
+            traded_at=traded_at,
+        )
+    )
+
+
 def _parse_krw_line(line: str, result: ParseResult) -> None:
     """Parse one KRW transaction line."""
     parsed = _split_krw_line(line)
@@ -211,6 +273,15 @@ def _parse_krw_line(line: str, result: ParseResult) -> None:
         return
 
     traded_at = _kst_midnight_utc(date_str)
+
+    # Cash-flow event (이체/환전/세금/이벤트). The 거래구분 may have a bank-name
+    # suffix like ``이체출금(카카오뱅크)`` so we match by prefix.
+    for prefix, (cash_kind, cur) in _KRW_CASH_FLOW_MAP.items():
+        if kind_raw.startswith(prefix):
+            _emit_krw_cash_flow(
+                date_str, kind_raw, cash_kind, cur, numeric_tokens, traded_at, result
+            )
+            return
 
     if kind_raw in (_BUY_KIND, _SELL_KIND):
         if len(numeric_tokens) < 9:
@@ -384,6 +455,32 @@ def _parse_usd_block(line1: str, line2: str, result: ParseResult) -> None:
         return
 
     traded_at = _kst_midnight_utc(date_str)
+
+    # USD-section cash-flow event (환전외화 입금/출금/취소). Take the USD amount
+    # from the first ($ …) on line2 if available; fall back to the KRW amount.
+    for prefix, (cash_kind, cur) in _USD_CASH_FLOW_MAP.items():
+        if kind_raw.startswith(prefix):
+            usd_values_local = _extract_usd_paren_values(line2)
+            amount: Decimal | None = None
+            if cur == "USD" and usd_values_local:
+                amount = usd_values_local[0]
+            elif len(numeric_tokens) >= 3:
+                # KRW reverse leg — amount in 거래대금 (after rate, qty=0)
+                amount = _to_decimal(numeric_tokens[2])
+            if amount is None or amount <= 0:
+                result.skipped.append(ParsedSkip(raw_kind=kind_raw, reason="parse_error"))
+                return
+            ext_id = _sha256_id(date_str, kind_raw, str(amount), cur)
+            result.records.append(
+                ParsedCashTx(
+                    external_id=ext_id,
+                    kind=ParsedCashTxKind(cash_kind),
+                    amount=amount,
+                    currency=cur,
+                    traded_at=traded_at,
+                )
+            )
+            return
 
     # If code is on line2, extract it from there
     final_name_code = name_code

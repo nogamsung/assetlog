@@ -57,19 +57,25 @@ _SELL_KIND = "장내_매도"
 _KRW_DIVIDEND_KINDS = ("배당금", "ETF분배금")
 _KRW_INTEREST_KIND = "예탁금이용료"
 
-# Anything starting with these prefixes is skipped without inspection.
+# 수수료 itself is informational — the actual fee is already baked into the
+# 정산금액 of the matching 장내_매수/매도 row. Kept short on purpose.
 _SKIP_PREFIXES: tuple[str, ...] = (
-    "전자이체입금",
-    "전자이체출금",
-    "이체입금",
-    "이체출금",
     "수수료",
-    "환전",
-    "입금",
-    "출금",
-    "배당세",
-    "외화이자세금",
 )
+
+# Cash-flow event kinds. Each entry maps a 거래구분 prefix to
+# (ParsedCashTxKind, currency).
+_CASH_FLOW_MAP: dict[str, tuple[str, str]] = {
+    "전자이체입금": ("deposit", "KRW"),
+    "전자이체출금": ("withdraw", "KRW"),
+    "이체입금": ("deposit", "KRW"),
+    "이체출금": ("withdraw", "KRW"),
+    "환전": ("transfer_in", "KRW"),  # naive — Shinhan KRW-only statements
+    "입금": ("deposit", "KRW"),
+    "출금": ("withdraw", "KRW"),
+    "배당세": ("interest_tax", "KRW"),
+    "외화이자세금": ("interest_tax", "KRW"),
+}
 
 # ----- Helpers -----------------------------------------------------------------
 
@@ -200,6 +206,25 @@ def _parse_block(
     if _is_skipped_kind(kind_raw):
         result.skipped.append(ParsedSkip(raw_kind=kind_raw, reason="unsupported"))
         return
+
+    # Cash-flow event (이체/환전/세금). 정산금액 holds the moved amount in KRW.
+    for prefix, (cash_kind, cur) in _CASH_FLOW_MAP.items():
+        if kind_raw.startswith(prefix):
+            amount = _settle_amount_from_line3(line3)
+            if amount is None or amount <= 0:
+                result.skipped.append(ParsedSkip(raw_kind=kind_raw, reason="parse_error"))
+                return
+            ext_id = _sha256_id(date_str, kind_raw, str(amount), cur)
+            result.records.append(
+                ParsedCashTx(
+                    external_id=ext_id,
+                    kind=ParsedCashTxKind(cash_kind),
+                    amount=amount,
+                    currency=cur,
+                    traded_at=traded_at,
+                )
+            )
+            return
 
     if kind_raw in (_BUY_KIND, _SELL_KIND):
         # line1 nums: [단가, 수수료, 소득세, 신용금액, 미수처리금, 총변제금]
