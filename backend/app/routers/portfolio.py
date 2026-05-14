@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Query, status
+import asyncio
+import logging
+from typing import Any
+
+from fastapi import APIRouter, Query, Request, status
 
 from app.core.deps import (
     BenchmarkServiceDep,
@@ -11,7 +15,6 @@ from app.core.deps import (
     PerformanceServiceDep,
     PortfolioHistoryServiceDep,
     PortfolioServiceDep,
-    PriceHistoryBackfillServiceDep,
     RiskServiceDep,
     TagBreakdownServiceDep,
 )
@@ -137,29 +140,62 @@ async def get_portfolio_history(
     return await history_service.get_history(period, currency.upper())
 
 
+async def _run_backfill_in_background(session_factory: Any) -> None:
+    """Run a one-shot price-history back-fill in a fresh session.
+
+    Used as a fire-and-forget background task so the HTTP request returns
+    immediately and the rest of the API stays responsive while yfinance is
+    pulling several years of daily closes per symbol.
+    """
+    from app.repositories.price_point import PricePointRepository  # noqa: PLC0415
+    from app.services.price_history_backfill import (  # noqa: PLC0415
+        PriceHistoryBackfillService,
+    )
+
+    logger = logging.getLogger("app.routers.portfolio.backfill")
+    try:
+        async with session_factory() as session:
+            svc = PriceHistoryBackfillService(
+                session=session,
+                price_point_repo=PricePointRepository(session),
+            )
+            result = await svc.backfill_all()
+            await session.commit()
+            logger.info(
+                "history backfill done",
+                extra={
+                    "event": "history_backfill_done",
+                    "attempted": result.symbols_attempted,
+                    "skipped": result.symbols_skipped,
+                    "inserted": result.points_inserted,
+                },
+            )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("history backfill failed: %s", exc)
+
+
 @router.post(
     "/history/backfill",
-    status_code=status.HTTP_200_OK,
-    summary="Back-fill historical daily prices from earliest trade date",
+    status_code=status.HTTP_202_ACCEPTED,
+    summary="Schedule a back-fill of historical daily prices",
     description=(
-        "Pulls daily closing prices from yfinance going back to each symbol's "
-        "earliest transaction date and writes them to price_points. Run this "
-        "after importing historical brokerage statements so the portfolio "
-        "history chart can render the full timeline."
+        "Schedules a background job that pulls daily closing prices from "
+        "yfinance back to each symbol's earliest trade date and writes them "
+        "to price_points. Returns 202 immediately — actual completion is "
+        "asynchronous, which keeps the API responsive while yfinance is busy."
     ),
     responses={401: {"model": ErrorResponse, "description": "Not authenticated"}},
 )
 async def backfill_portfolio_history(
     _current_user: CurrentUser,
-    backfill_service: PriceHistoryBackfillServiceDep,
-) -> dict[str, int]:
-    """Back-fill historical price points for every symbol with transactions."""
-    result = await backfill_service.backfill_all()
-    return {
-        "symbols_attempted": result.symbols_attempted,
-        "symbols_skipped": result.symbols_skipped,
-        "points_inserted": result.points_inserted,
-    }
+    request: Request,
+) -> dict[str, str]:
+    """Schedule the backfill and return immediately."""
+    session_factory = getattr(request.app.state, "session_factory", None)
+    if session_factory is None:
+        return {"status": "unavailable"}
+    asyncio.create_task(_run_backfill_in_background(session_factory))
+    return {"status": "scheduled"}
 
 
 @router.get(

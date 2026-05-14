@@ -74,7 +74,7 @@ def _validate_password_hash_cost(hash_str: str) -> None:
 
 
 @asynccontextmanager
-async def lifespan(_: FastAPI) -> AsyncGenerator[None, None]:
+async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Application lifespan — DB connectivity check + scheduler startup."""
     logger.info("Starting up AssetLog API...")
     if settings.app_password_hash:
@@ -88,6 +88,10 @@ async def lifespan(_: FastAPI) -> AsyncGenerator[None, None]:
         # Log the error but do NOT crash — allows the app to start even when
         # the DB is temporarily unavailable (e.g., during container cold start).
         logger.warning("Database health check failed at startup: %s", exc)
+
+    # Expose the session factory to background tasks (e.g. /history/backfill)
+    # that need to open their own session outside a request's dependency tree.
+    app.state.session_factory = session_factory
 
     scheduler: AsyncIOScheduler | None = None
     if settings.enable_scheduler:
