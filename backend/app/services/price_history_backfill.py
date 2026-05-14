@@ -69,7 +69,15 @@ def _yfinance_ticker_for(symbol: AssetSymbol) -> str | None:
 
 
 def _fetch_history_sync(ticker: str, start: date) -> list[tuple[date, Decimal]]:
-    """Blocking yfinance call — returns [(date, close), …] ascending by date."""
+    """Blocking yfinance call — returns [(date, close), …] ascending by date.
+
+    yfinance occasionally emits ``NaN`` for halt days or pre-IPO periods. Those
+    rows must be filtered out — Decimal('NaN') survives the constructor but
+    MySQL rejects the INSERT with ``Unknown column 'NaN' in 'field list'``,
+    which then rolls back every other symbol's backfill in the same batch.
+    """
+    import math  # noqa: PLC0415
+
     import yfinance as yf  # noqa: PLC0415
 
     df = yf.Ticker(ticker).history(start=start.isoformat(), auto_adjust=True)
@@ -82,7 +90,13 @@ def _fetch_history_sync(ticker: str, start: date) -> list[tuple[date, Decimal]]:
         if close is None:
             continue
         try:
-            rows.append((d, Decimal(str(close))))
+            f = float(close)
+        except (TypeError, ValueError):
+            continue
+        if math.isnan(f) or math.isinf(f) or f <= 0:
+            continue
+        try:
+            rows.append((d, Decimal(str(f))))
         except (TypeError, ValueError):
             continue
     return rows

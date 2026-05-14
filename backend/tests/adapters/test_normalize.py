@@ -71,6 +71,15 @@ class TestNormalizeCryptoPair:
         # exchange param is lowercased internally — UPBIT treated same as upbit
         assert normalize_crypto_pair("KRW-BTC", "UPBIT") == "BTC/KRW"
 
+    def test_base_only_gets_default_quote_for_binance(self) -> None:
+        """Base-only ticker pairs with USDT on non-Upbit exchanges."""
+        assert normalize_crypto_pair("BTC", "binance") == "BTC/USDT"
+        assert normalize_crypto_pair("ETH", "BINANCE") == "ETH/USDT"
+
+    def test_base_only_gets_default_quote_for_upbit(self) -> None:
+        """Base-only ticker pairs with KRW when the source exchange is Upbit."""
+        assert normalize_crypto_pair("BTC", "upbit") == "BTC/KRW"
+
     @pytest.mark.parametrize(
         ("raw", "exchange", "expected"),
         [

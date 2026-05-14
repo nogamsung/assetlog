@@ -85,5 +85,9 @@ def normalize_crypto_pair(raw: str, exchange: str) -> str:
             quote, base = parts
             return f"{base}/{quote}"
 
-    # Fallback: return as-is (unknown format — adapter will surface the error).
-    return normalised
+    # Base-only ticker (e.g. ``BTC``, ``ETH``) — pair it with the exchange's
+    # native default quote. ccxt would otherwise raise BadSymbol on a single
+    # token. ``"KRW"`` for Upbit (Korean exchange — KRW markets dominate);
+    # ``"USDT"`` for everything else.
+    default_quote = "KRW" if exchange.lower() == "upbit" else "USDT"
+    return f"{normalised}/{default_quote}"
