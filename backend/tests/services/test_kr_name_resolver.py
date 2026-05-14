@@ -2,11 +2,21 @@
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from app.services.kr_name_resolver import KrNameResolver, looks_like_kr_name
+
+
+def _async_session_mock() -> AsyncMock:
+    """An ``AsyncMock`` session whose ``begin_nested`` works as a savepoint."""
+    session = AsyncMock()
+    ctx = MagicMock()
+    ctx.__aenter__ = AsyncMock(return_value=None)
+    ctx.__aexit__ = AsyncMock(return_value=False)
+    session.begin_nested = MagicMock(return_value=ctx)
+    return session
 
 
 class TestLooksLikeKrName:
@@ -28,7 +38,7 @@ class TestKrNameResolver:
     async def test_db_cache_hit_skips_network(self) -> None:
         from app.models.kr_name_cache import KrNameCache
 
-        session = AsyncMock()
+        session = _async_session_mock()
         session.get.return_value = KrNameCache(name="삼성전자", code="005930", source="naver")
         resolver = KrNameResolver(session)
         with patch(
@@ -41,7 +51,7 @@ class TestKrNameResolver:
 
     @pytest.mark.asyncio
     async def test_naver_hit_persists_to_cache(self) -> None:
-        session = AsyncMock()
+        session = _async_session_mock()
         session.get.return_value = None
         resolver = KrNameResolver(session)
         with patch(
@@ -56,7 +66,7 @@ class TestKrNameResolver:
 
     @pytest.mark.asyncio
     async def test_naver_miss_persists_negative(self) -> None:
-        session = AsyncMock()
+        session = _async_session_mock()
         session.get.return_value = None
         resolver = KrNameResolver(session)
         with patch(
@@ -72,7 +82,7 @@ class TestKrNameResolver:
     async def test_db_negative_cache_skips_network(self) -> None:
         from app.models.kr_name_cache import KrNameCache
 
-        session = AsyncMock()
+        session = _async_session_mock()
         session.get.return_value = KrNameCache(name="없는종목", code=None, source="naver")
         resolver = KrNameResolver(session)
         with patch(
