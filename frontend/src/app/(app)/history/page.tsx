@@ -1,4 +1,4 @@
-import { HistoryView } from "@/components/features/history/history-view";
+import { HistoryTabs } from "@/components/features/history/history-tabs";
 
 export default function HistoryPage() {
   return (
@@ -7,7 +7,7 @@ export default function HistoryPage() {
       <p className="text-sm text-muted-foreground">
         보유 자산의 매수·매도와 현금 입출금을 자산 종류별로 모아 볼 수 있습니다.
       </p>
-      <HistoryView />
+      <HistoryTabs />
     </div>
   );
 }
