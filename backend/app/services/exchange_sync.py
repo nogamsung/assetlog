@@ -15,6 +15,8 @@ from __future__ import annotations
 import logging
 from collections.abc import Iterable
 from dataclasses import dataclass
+from datetime import datetime
+from decimal import Decimal
 from zoneinfo import ZoneInfo
 
 from sqlalchemy import select
@@ -228,6 +230,152 @@ class ExchangeSyncService:
             skipped_duplicate=0,
             skipped_no_symbol=0,
         )
+
+    async def reconcile_cash_balance(
+        self,
+        source: ExchangeSource,
+        currency: str,
+        target_balance: Decimal,
+        *,
+        traded_at: datetime,
+    ) -> Decimal:
+        """Pin the per-source cash balance to ``target_balance`` via a single
+        adjust row.
+
+        Computes the current DB-derived net cash for ``(source, currency)``,
+        then upserts a row with external_id ``f"{source}:cash:reconcile"`` so
+        the sum lands exactly on ``target_balance``. Returns the applied
+        ``delta``. Lets us cope with paginated history that misses old rows
+        without forcing per-call exhaustive scans.
+        """
+        _D = Decimal
+
+        # 1) Compute the DB-side net (deposits − withdrawals + sells − buys
+        #    + dividends) for this source/currency, EXCLUDING any prior
+        #    reconcile row so we measure organic flow.
+        reconcile_ext_id = f"{source.value}:cash:reconcile"
+
+        positive_kinds = (
+            CashTxKind.DEPOSIT,
+            CashTxKind.INTEREST,
+            CashTxKind.TRANSFER_IN,
+        )
+        negative_kinds = (
+            CashTxKind.WITHDRAW,
+            CashTxKind.INTEREST_TAX,
+            CashTxKind.TRANSFER_OUT,
+        )
+
+        cash_rows = (
+            await self._session.execute(
+                select(
+                    CashAccountTransaction.kind,
+                    CashAccountTransaction.amount,
+                ).where(
+                    CashAccountTransaction.external_source == source.value,
+                    CashAccountTransaction.currency == currency,
+                    CashAccountTransaction.external_id != reconcile_ext_id,
+                )
+            )
+        ).all()
+        net = _D("0")
+        for kind, amount in cash_rows:
+            if kind in positive_kinds:
+                net += amount
+            elif kind in negative_kinds:
+                net -= amount
+
+        # Trades: only those whose quote AssetSymbol.currency matches.
+        from app.domain.transaction_type import TransactionType  # noqa: PLC0415
+
+        trade_rows = (
+            await self._session.execute(
+                select(
+                    Transaction.type,
+                    Transaction.quantity,
+                    Transaction.price,
+                )
+                .join(UserAsset, UserAsset.id == Transaction.user_asset_id)
+                .join(AssetSymbol, AssetSymbol.id == UserAsset.asset_symbol_id)
+                .where(
+                    Transaction.external_source == source.value,
+                    AssetSymbol.currency == currency,
+                    ~Transaction.external_id.startswith(f"{source.value}:adjust:"),
+                )
+            )
+        ).all()
+        for tx_type, qty, price in trade_rows:
+            gross = qty * price
+            if tx_type == TransactionType.BUY:
+                net -= gross
+            elif tx_type == TransactionType.SELL:
+                net += gross
+
+        # Dividends: rare on a crypto exchange but kept for symmetry.
+        div_rows = (
+            await self._session.execute(
+                select(Dividend.amount).where(
+                    Dividend.external_source == source.value,
+                    Dividend.currency == currency,
+                )
+            )
+        ).all()
+        for (amount,) in div_rows:
+            net += amount
+
+        # 2) Compute the delta and upsert / delete the reconcile row.
+        delta = _D(str(target_balance)) - net
+
+        existing = (
+            await self._session.execute(
+                select(CashAccountTransaction).where(
+                    CashAccountTransaction.external_source == source.value,
+                    CashAccountTransaction.external_id == reconcile_ext_id,
+                )
+            )
+        ).scalar_one_or_none()
+
+        # Round to the cash precision (KRW = integer, others = 8 dp).
+        quantum = _D("1") if currency == "KRW" else _D("0.00000001")
+        delta_q = delta.quantize(quantum)
+
+        if delta_q == 0:
+            if existing is not None:
+                await self._session.delete(existing)
+                await self._session.flush()
+            return delta_q
+
+        kind = CashTxKind.TRANSFER_IN if delta_q > 0 else CashTxKind.TRANSFER_OUT
+        amount_abs = abs(delta_q)
+        if existing is None:
+            self._session.add(
+                CashAccountTransaction(
+                    cash_account_id=None,
+                    kind=kind,
+                    amount=amount_abs,
+                    currency=currency,
+                    traded_at=traded_at,
+                    external_source=source.value,
+                    external_id=reconcile_ext_id,
+                )
+            )
+        else:
+            existing.kind = kind
+            existing.amount = amount_abs
+            existing.currency = currency
+            existing.traded_at = traded_at
+        await self._session.flush()
+        logger.info(
+            "cash reconcile applied",
+            extra={
+                "event": "cash_reconcile",
+                "source": source.value,
+                "currency": currency,
+                "delta": str(delta_q),
+                "target": str(target_balance),
+            },
+        )
+        return delta_q
 
     async def upsert_cash_transactions(
         self,
