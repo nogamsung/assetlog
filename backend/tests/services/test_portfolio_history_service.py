@@ -27,14 +27,18 @@ def _make_tx(
     qty: str,
     price: str,
     traded_at: datetime,
-    tx_type: TransactionType = TransactionType.BUY,  # ADDED
+    tx_type: TransactionType = TransactionType.BUY,
+    currency: str = "KRW",
 ) -> TransactionRow:
-    tx = MagicMock(spec=TransactionRow)
+    tx = MagicMock()
     tx.symbol_id = symbol_id
     tx.traded_at = traded_at
     tx.quantity = Decimal(qty)
     tx.price = Decimal(price)
-    tx.tx_type = tx_type  # ADDED
+    tx.tx_type = tx_type
+    # ``AllTxRow`` carries .currency; the new service uses list_all_transactions
+    # so every mocked row needs it too.
+    tx.currency = currency
     return tx
 
 
@@ -44,6 +48,7 @@ def _make_service(
 ) -> PortfolioHistoryService:
     mock_repo = AsyncMock(spec=PortfolioHistoryRepository)
     mock_repo.list_transactions.return_value = txs
+    mock_repo.list_all_transactions.return_value = txs
     mock_repo.list_price_points_for_symbols.return_value = price_index
     return PortfolioHistoryService(mock_repo)
 
@@ -239,13 +244,16 @@ class TestPortfolioHistoryServicePeriodBucket:
 
 
 class TestPortfolioHistoryServiceCurrencyFilter:
-    async def test_repo가_올바른_currency로_호출됨(self) -> None:
+    async def test_repo_loads_all_currencies(self) -> None:
+        """get_history no longer filters at the repo — every currency loads,
+        and ``currency`` parameter is the display currency, not a filter.
+        """
         mock_repo = AsyncMock(spec=PortfolioHistoryRepository)
-        mock_repo.list_transactions.return_value = []
+        mock_repo.list_all_transactions.return_value = []
         svc = PortfolioHistoryService(mock_repo)
 
         await svc.get_history(HistoryPeriod.ONE_MONTH, "USD")
-        mock_repo.list_transactions.assert_awaited_once_with("USD")
+        mock_repo.list_all_transactions.assert_awaited_once_with()
 
 
 # ---------------------------------------------------------------------------
