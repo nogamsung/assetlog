@@ -28,6 +28,16 @@ export interface TransactionResponse {
   createdAt: string;      // ISO datetime string
 }
 
+export interface TransactionWithSymbolResponse extends TransactionResponse {
+  externalSource: string | null;
+  externalId: string | null;
+  symbol: string;
+  assetType: "kr_stock" | "us_stock" | "crypto";
+  currency: string;
+  name: string | null;
+  exchange: string | null;
+}
+
 export interface UserAssetSummaryResponse {
   userAssetId: number;
   totalBoughtQuantity: string;  // MODIFIED — Decimal as string

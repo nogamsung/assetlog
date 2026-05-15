@@ -44,6 +44,13 @@ function AppHeader() {
             보유 자산
           </Link>
           <Link
+            href="/history"
+            className={navLinkClass("/history")}
+            aria-current={pathname === "/history" || pathname.startsWith("/history/") ? "page" : undefined}
+          >
+            거래 내역
+          </Link>
+          <Link
             href="/interest"
             className={navLinkClass("/interest")}
             aria-current={pathname === "/interest" ? "page" : undefined}

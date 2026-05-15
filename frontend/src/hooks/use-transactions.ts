@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import {
   createTransaction,
   updateTransaction,
+  listAllTransactions,
   listTransactions,
   deleteTransaction,
   getAssetSummary,
@@ -14,6 +15,7 @@ import {
 } from "@/lib/api/transaction";
 import type {
   TransactionResponse,
+  TransactionWithSymbolResponse,
   UserAssetSummaryResponse,
   TransactionImportResponse,
   CsvImportValidationErrorBody,
@@ -39,6 +41,14 @@ const portfolioInvalidationKeys = [
 ] as const;
 
 // ── Hooks ─────────────────────────────────────────────────────────────────────
+
+export function useAllTransactions() {
+  return useQuery<TransactionWithSymbolResponse[]>({
+    queryKey: ["transactions", "all"] as const,
+    queryFn: listAllTransactions,
+    staleTime: 30_000,
+  });
+}
 
 export function useTransactions(userAssetId: number, tag?: string) {  // MODIFIED
   return useQuery<TransactionResponse[]>({

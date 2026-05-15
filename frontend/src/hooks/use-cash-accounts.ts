@@ -68,6 +68,14 @@ export function useInterestTransactions() {
   });
 }
 
+export function useAllCashTransactions() {
+  return useQuery<CashAccountTransaction[]>({
+    queryKey: ["cash-transactions", "all"] as const,
+    queryFn: () => listCashTransactions(),
+    staleTime: 30_000,
+  });
+}
+
 export function useDeleteCashAccount() {
   const queryClient = useQueryClient();
 

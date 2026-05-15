@@ -138,6 +138,34 @@ class TransactionResponse(BaseModel):
     created_at: datetime = Field(..., description="Record creation timestamp")
 
 
+class TransactionWithSymbolResponse(BaseModel):
+    """Transaction enriched with its symbol's asset_type / name / currency.
+
+    Used by the all-transactions endpoint so the frontend can render every
+    trade across every asset in one screen without an N+1 fetch over
+    individual user-asset transaction lists.
+    """
+
+    model_config = ConfigDict(from_attributes=True, str_strip_whitespace=True)
+
+    id: int
+    user_asset_id: int
+    type: TransactionType
+    quantity: Decimal
+    price: Decimal
+    traded_at: datetime
+    memo: str | None = None
+    tag: str | None = None
+    external_source: str | None = None
+    external_id: str | None = None
+    symbol: str
+    asset_type: str
+    currency: str
+    name: str | None = None
+    exchange: str | None = None
+    created_at: datetime
+
+
 class TransactionImportResponse(BaseModel):
     """Response body for the CSV bulk-import endpoint."""
 
