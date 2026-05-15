@@ -103,7 +103,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         )
         scheduler.start()
         logger.info(
-            "price_refresh scheduler started (Asia/Seoul, every hour :00)",
+            "price_refresh scheduler started (Asia/Seoul; price=*/10min, fx=hourly)",
             extra={"event": "scheduler_start"},
         )
 
