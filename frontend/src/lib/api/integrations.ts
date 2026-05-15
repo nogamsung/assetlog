@@ -3,7 +3,8 @@ import { apiClient } from "@/lib/api-client";
 export type ImportSource =
   | "toss_investment"
   | "shinhan_investment"
-  | "k_bank";
+  | "k_bank"
+  | "upbit";
 
 export interface ImportPreviewItem {
   type: "ParsedTrade" | "ParsedDividend" | "ParsedCashTx";
