@@ -109,7 +109,7 @@ class TestSchedulerLifespan:
 
         assert len(jobs) == 4
         job_ids = {j.id for j in jobs}
-        assert "price_refresh_hourly" in job_ids
+        assert "price_refresh_10min" in job_ids
         assert "fx_refresh_hourly" in job_ids
         assert "login_attempt_cleanup_daily" in job_ids
         assert "dividend_refresh_daily" in job_ids

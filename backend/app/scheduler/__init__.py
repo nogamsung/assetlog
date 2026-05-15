@@ -20,15 +20,17 @@ def build_scheduler(
     adapters: AdapterRegistry,
     login_attempt_retention_days: int = 90,  # ADDED
 ) -> AsyncIOScheduler:
-    """Create and configure an AsyncIOScheduler for hourly price/FX refresh and daily jobs.
+    """Create and configure an AsyncIOScheduler for periodic refresh jobs.
 
     Registers four jobs:
-    - ``price_refresh_hourly``: fetches asset prices via adapter registry.
+    - ``price_refresh_10min``: fetches asset prices via adapter registry.
     - ``fx_refresh_hourly``: fetches ECB reference rates via Frankfurter API.
     - ``login_attempt_cleanup_daily``: purges login_attempts older than retention_days.
     - ``dividend_refresh_daily``: pulls US dividend history via yfinance.
 
-    Price/FX jobs fire at minute=0 every hour (Asia/Seoul timezone).
+    Price fires every 10 minutes (Asia/Seoul). FX fires at minute=0 every
+    hour — ECB publishes reference rates once a day so sub-hourly polling
+    is wasted work.
     Cleanup fires daily at 03:00 Asia/Seoul; dividend refresh at 04:00.
     The scheduler is **not started** here — call ``.start()`` inside the
     FastAPI lifespan context manager.
@@ -44,9 +46,9 @@ def build_scheduler(
     scheduler: AsyncIOScheduler = AsyncIOScheduler(timezone="Asia/Seoul")
     scheduler.add_job(
         price_refresh_job,
-        trigger=CronTrigger(minute=0),
+        trigger=CronTrigger(minute="*/10"),
         kwargs={"session_factory": session_factory, "adapters": adapters},
-        id="price_refresh_hourly",
+        id="price_refresh_10min",
         max_instances=1,
         coalesce=True,
         misfire_grace_time=60,
