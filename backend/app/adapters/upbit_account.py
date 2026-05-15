@@ -427,3 +427,133 @@ class UpbitAccountAdapter:
             raise ExternalIntegrationError(f"Upbit fetch failed: {exc}") from exc
         trades.sort(key=lambda t: t.traded_at)
         return trades
+
+    async def fetch_cash_flow(self) -> list[dict[str, Any]]:
+        """Return every KRW deposit + withdrawal as a normalised dict.
+
+        Each row: ``{"external_id", "kind", "amount", "currency", "traded_at"}``.
+        ``kind`` is one of ``"deposit"`` / ``"withdraw"``. Used by sync flows to
+        push into ``cash_account_transactions`` so the per-broker balance lines
+        up with what the user sees on the Upbit app.
+        """
+        try:
+            rows = await asyncio.to_thread(
+                _cash_flow_sync, self._access_key, self._secret_key
+            )
+        except Exception as exc:
+            logger.warning(
+                "upbit fetch_cash_flow failed: %s",
+                exc,
+                extra={"event": "upbit_cashflow_fail", "error": str(exc)},
+            )
+            return []
+        return rows
+
+    async def fetch_balance_krw(self) -> Decimal | None:
+        """Return the user's available KRW balance on Upbit (or ``None`` on error)."""
+        try:
+            return await asyncio.to_thread(
+                _balance_krw_sync, self._access_key, self._secret_key
+            )
+        except Exception as exc:
+            logger.warning(
+                "upbit fetch_balance_krw failed: %s",
+                exc,
+                extra={"event": "upbit_balance_fail", "error": str(exc)},
+            )
+            return None
+
+
+def _balance_krw_sync(access_key: str, secret_key: str) -> Decimal | None:
+    """Return the spot KRW balance reported by Upbit, or None if missing."""
+    import ccxt  # noqa: PLC0415
+
+    upbit = ccxt.upbit({"apiKey": access_key, "secret": secret_key, "enableRateLimit": True})
+    raw = upbit.fetch_balance()
+    info = raw.get("info") if isinstance(raw, dict) else None
+    rows = info if isinstance(info, list) else []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        if row.get("currency") == "KRW":
+            try:
+                return Decimal(str(row.get("balance", "0")))
+            except (TypeError, ValueError):
+                return None
+    return None
+
+
+def _cash_flow_sync(access_key: str, secret_key: str) -> list[dict[str, Any]]:
+    """Hit Upbit's native /v1/deposits and /v1/withdraws endpoints for KRW."""
+    import ccxt  # noqa: PLC0415
+
+    upbit = ccxt.upbit({"apiKey": access_key, "secret": secret_key, "enableRateLimit": True})
+    out: list[dict[str, Any]] = []
+
+    def _norm_iso(s: object) -> datetime | None:
+        if not isinstance(s, str):
+            return None
+        try:
+            # Upbit returns RFC3339; treat naïve strings as KST
+            dt = datetime.fromisoformat(s.replace("Z", "+00:00"))
+            return dt.astimezone(UTC)
+        except ValueError:
+            return None
+
+    # Deposits — only KRW. Crypto deposits are inventory transfers, not cash.
+    try:
+        deposits = upbit.private_get_deposits({"currency": "KRW", "limit": 100})
+    except Exception:  # noqa: BLE001
+        deposits = []
+    if isinstance(deposits, list):
+        for d in deposits:
+            if not isinstance(d, dict):
+                continue
+            uuid = d.get("uuid")
+            amount = d.get("amount")
+            done_at = _norm_iso(d.get("done_at") or d.get("created_at"))
+            if not uuid or amount is None or done_at is None:
+                continue
+            try:
+                amount_dec = Decimal(str(amount))
+            except (TypeError, ValueError):
+                continue
+            if amount_dec <= 0:
+                continue
+            out.append({
+                "external_id": f"upbit-dep-{uuid}",
+                "kind": "deposit",
+                "amount": amount_dec,
+                "currency": "KRW",
+                "traded_at": done_at,
+            })
+
+    # Withdrawals — only KRW.
+    try:
+        withdraws = upbit.private_get_withdraws({"currency": "KRW", "limit": 100})
+    except Exception:  # noqa: BLE001
+        withdraws = []
+    if isinstance(withdraws, list):
+        for w in withdraws:
+            if not isinstance(w, dict):
+                continue
+            uuid = w.get("uuid")
+            amount = w.get("amount")
+            done_at = _norm_iso(w.get("done_at") or w.get("created_at"))
+            if not uuid or amount is None or done_at is None:
+                continue
+            try:
+                amount_dec = Decimal(str(amount))
+            except (TypeError, ValueError):
+                continue
+            if amount_dec <= 0:
+                continue
+            out.append({
+                "external_id": f"upbit-wd-{uuid}",
+                "kind": "withdraw",
+                "amount": amount_dec,
+                "currency": "KRW",
+                "traded_at": done_at,
+            })
+
+    return out
