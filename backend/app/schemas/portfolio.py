@@ -76,6 +76,21 @@ class HoldingResponse(BaseModel):
         description="P&L percentage (null if pending)",
         examples=[2.76],
     )
+    change_1d_pct: float | None = Field(
+        default=None,
+        description="% change of latest_price vs the previous day's close",
+        examples=[-0.42],
+    )
+    change_7d_pct: float | None = Field(
+        default=None,
+        description="% change of latest_price vs the close 7 days ago",
+        examples=[3.12],
+    )
+    change_30d_pct: float | None = Field(
+        default=None,
+        description="% change of latest_price vs the close 30 days ago",
+        examples=[8.5],
+    )
     weight_pct: float = Field(
         default=0.0,
         description="Portfolio weight % (0 if no valued holdings)",

@@ -17,7 +17,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { formatCurrency, formatQuantity, pnlColor } from "@/lib/format"; /* MODIFIED */
+import { formatCurrency, formatPercent, formatQuantity, pnlColor } from "@/lib/format"; /* MODIFIED */
 import type { TransactionResponse } from "@/types/transaction"; // ADDED
 
 interface AssetDetailProps {
@@ -125,6 +125,38 @@ export function AssetDetail({ userAssetId }: AssetDetailProps) {
                   </dd>
                 </div>
               </dl>
+
+              {(holding.change1dPct != null ||
+                holding.change7dPct != null ||
+                holding.change30dPct != null) && (
+                <dl className="mt-5 grid grid-cols-3 gap-x-6 gap-y-3 text-sm border-t border-toss-border pt-4">
+                  {(
+                    [
+                      ["전일대비", holding.change1dPct ?? null],
+                      ["전주대비", holding.change7dPct ?? null],
+                      ["전월대비", holding.change30dPct ?? null],
+                    ] as [string, number | null][]
+                  ).map(([label, pct]) => (
+                    <div key={label}>
+                      <dt className="text-muted-foreground text-xs">{label}</dt>
+                      <dd
+                        className={`font-semibold mt-0.5 tabular-nums ${
+                          pct !== null ? pnlColor(pct) : ""
+                        }`}
+                      >
+                        {pct !== null ? (
+                          <>
+                            {pct > 0 ? "+" : ""}
+                            {formatPercent(pct, 2, { withSign: false })}
+                          </>
+                        ) : (
+                          "—"
+                        )}
+                      </dd>
+                    </div>
+                  ))}
+                </dl>
+              )}
             </CardContent>
           </Card>
 

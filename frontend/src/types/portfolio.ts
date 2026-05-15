@@ -48,6 +48,9 @@ export interface HoldingResponse {
   latestValue: string | null; // Decimal as string | null
   pnlAbs: string | null;      // Decimal as string | null — unrealized
   pnlPct: number | null;
+  change1dPct?: number | null;
+  change7dPct?: number | null;
+  change30dPct?: number | null;
   weightPct: number;
   lastPriceRefreshedAt: string | null;
   isStale: boolean;
