@@ -14,7 +14,7 @@ from app.schemas.integration import ImportFileResponse, SyncResultResponse
 router = APIRouter(prefix="/api/integrations", tags=["integrations"])
 
 _SUPPORTED_FILE_SOURCES: frozenset[str] = frozenset(
-    ["toss_investment", "shinhan_investment", "k_bank"]
+    ["toss_investment", "shinhan_investment", "k_bank", "upbit"]
 )
 
 
@@ -131,6 +131,8 @@ async def import_file(
         from app.adapters.parsers.shinhan_securities import parse_pdf  # noqa: PLC0415
     elif source == "k_bank":
         from app.adapters.parsers.k_bank import parse_pdf  # noqa: PLC0415
+    elif source == "upbit":
+        from app.adapters.parsers.upbit import parse_pdf  # noqa: PLC0415
     else:  # source == "toss_investment"
         from app.adapters.parsers.toss_securities import parse_pdf  # noqa: PLC0415
 

@@ -7,7 +7,6 @@ import { Download } from "lucide-react";
 import { useLogout } from "@/hooks/use-auth";
 import { useExportData } from "@/hooks/use-export";
 import { FileImportSection } from "@/components/features/settings/file-import-section"; /* ADDED */
-import { ExchangeSyncSection } from "@/components/features/settings/exchange-sync-section"; /* ADDED */
 
 export default function SettingsPage() {
   const logoutMutation = useLogout();
@@ -85,9 +84,6 @@ export default function SettingsPage() {
           </div>
         </CardContent>
       </Card>
-
-      {/* 거래소 동기화 — ADDED */}
-      <ExchangeSyncSection />
 
       {/* 파일 가져오기 — ADDED */}
       <FileImportSection />
