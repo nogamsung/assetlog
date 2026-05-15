@@ -16,7 +16,7 @@ from __future__ import annotations
 import logging
 from decimal import Decimal
 
-from sqlalchemy import select
+from sqlalchemy import not_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domain.transaction_type import TransactionType
@@ -36,6 +36,12 @@ _POSITIVE_KINDS = frozenset(
 _NEGATIVE_KINDS = frozenset(
     {CashTxKind.WITHDRAW, CashTxKind.INTEREST_TAX, CashTxKind.TRANSFER_OUT}
 )
+
+# Balance-reconciliation rows emitted by ``UpbitAccountAdapter._balance_adjustments``
+# — they're BUY/SELL records used solely to align holdings with Upbit's
+# ``fetch_balance`` for coins the user moved in/out of an external wallet.
+# Real cash never changed hands, so they must NOT alter the cash balance.
+_RECONCILIATION_ID_PREFIX = "upbit:adjust:"
 
 
 class CashFlowService:
@@ -64,7 +70,10 @@ class CashFlowService:
             elif kind in _NEGATIVE_KINDS:
                 balances[currency] = balances.get(currency, _ZERO) - amount
 
-        # 2) transactions (BUY drains, SELL refills) — in symbol's currency
+        # 2) transactions (BUY drains, SELL refills) — in symbol's currency.
+        # Skip Upbit balance-reconciliation rows: they exist only to keep
+        # ``holdings.quantity`` aligned with Upbit's reported balance after
+        # external wallet deposits/withdrawals, no cash actually moved.
         trade_rows = (
             await self._session.execute(
                 select(
@@ -75,6 +84,11 @@ class CashFlowService:
                 )
                 .join(UserAsset, UserAsset.id == Transaction.user_asset_id)
                 .join(AssetSymbol, AssetSymbol.id == UserAsset.asset_symbol_id)
+                .where(
+                    not_(
+                        Transaction.external_id.startswith(_RECONCILIATION_ID_PREFIX)
+                    )
+                )
             )
         ).all()
         for tx_type, qty, price, currency in trade_rows:
@@ -138,6 +152,11 @@ class CashFlowService:
                 )
                 .join(UserAsset, UserAsset.id == Transaction.user_asset_id)
                 .join(AssetSymbol, AssetSymbol.id == UserAsset.asset_symbol_id)
+                .where(
+                    not_(
+                        Transaction.external_id.startswith(_RECONCILIATION_ID_PREFIX)
+                    )
+                )
             )
         ).all()
         for tx_type, qty, price, currency, source in trade_rows:
