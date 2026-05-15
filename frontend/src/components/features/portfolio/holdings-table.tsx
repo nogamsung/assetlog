@@ -187,16 +187,27 @@ export function HoldingsTable({ holdings }: HoldingsTableProps) {
                   {formatCurrency(holding.avgCost, nativeCurrency)}
                 </td>
                 <td className="px-4 py-3 text-right tabular-nums">
-                  {/* 현재가: native 통화 그대로 */}
+                  {/* 현재가: native 통화 그대로 + 전일대비 % */}
                   {holding.isPending ? (
                     <span className="text-muted-foreground">—</span>
                   ) : (
-                    <span className="inline-flex items-center justify-end gap-1">
-                      {holding.latestPrice !== null
-                        ? formatCurrency(holding.latestPrice, nativeCurrency)
-                        : "—"}
-                      {holding.isStale && <StaleBadge />}
-                    </span>
+                    <div className="flex flex-col items-end gap-0.5">
+                      <span className="inline-flex items-center justify-end gap-1">
+                        {holding.latestPrice !== null
+                          ? formatCurrency(holding.latestPrice, nativeCurrency)
+                          : "—"}
+                        {holding.isStale && <StaleBadge />}
+                      </span>
+                      {holding.change1dPct != null && (
+                        <span
+                          className={`text-xs ${pnlColor(holding.change1dPct)}`}
+                          aria-label={`전일대비 ${holding.change1dPct}%`}
+                        >
+                          {holding.change1dPct > 0 ? "+" : ""}
+                          {formatPercent(holding.change1dPct, 2, { withSign: false })}
+                        </span>
+                      )}
+                    </div>
                   )}
                 </td>
                 <td className="px-4 py-3 text-right tabular-nums">

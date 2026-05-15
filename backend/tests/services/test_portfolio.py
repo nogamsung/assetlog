@@ -68,6 +68,7 @@ def _make_service(
 ) -> PortfolioService:
     mock_repo = AsyncMock(spec=PortfolioRepository)
     mock_repo.list_holdings_with_aggregates.return_value = rows
+    mock_repo.get_prior_closes.return_value = {}
     if cash_totals is not None:
         mock_cash_repo = AsyncMock(spec=CashAccountRepository)
         mock_cash_repo.sum_balance_by_currency.return_value = cash_totals

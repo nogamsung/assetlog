@@ -117,6 +117,36 @@ class PortfolioService:
         rows = await self._repo.list_holdings_with_aggregates()
         holdings = [self._compute_holding(row) for row in rows]
 
+        # Inject 1d / 7d / 30d price change percentages. One query per window;
+        # symbols missing a prior close in that window are silently left null.
+        symbol_ids = [
+            h.asset_symbol.id
+            for h in holdings
+            if h.latest_price is not None
+        ]
+        if symbol_ids:
+            windows = (
+                ("change_1d_pct", 1),
+                ("change_7d_pct", 7),
+                ("change_30d_pct", 30),
+            )
+            for field_name, days in windows:
+                prior = await self._repo.get_prior_closes(symbol_ids, days)
+                for h in holdings:
+                    if h.latest_price is None:
+                        continue
+                    prev = prior.get(h.asset_symbol.id)
+                    if prev is None or prev == Decimal("0"):
+                        continue
+                    try:
+                        pct = round(
+                            float((h.latest_price - prev) / prev * Decimal("100")),
+                            2,
+                        )
+                    except (InvalidOperation, ZeroDivisionError):
+                        continue
+                    setattr(h, field_name, pct)
+
         # Compute total value for weight_pct denominator (pending excluded).
         total_value_by_currency: dict[str, Decimal] = {}
         for h in holdings:

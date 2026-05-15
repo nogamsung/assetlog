@@ -222,6 +222,7 @@ def _make_service(
 ) -> PortfolioService:
     mock_repo = AsyncMock(spec=PortfolioRepository)
     mock_repo.list_holdings_with_aggregates.return_value = rows
+    mock_repo.get_prior_closes.return_value = {}
     return PortfolioService(mock_repo, fx_service=fx_service)
 
 

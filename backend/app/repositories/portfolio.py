@@ -167,6 +167,51 @@ class PortfolioRepository:
 
         return {ua_id: tuple(lots) for ua_id, lots in grouped.items()}
 
+    async def get_prior_closes(
+        self,
+        symbol_ids: list[int],
+        days_ago: int,
+    ) -> dict[int, Decimal]:
+        """Return ``{asset_symbol_id: close_price}`` for the nearest price_points
+        row at or before ``today − days_ago``.
+
+        Weekends/holidays fall back to the most recent prior trading day. A
+        symbol with no history at the cutoff is simply absent from the result.
+        """
+        from datetime import UTC, datetime, timedelta  # noqa: PLC0415
+
+        from app.models.price_point import PricePoint  # noqa: PLC0415
+
+        if not symbol_ids:
+            return {}
+        cutoff_date = (datetime.now(UTC) - timedelta(days=days_ago)).date()
+
+        max_date_subq = (
+            select(
+                PricePoint.asset_symbol_id.label("sid"),
+                func.max(func.date(PricePoint.fetched_at)).label("max_date"),
+            )
+            .where(
+                PricePoint.asset_symbol_id.in_(symbol_ids),
+                func.date(PricePoint.fetched_at) <= cutoff_date,
+            )
+            .group_by(PricePoint.asset_symbol_id)
+            .subquery()
+        )
+
+        stmt = (
+            select(PricePoint.asset_symbol_id, PricePoint.price)
+            .join(
+                max_date_subq,
+                (PricePoint.asset_symbol_id == max_date_subq.c.sid)
+                & (func.date(PricePoint.fetched_at) == max_date_subq.c.max_date),
+            )
+        )
+        out: dict[int, Decimal] = {}
+        for sid, price in (await self._session.execute(stmt)).all():
+            out[int(sid)] = Decimal(str(price))
+        return out
+
     async def list_tag_breakdown_rows(
         self,
     ) -> list[tuple[str | None, str, str, Decimal, int]]:
