@@ -49,12 +49,18 @@ def _make_user_asset(user_asset_id: int = 1, currency: str = "KRW") -> UserAsset
     return ua
 
 
-def _make_transaction(tx_id: int = 1, user_asset_id: int = 1) -> Transaction:
+def _make_transaction(
+    tx_id: int = 1,
+    user_asset_id: int = 1,
+    tx_type: str = "buy",
+    quantity: str = "1.0",
+    price: str = "50000.0",
+) -> Transaction:
     tx = Transaction(
         user_asset_id=user_asset_id,
-        type=TransactionType.BUY,
-        quantity=Decimal("1.0"),
-        price=Decimal("50000.0"),
+        type=TransactionType.BUY if tx_type == "buy" else TransactionType.SELL,
+        quantity=Decimal(quantity),
+        price=Decimal(price),
         traded_at=datetime.now(UTC),
     )
     tx.id = tx_id
@@ -140,6 +146,9 @@ def _make_service(
         tx_repo.get_remaining_quantity.return_value = remaining_quantity
     if transactions is not None:
         tx_repo.list_for_user_asset.return_value = transactions
+        tx_repo.list_all_for_user_asset.return_value = transactions
+    else:
+        tx_repo.list_all_for_user_asset.return_value = []
     tx_repo.delete_by_id_for_user_asset.return_value = delete_result
     if update_result is not None:  # ADDED
         tx_repo.update.return_value = update_result
@@ -220,7 +229,11 @@ class TestTransactionServiceSummary:
             sold_value="2000.0",
             tx_count=3,
         )
-        svc = _make_service(ua=ua, summary=agg)
+        txs = [
+            _make_transaction(tx_id=1, tx_type="buy", quantity="3.0", price="1750.0"),
+            _make_transaction(tx_id=2, tx_type="sell", quantity="1.0", price="2000.0"),
+        ]
+        svc = _make_service(ua=ua, summary=agg, transactions=txs)
 
         result = await svc.summary(user_asset_id=1)
         assert result.total_bought_quantity == Decimal("3.0")
@@ -270,7 +283,11 @@ class TestTransactionServiceSummary:
             sold_value="4500.0",
             tx_count=2,
         )
-        svc = _make_service(ua=ua, summary=agg)
+        txs = [
+            _make_transaction(tx_id=1, tx_type="buy", quantity="5.0", price="2000.0"),
+            _make_transaction(tx_id=2, tx_type="sell", quantity="2.0", price="2250.0"),
+        ]
+        svc = _make_service(ua=ua, summary=agg, transactions=txs)
 
         result = await svc.summary(user_asset_id=1)
         # avg_buy = 10000/5 = 2000, realized = 4500 - 2*2000 = 500

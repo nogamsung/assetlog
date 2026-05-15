@@ -126,11 +126,27 @@ class TransactionService:
         agg = await self._tx_repo.get_summary(user_asset_id)
 
         zero = Decimal("0")
+        # Moving weighted average — matches the holdings repository so the
+        # summary card and the holdings table agree. Walks every BUY/SELL in
+        # chronological order; a SELL flushes its share of the running cost.
+        all_txs = await self._tx_repo.list_all_for_user_asset(user_asset_id)
+        running_qty = zero
+        running_cost = zero
+        realized_pnl = zero
+        for tx in all_txs:
+            if tx.type == TransactionType.BUY:
+                running_cost += tx.quantity * tx.price
+                running_qty += tx.quantity
+            elif running_qty > zero:
+                avg = running_cost / running_qty
+                sold_qty = tx.quantity if tx.quantity <= running_qty else running_qty
+                realized_pnl += (tx.price - avg) * sold_qty
+                running_cost -= sold_qty * avg
+                running_qty -= sold_qty
         avg_buy_price = (
-            agg.total_bought_cost / agg.total_bought_qty if agg.total_bought_qty != zero else zero
+            running_cost / running_qty if running_qty > zero else zero
         )
-        remaining_quantity = agg.total_bought_qty - agg.total_sold_qty
-        realized_pnl = agg.total_sold_value - agg.total_sold_qty * avg_buy_price
+        remaining_quantity = running_qty
 
         return UserAssetSummaryResponse(
             user_asset_id=user_asset_id,

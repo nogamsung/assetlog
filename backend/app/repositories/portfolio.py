@@ -6,7 +6,7 @@ import logging
 from datetime import datetime
 from decimal import Decimal
 
-from sqlalchemy import case, func, select, text
+from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -36,105 +36,66 @@ class PortfolioRepository:
         Each row contains:
         - ``user_asset_id`` — PK of the UserAsset row.
         - ``asset_symbol``  — eagerly loaded AssetSymbol (last_price included).
-        - ``total_qty``     — Σ quantity of BUY transactions (0 if none).
-        - ``total_cost``    — Σ (quantity × price) of BUY transactions (0 if none).
+        - ``total_qty``     — remaining quantity (BUY − SELL, never negative).
+        - ``total_cost``    — cost basis of the *remaining* lot only.
+        - ``realized_pnl``  — Σ over SELLs of ``(sell_price − avg_at_sell) × qty``.
 
-        A UserAsset with zero transactions is **included** with zeroed aggregates
-        so the service layer can expose it as a pending / zero-cost holding.
+        Uses a **moving weighted average** cost-basis so a SELL flushes its
+        share of the running cost. A user who buys at 60k, sells, then re-
+        buys at 280k sees the average move to the re-buy price — not stay
+        anchored at the historical 60k. Korean brokers' "평단가" follows
+        the same rule.
         """
-        # Correlated subquery: BUY/SELL aggregates per user_asset via conditional SUM  # MODIFIED
-        tx_agg = (
-            select(
-                Transaction.user_asset_id.label("ua_id"),
-                func.coalesce(
-                    func.sum(
-                        case(
-                            (Transaction.type == TransactionType.BUY, Transaction.quantity),
-                            else_=Decimal("0"),
-                        )
-                    ),
-                    Decimal("0"),
-                ).label("total_bought_qty"),
-                func.coalesce(
-                    func.sum(
-                        case(
-                            (
-                                Transaction.type == TransactionType.BUY,
-                                Transaction.quantity * Transaction.price,
-                            ),
-                            else_=Decimal("0"),
-                        )
-                    ),
-                    Decimal("0"),
-                ).label("total_bought_cost"),
-                func.coalesce(
-                    func.sum(
-                        case(
-                            (Transaction.type == TransactionType.SELL, Transaction.quantity),
-                            else_=Decimal("0"),
-                        )
-                    ),
-                    Decimal("0"),
-                ).label("total_sold_qty"),
-                func.coalesce(
-                    func.sum(
-                        case(
-                            (
-                                Transaction.type == TransactionType.SELL,
-                                Transaction.quantity * Transaction.price,
-                            ),
-                            else_=Decimal("0"),
-                        )
-                    ),
-                    Decimal("0"),
-                ).label("total_sold_value"),
-            )
-            .group_by(Transaction.user_asset_id)
-            .subquery()
-        )
-
+        # Pull every transaction in chronological order — moving averages
+        # are order-sensitive, so we walk the timeline in Python.
         stmt = (
-            select(
-                UserAsset,
-                func.coalesce(tx_agg.c.total_bought_qty, Decimal("0")).label("total_bought_qty"),
-                func.coalesce(tx_agg.c.total_bought_cost, Decimal("0")).label("total_bought_cost"),
-                func.coalesce(tx_agg.c.total_sold_qty, Decimal("0")).label("total_sold_qty"),
-                func.coalesce(tx_agg.c.total_sold_value, Decimal("0")).label("total_sold_value"),
-            )
+            select(UserAsset)
             .options(selectinload(UserAsset.asset_symbol))
-            .outerjoin(tx_agg, UserAsset.id == tx_agg.c.ua_id)
             .order_by(UserAsset.created_at)
         )
+        user_assets = list((await self._session.execute(stmt)).scalars().all())
 
-        rows = (await self._session.execute(stmt)).all()
-
-        ua_ids = [row[0].id for row in rows]
+        ua_ids = [ua.id for ua in user_assets]
+        txs_by_ua = await self._load_transactions_ordered(ua_ids)
         buy_lots_by_ua = await self._load_buy_lots(ua_ids)
 
+        zero = Decimal("0")
         result: list[HoldingRow] = []
-        for row in rows:
-            user_asset: UserAsset = row[0]
-            zero = Decimal("0")
-            total_bought_qty = Decimal(str(row.total_bought_qty))
-            total_bought_cost = Decimal(str(row.total_bought_cost))
-            total_sold_qty = Decimal(str(row.total_sold_qty))
-            total_sold_value = Decimal(str(row.total_sold_value))
+        for ua in user_assets:
+            txs = txs_by_ua.get(ua.id, [])
+            running_qty = zero
+            running_cost = zero
+            realized = zero
+            for tx_type, qty, price in txs:
+                if tx_type == TransactionType.BUY:
+                    running_cost += qty * price
+                    running_qty += qty
+                else:  # SELL
+                    if running_qty > zero:
+                        avg = running_cost / running_qty
+                        sold_qty = qty if qty <= running_qty else running_qty
+                        realized += (price - avg) * sold_qty
+                        running_cost -= sold_qty * avg
+                        running_qty -= sold_qty
+                    # A SELL that exceeds remaining qty is silently capped —
+                    # the parsers occasionally over-report a fully-closed
+                    # position. The realized PnL on the capped portion is
+                    # zero by construction.
 
-            remaining_qty = total_bought_qty - total_sold_qty
-            avg_buy_price = (
-                total_bought_cost / total_bought_qty if total_bought_qty != zero else zero
-            )
-            cost_basis_remaining = avg_buy_price * remaining_qty
-            realized_pnl = total_sold_value - total_sold_qty * avg_buy_price
+            # Guard against tiny float-style residuals leaving cost_basis
+            # nonzero when qty has gone to (effectively) zero.
+            if running_qty <= zero:
+                running_qty = zero
+                running_cost = zero
 
             result.append(
                 HoldingRow(
-                    user_asset_id=user_asset.id,
-                    asset_symbol=user_asset.asset_symbol,
-                    total_qty=remaining_qty,
-                    total_cost=cost_basis_remaining,
-                    realized_pnl=realized_pnl,
-                    buy_lots=buy_lots_by_ua.get(user_asset.id, ()),
+                    user_asset_id=ua.id,
+                    asset_symbol=ua.asset_symbol,
+                    total_qty=running_qty,
+                    total_cost=running_cost,
+                    realized_pnl=realized,
+                    buy_lots=buy_lots_by_ua.get(ua.id, ()),
                 )
             )
 
@@ -143,6 +104,31 @@ class PortfolioRepository:
             len(result),
         )
         return result
+
+    async def _load_transactions_ordered(
+        self, user_asset_ids: list[int]
+    ) -> dict[int, list[tuple[TransactionType, Decimal, Decimal]]]:
+        """Return ``{ua_id: [(type, qty, price), …]}`` ordered by traded_at ASC.
+
+        One query per call regardless of holdings count — the result is
+        grouped in Python so the moving-average walk can iterate per UA.
+        """
+        if not user_asset_ids:
+            return {}
+        stmt = (
+            select(
+                Transaction.user_asset_id,
+                Transaction.type,
+                Transaction.quantity,
+                Transaction.price,
+            )
+            .where(Transaction.user_asset_id.in_(user_asset_ids))
+            .order_by(Transaction.traded_at.asc(), Transaction.id.asc())
+        )
+        out: dict[int, list[tuple[TransactionType, Decimal, Decimal]]] = {}
+        for ua_id, tx_type, qty, price in (await self._session.execute(stmt)).all():
+            out.setdefault(ua_id, []).append((tx_type, qty, price))
+        return out
 
     async def _load_buy_lots(
         self,
