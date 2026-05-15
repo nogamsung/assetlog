@@ -229,6 +229,46 @@ class ExchangeSyncService:
             skipped_no_symbol=0,
         )
 
+    async def upsert_cash_transactions(
+        self,
+        source: ExchangeSource,
+        rows: list[dict[str, object]],
+    ) -> int:
+        """Insert cash-flow rows (deposits/withdrawals) for *source*, deduping
+        by ``(external_source, external_id)``. Used by Upbit sync to record
+        ``/v1/deposits`` and ``/v1/withdraws`` so the per-broker cash balance
+        matches what the user sees in the exchange UI.
+        """
+        if not rows:
+            return 0
+        ext_ids = [str(r["external_id"]) for r in rows]
+        existing = await self._existing_cash_tx_external_ids(source.value, ext_ids)
+        inserted = 0
+        for r in rows:
+            ext = str(r["external_id"])
+            if ext in existing:
+                continue
+            try:
+                kind = CashTxKind(str(r["kind"]))
+            except ValueError:
+                continue
+            self._session.add(
+                CashAccountTransaction(
+                    cash_account_id=None,
+                    kind=kind,
+                    amount=r["amount"],
+                    currency=str(r["currency"]),
+                    traded_at=r["traded_at"],
+                    external_source=source.value,
+                    external_id=ext,
+                )
+            )
+            existing.add(ext)
+            inserted += 1
+        if inserted > 0:
+            await self._session.flush()
+        return inserted
+
     # ------------------------------------------------------------------
     # Public API — file-based import (Toss Securities, etc.)
     # ------------------------------------------------------------------

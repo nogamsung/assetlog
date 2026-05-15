@@ -52,6 +52,19 @@ async def sync_upbit(
     )
     trades = await adapter.fetch_trades()
     result = await sync_service.replace_trades(ExchangeSource.UPBIT, trades)
+
+    # Best-effort: pull KRW deposit/withdrawal history so the per-account
+    # cash balance reflects what the user actually sees on Upbit. Failures
+    # log only — they don't taint the trade-sync result.
+    try:
+        cash_rows = await adapter.fetch_cash_flow()
+        if cash_rows:
+            await sync_service.upsert_cash_transactions(
+                ExchangeSource.UPBIT, cash_rows
+            )
+    except Exception:  # noqa: BLE001
+        pass
+
     return SyncResultResponse.model_validate(result)
 
 

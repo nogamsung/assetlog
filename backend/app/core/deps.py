@@ -211,12 +211,23 @@ CashAccountServiceDep = Annotated[CashAccountService, Depends(get_cash_account_s
 
 
 def get_portfolio_service(
+    session: DbSession,
     repo: PortfolioRepositoryDep,
     fx_service: FxRateServiceDep,
     cash_repo: CashAccountRepositoryDep,
 ) -> PortfolioService:
-    """Inject a PortfolioService with FxRateService and CashAccountRepository."""
-    return PortfolioService(repo, fx_service=fx_service, cash_repository=cash_repo)
+    """Inject a PortfolioService with FxRateService, CashAccountRepository,
+    and a CashFlowService — the cash flow aggregator feeds the cash bucket
+    in the allocation pie so deposits/withdrawals/FX legs show up correctly.
+    """
+    from app.services.cash_flow import CashFlowService  # noqa: PLC0415
+
+    return PortfolioService(
+        repo,
+        fx_service=fx_service,
+        cash_repository=cash_repo,
+        cash_flow_service=CashFlowService(session=session),
+    )
 
 
 PortfolioServiceDep = Annotated[PortfolioService, Depends(get_portfolio_service)]

@@ -90,10 +90,14 @@ class PortfolioService:
         repository: PortfolioRepository,
         fx_service: FxRateService | None = None,
         cash_repository: CashAccountRepository | None = None,
+        cash_flow_service: object | None = None,
     ) -> None:
         self._repo = repository
         self._fx_service = fx_service
         self._cash_repo = cash_repository
+        # Typed as ``object`` to avoid a hard import cycle. The concrete type
+        # is ``CashFlowService`` and only one method is invoked.
+        self._cash_flow_service = cash_flow_service
 
     # ------------------------------------------------------------------
     # Public API
@@ -284,9 +288,17 @@ class PortfolioService:
             by_cur = alloc_native.setdefault(asset_type, {})
             by_cur[cur] = by_cur.get(cur, Decimal("0")) + latest_value
 
-        # Cash holdings aggregation.
+        # Cash holdings aggregation — prefer the import-derived cash-flow
+        # totals (deposits/withdrawals/FX/buys/sells/dividends) over manually
+        # entered CashAccount rows, since the former actually reflects the
+        # user's broker balances. Falls back to the manual table when no
+        # cash-flow service is wired.
         cash_totals: dict[str, Decimal] = {}
-        if self._cash_repo is not None:
+        if self._cash_flow_service is not None:
+            cash_totals = await self._cash_flow_service.net_cash_by_currency()  # type: ignore[attr-defined]
+            # Treat 0 / negative balances as "no cash" for allocation purposes.
+            cash_totals = {c: v for c, v in cash_totals.items() if v > Decimal("0")}
+        elif self._cash_repo is not None:
             cash_totals = await self._cash_repo.sum_balance_by_currency()
 
         # Merge cash into total_value (cash is always "valued" — no pending state).

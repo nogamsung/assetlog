@@ -52,10 +52,13 @@ export function NetWorthCard({ displayCurrency }: NetWorthCardProps) {
         {data.convertedTotal !== null && data.displayCurrency && (
           <div className="rounded-xl border bg-toss-card px-4 py-3">
             <p className="text-xs text-toss-textWeak">
-              합계 ({data.displayCurrency})
+              총 평가액 ({data.displayCurrency})
             </p>
             <p className="mt-1 text-2xl font-bold text-toss-textStrong tabular-nums">
               {formatCurrency(data.convertedTotal, data.displayCurrency)}
+            </p>
+            <p className="mt-1 text-[11px] text-toss-textWeak">
+              보유자산 + 모든 계좌 현금
             </p>
           </div>
         )}
