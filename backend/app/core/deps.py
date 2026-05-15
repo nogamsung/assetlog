@@ -245,9 +245,14 @@ PortfolioHistoryRepositoryDep = Annotated[
 
 def get_portfolio_history_service(
     repo: PortfolioHistoryRepositoryDep,
+    fx_service: FxRateServiceDep,
 ) -> PortfolioHistoryService:
-    """Inject a PortfolioHistoryService bound to the current request session."""
-    return PortfolioHistoryService(repo)
+    """Inject a PortfolioHistoryService bound to the current request session.
+
+    ``fx_service`` enables per-bucket historical FX conversion so a KRW
+    chart includes USD holdings at the *date's* rate, not native.
+    """
+    return PortfolioHistoryService(repo, fx_service=fx_service)
 
 
 PortfolioHistoryServiceDep = Annotated[
