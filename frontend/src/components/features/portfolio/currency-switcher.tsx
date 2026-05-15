@@ -22,7 +22,7 @@ export function CurrencySwitcher({
     <div
       role="group"
       aria-label="통화 환산 선택"
-      className="inline-flex items-center rounded-md border border-input bg-background p-0.5 shadow-sm"
+      className="inline-flex items-center gap-1 rounded-xl border border-toss-border bg-muted/40 p-1"
     >
       {options.map((option) => {
         const isActive = option.value === value;
@@ -34,10 +34,10 @@ export function CurrencySwitcher({
             aria-label={option.label}
             onClick={() => onChange(option.value)}
             className={cn(
-              "rounded px-3 py-1.5 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
+              "rounded-lg px-3 py-1.5 text-xs font-medium transition-[background-color,color,box-shadow,transform] duration-150 active:scale-[0.96] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-toss-blue/40 focus-visible:ring-offset-1",
               isActive
-                ? "bg-primary text-primary-foreground shadow-sm"
-                : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
+                ? "bg-toss-card text-toss-textStrong shadow-sm ring-1 ring-toss-border"
+                : "text-muted-foreground hover:text-foreground",
             )}
           >
             {option.label}

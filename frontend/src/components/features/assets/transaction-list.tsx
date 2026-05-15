@@ -3,10 +3,16 @@
 import { Pencil, Trash2 } from "lucide-react"; /* MODIFIED: added Trash2 */
 import { useTransactions, useDeleteTransaction } from "@/hooks/use-transactions";
 import { formatDateTimeKST } from "@/lib/datetime"; /* ADDED */
+import { formatCurrency, formatQuantity } from "@/lib/format";
 import type { TransactionResponse } from "@/types/transaction"; // ADDED
+import type { AssetType } from "@/types/asset";
 
 interface TransactionListProps {
   userAssetId: number;
+  /** Currency for price display — typically the holding's symbol currency. */
+  currency: string;
+  /** Asset type for quantity formatting (crypto → 8 dp, stock → 4 dp). */
+  assetType: AssetType;
   onEdit?: (transaction: TransactionResponse) => void; // ADDED
   onTagClick?: (tag: string) => void;  // ADDED
   activeTag?: string | null;            // ADDED
@@ -30,7 +36,7 @@ function EmptyState() {
   );
 }
 
-export function TransactionList({ userAssetId, onEdit, onTagClick, activeTag }: TransactionListProps) { // MODIFIED
+export function TransactionList({ userAssetId, currency, assetType, onEdit, onTagClick, activeTag }: TransactionListProps) { // MODIFIED
   const { data: transactions, isLoading, isError, error } = useTransactions(userAssetId, activeTag ?? undefined);
   const deleteMutation = useDeleteTransaction();
 
@@ -73,9 +79,12 @@ export function TransactionList({ userAssetId, onEdit, onTagClick, activeTag }: 
                 {tx.type === "buy" ? "매수" : "매도"}
               </span>
               <div>
-                <p className="text-sm font-medium">
-                  {tx.type === "buy" ? "+" : "-"}{tx.quantity}{/* ADDED sign */}{" "}
-                  <span className="text-muted-foreground">@ {tx.price}</span>
+                <p className="text-sm font-medium tabular-nums">
+                  {tx.type === "buy" ? "+" : "−"}
+                  {formatQuantity(tx.quantity, assetType)}{" "}
+                  <span className="text-muted-foreground">
+                    @ {formatCurrency(tx.price, currency)}
+                  </span>
                 </p>
                 <p className="text-xs text-muted-foreground">{formattedDate}</p>
               </div>

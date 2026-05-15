@@ -61,7 +61,7 @@ describe("TransactionImport", () => {
 
   it("폼 기본 요소들이 렌더링된다", () => {
     const { Wrapper } = makeWrapper();
-    render(<TransactionImport userAssetId={10} />, { wrapper: Wrapper });
+    render(<TransactionImport userAssetId={10} currency="USD" assetType="us_stock" />, { wrapper: Wrapper });
 
     expect(screen.getByLabelText("CSV 파일 선택")).toBeInTheDocument();
     expect(screen.getByLabelText("CSV 파일 가져오기 제출")).toBeInTheDocument();
@@ -70,7 +70,7 @@ describe("TransactionImport", () => {
 
   it("파일 선택 전 제출 버튼이 disabled 다", () => {
     const { Wrapper } = makeWrapper();
-    render(<TransactionImport userAssetId={10} />, { wrapper: Wrapper });
+    render(<TransactionImport userAssetId={10} currency="USD" assetType="us_stock" />, { wrapper: Wrapper });
 
     const submitBtn = screen.getByLabelText("CSV 파일 가져오기 제출");
     expect(submitBtn).toBeDisabled();
@@ -78,7 +78,7 @@ describe("TransactionImport", () => {
 
   it("파일 선택 후 미리보기 테이블이 렌더링된다", async () => {
     const { Wrapper } = makeWrapper();
-    render(<TransactionImport userAssetId={10} />, { wrapper: Wrapper });
+    render(<TransactionImport userAssetId={10} currency="USD" assetType="us_stock" />, { wrapper: Wrapper });
 
     const file = makeCsvFile();
     const input = screen.getByLabelText("CSV 파일 선택");
@@ -95,7 +95,7 @@ describe("TransactionImport", () => {
 
   it("파일 선택 후 제출 버튼이 활성화된다", async () => {
     const { Wrapper } = makeWrapper();
-    render(<TransactionImport userAssetId={10} />, { wrapper: Wrapper });
+    render(<TransactionImport userAssetId={10} currency="USD" assetType="us_stock" />, { wrapper: Wrapper });
 
     const file = makeCsvFile();
     const input = screen.getByLabelText("CSV 파일 선택");
@@ -108,7 +108,7 @@ describe("TransactionImport", () => {
 
   it("제출 시 useImportTransactionsCsv.mutate 가 올바른 인자로 호출된다", async () => {
     const { Wrapper } = makeWrapper();
-    render(<TransactionImport userAssetId={10} />, { wrapper: Wrapper });
+    render(<TransactionImport userAssetId={10} currency="USD" assetType="us_stock" />, { wrapper: Wrapper });
 
     const file = makeCsvFile();
     const input = screen.getByLabelText("CSV 파일 선택");
@@ -131,7 +131,7 @@ describe("TransactionImport", () => {
   it("isPending 시 버튼이 disabled 되고 '가져오는 중...' 이 표시된다", () => {
     setupImportMock({ isPending: true });
     const { Wrapper } = makeWrapper();
-    render(<TransactionImport userAssetId={10} />, { wrapper: Wrapper });
+    render(<TransactionImport userAssetId={10} currency="USD" assetType="us_stock" />, { wrapper: Wrapper });
 
     const btn = screen.getByLabelText("CSV 파일 가져오기 제출");
     expect(btn).toBeDisabled();
@@ -162,7 +162,7 @@ describe("TransactionImport", () => {
     } as unknown as ReturnType<typeof useTransactionsHook.useImportTransactionsCsv>);
 
     const { Wrapper } = makeWrapper();
-    render(<TransactionImport userAssetId={10} />, { wrapper: Wrapper });
+    render(<TransactionImport userAssetId={10} currency="USD" assetType="us_stock" />, { wrapper: Wrapper });
 
     const file = makeCsvFile();
     const input = screen.getByLabelText("CSV 파일 선택");
@@ -210,7 +210,7 @@ describe("TransactionImport", () => {
     } as unknown as ReturnType<typeof useTransactionsHook.useImportTransactionsCsv>);
 
     const { Wrapper } = makeWrapper();
-    render(<TransactionImport userAssetId={10} />, { wrapper: Wrapper });
+    render(<TransactionImport userAssetId={10} currency="USD" assetType="us_stock" />, { wrapper: Wrapper });
 
     const file = makeCsvFile();
     const input = screen.getByLabelText("CSV 파일 선택");
@@ -225,7 +225,7 @@ describe("TransactionImport", () => {
       expect(screen.getByLabelText("추가된 거래 미리보기")).toBeInTheDocument();
     });
     expect(screen.getByText("매수")).toBeInTheDocument();
-    expect(screen.getByText("50000")).toBeInTheDocument();
+    expect(screen.getByText(/50,000/)).toBeInTheDocument();
   });
 
   it("성공 시 onSuccess 콜백이 호출된다", async () => {
@@ -247,7 +247,7 @@ describe("TransactionImport", () => {
 
     const { Wrapper } = makeWrapper();
     render(
-      <TransactionImport userAssetId={10} onSuccess={mockOnSuccess} />,
+      <TransactionImport userAssetId={10} currency="USD" assetType="us_stock" onSuccess={mockOnSuccess} />,
       { wrapper: Wrapper },
     );
 
@@ -287,7 +287,7 @@ describe("TransactionImport", () => {
 
     try {
       const { Wrapper } = makeWrapper();
-      render(<TransactionImport userAssetId={10} />, { wrapper: Wrapper });
+      render(<TransactionImport userAssetId={10} currency="USD" assetType="us_stock" />, { wrapper: Wrapper });
 
       await userEvent.click(screen.getByLabelText("샘플 CSV 다운로드"));
 
@@ -307,7 +307,7 @@ describe("TransactionImport", () => {
       `buy,1.5,50000,2026-01-15T10:00:00+09:00,"DCA 1월"\n`;
 
     const { Wrapper } = makeWrapper();
-    render(<TransactionImport userAssetId={10} />, { wrapper: Wrapper });
+    render(<TransactionImport userAssetId={10} currency="USD" assetType="us_stock" />, { wrapper: Wrapper });
 
     const file = new File([csvWithQuotes], "q.csv", { type: "text/csv" });
     const input = screen.getByLabelText("CSV 파일 선택");

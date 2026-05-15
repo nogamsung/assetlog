@@ -83,7 +83,7 @@ describe("TransactionList", () => {
   it("로딩 중이면 스켈레톤이 표시된다", () => {
     setupMocks(null, { isLoading: true });
     const { Wrapper } = makeWrapper();
-    render(<TransactionList userAssetId={10} />, { wrapper: Wrapper });
+    render(<TransactionList userAssetId={10} currency="USD" assetType="us_stock" />, { wrapper: Wrapper });
 
     expect(screen.getByRole("status")).toHaveAttribute(
       "aria-label",
@@ -94,7 +94,7 @@ describe("TransactionList", () => {
   it("에러 시 에러 메시지가 표시된다", () => {
     setupMocks(null, { isError: true, error: new Error("네트워크 오류") });
     const { Wrapper } = makeWrapper();
-    render(<TransactionList userAssetId={10} />, { wrapper: Wrapper });
+    render(<TransactionList userAssetId={10} currency="USD" assetType="us_stock" />, { wrapper: Wrapper });
 
     expect(screen.getByRole("alert")).toHaveTextContent("네트워크 오류");
   });
@@ -102,7 +102,7 @@ describe("TransactionList", () => {
   it("빈 배열이면 빈 상태 메시지가 표시된다", () => {
     setupMocks([]);
     const { Wrapper } = makeWrapper();
-    render(<TransactionList userAssetId={10} />, { wrapper: Wrapper });
+    render(<TransactionList userAssetId={10} currency="USD" assetType="us_stock" />, { wrapper: Wrapper });
 
     expect(screen.getByText("거래 내역이 없습니다.")).toBeInTheDocument();
   });
@@ -110,17 +110,17 @@ describe("TransactionList", () => {
   it("거래 목록이 렌더링된다", () => {
     setupMocks([fakeTx]);
     const { Wrapper } = makeWrapper();
-    render(<TransactionList userAssetId={10} />, { wrapper: Wrapper });
+    render(<TransactionList userAssetId={10} currency="USD" assetType="us_stock" />, { wrapper: Wrapper });
 
     expect(screen.getByText("매수")).toBeInTheDocument();
-    expect(screen.getByText(/1\.5000000000/)).toBeInTheDocument();
+    expect(screen.getByText(/\+1\.5\b/)).toBeInTheDocument();
   });
 
   it("삭제 버튼 클릭 → confirm → mutate 호출", async () => {
     setupMocks([fakeTx]);
     const user = userEvent.setup();
     const { Wrapper } = makeWrapper();
-    render(<TransactionList userAssetId={10} />, { wrapper: Wrapper });
+    render(<TransactionList userAssetId={10} currency="USD" assetType="us_stock" />, { wrapper: Wrapper });
 
     await user.click(screen.getByLabelText("거래 #1 삭제"));
 
@@ -140,7 +140,7 @@ describe("TransactionList", () => {
     setupMocks([fakeTx]);
     const user = userEvent.setup();
     const { Wrapper } = makeWrapper();
-    render(<TransactionList userAssetId={10} />, { wrapper: Wrapper });
+    render(<TransactionList userAssetId={10} currency="USD" assetType="us_stock" />, { wrapper: Wrapper });
 
     await user.click(screen.getByLabelText("거래 #1 삭제"));
 
@@ -150,7 +150,7 @@ describe("TransactionList", () => {
   it("sell 타입 거래는 '매도' 배지를 표시한다", () => {
     setupMocks([{ ...fakeTx, type: "sell" }]);
     const { Wrapper } = makeWrapper();
-    render(<TransactionList userAssetId={10} />, { wrapper: Wrapper });
+    render(<TransactionList userAssetId={10} currency="USD" assetType="us_stock" />, { wrapper: Wrapper });
 
     expect(screen.getByText("매도")).toBeInTheDocument();
   });
@@ -159,7 +159,7 @@ describe("TransactionList", () => {
     setupMocks([fakeTx]);
     const mockOnEdit = jest.fn();
     const { Wrapper } = makeWrapper();
-    render(<TransactionList userAssetId={10} onEdit={mockOnEdit} />, { wrapper: Wrapper });
+    render(<TransactionList userAssetId={10} currency="USD" assetType="us_stock" onEdit={mockOnEdit} />, { wrapper: Wrapper });
 
     expect(screen.getByLabelText("거래 #1 편집")).toBeInTheDocument();
   });
@@ -167,7 +167,7 @@ describe("TransactionList", () => {
   it("onEdit prop 이 없으면 편집 버튼이 렌더링되지 않는다", () => { // ADDED
     setupMocks([fakeTx]);
     const { Wrapper } = makeWrapper();
-    render(<TransactionList userAssetId={10} />, { wrapper: Wrapper });
+    render(<TransactionList userAssetId={10} currency="USD" assetType="us_stock" />, { wrapper: Wrapper });
 
     expect(screen.queryByLabelText("거래 #1 편집")).not.toBeInTheDocument();
   });
@@ -177,7 +177,7 @@ describe("TransactionList", () => {
     const mockOnEdit = jest.fn();
     const user = userEvent.setup();
     const { Wrapper } = makeWrapper();
-    render(<TransactionList userAssetId={10} onEdit={mockOnEdit} />, { wrapper: Wrapper });
+    render(<TransactionList userAssetId={10} currency="USD" assetType="us_stock" onEdit={mockOnEdit} />, { wrapper: Wrapper });
 
     await user.click(screen.getByLabelText("거래 #1 편집"));
 
@@ -192,7 +192,7 @@ describe("TransactionList — tag 표시", () => {
     const taggedTx: TransactionResponse = { ...fakeTx, tag: "DCA" };
     setupMocks([taggedTx]);
     const { Wrapper } = makeWrapper();
-    render(<TransactionList userAssetId={10} />, { wrapper: Wrapper });
+    render(<TransactionList userAssetId={10} currency="USD" assetType="us_stock" />, { wrapper: Wrapper });
 
     const badge = screen.getByLabelText("태그 DCA 필터 적용");
     expect(badge).toHaveTextContent("DCA");
@@ -201,7 +201,7 @@ describe("TransactionList — tag 표시", () => {
   it("tag 가 null 이면 뱃지가 렌더링되지 않는다", () => {
     setupMocks([fakeTx]);
     const { Wrapper } = makeWrapper();
-    render(<TransactionList userAssetId={10} />, { wrapper: Wrapper });
+    render(<TransactionList userAssetId={10} currency="USD" assetType="us_stock" />, { wrapper: Wrapper });
 
     expect(screen.queryByLabelText(/태그.*필터 적용/)).not.toBeInTheDocument();
   });
@@ -213,7 +213,7 @@ describe("TransactionList — tag 표시", () => {
     setupMocks([taggedTx]);
     const { Wrapper } = makeWrapper();
     render(
-      <TransactionList userAssetId={10} onTagClick={onTagClick} />,
+      <TransactionList userAssetId={10} currency="USD" assetType="us_stock" onTagClick={onTagClick} />,
       { wrapper: Wrapper },
     );
 
@@ -225,7 +225,7 @@ describe("TransactionList — tag 표시", () => {
     setupMocks([]);
     const { Wrapper } = makeWrapper();
     render(
-      <TransactionList userAssetId={10} activeTag="DCA" />,
+      <TransactionList userAssetId={10} currency="USD" assetType="us_stock" activeTag="DCA" />,
       { wrapper: Wrapper },
     );
 

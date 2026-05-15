@@ -8,7 +8,7 @@ import { useSampleSeed } from "@/hooks/use-sample-seed";
 import { AssetTypeBadge } from "./asset-type-badge";
 import { Button } from "@/components/ui/button";
 import { Trash2, Plus } from "lucide-react";
-import { formatCurrency, formatQuantity, pnlColor } from "@/lib/format"; /* MODIFIED */
+import { formatCurrency, formatQuantity } from "@/lib/format"; /* MODIFIED */
 
 function AssetListSkeleton() {
   return (
@@ -107,19 +107,19 @@ export function AssetList() {
               <div className="hidden md:flex items-center gap-4 text-xs ml-auto mr-4">
                 <div className="text-right">
                   <p className="text-muted-foreground">보유 수량</p>{/* MODIFIED */}
-                  <p className="font-medium">
+                  <p className="font-medium tabular-nums">
                     {formatQuantity(holding.quantity, assetSymbol.assetType)}
                   </p>
                 </div>
                 <div className="text-right">
                   <p className="text-muted-foreground">평단가</p>
-                  <p className="font-medium">
+                  <p className="font-medium tabular-nums">
                     {formatCurrency(holding.avgCost, currency)}
                   </p>
                 </div>
                 <div className="text-right">
                   <p className="text-muted-foreground">현재가</p>
-                  <p className="font-medium">
+                  <p className="font-medium tabular-nums">
                     {holding.latestPrice !== null
                       ? formatCurrency(holding.latestPrice, currency)
                       : "—"}
@@ -127,21 +127,12 @@ export function AssetList() {
                 </div>
                 <div className="text-right">
                   <p className="text-muted-foreground">평가액</p>
-                  <p className="font-medium">
+                  <p className="font-medium tabular-nums">
                     {holding.latestValue !== null
                       ? formatCurrency(holding.latestValue, currency)
                       : "—"}
                   </p>
                 </div>
-                {Number(holding.realizedPnl) !== 0 && (
-                  <div className="text-right">
-                    <p className="text-toss-textWeak text-xs">실현</p> {/* MODIFIED */}
-                    <p className={`font-medium ${pnlColor(holding.realizedPnl)}`}> {/* MODIFIED: pnlColor */}
-                      {Number(holding.realizedPnl) > 0 ? "+" : ""}
-                      {formatCurrency(holding.realizedPnl, currency)}
-                    </p>
-                  </div>
-                )}
               </div>
             </Link>
             <Button

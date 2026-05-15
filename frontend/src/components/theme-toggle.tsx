@@ -23,7 +23,7 @@ export function ThemeToggle() {
     <div
       role="group"
       aria-label="테마 선택"
-      className="inline-flex rounded-md border border-input bg-background shadow-sm"
+      className="inline-flex items-center gap-1 rounded-xl border border-toss-border bg-muted/40 p-1"
     >
       {THEME_OPTIONS.map(({ value, label, Icon }) => {
         const isPressed = theme === value;
@@ -35,15 +35,14 @@ export function ThemeToggle() {
             aria-label={`${label} 테마`}
             aria-pressed={isPressed}
             className={`
-              inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium
-              transition-[background-color,color,transform] duration-150
+              inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium
+              transition-[background-color,color,box-shadow,transform] duration-150
               active:scale-[0.96]
-              first:rounded-l-md last:rounded-r-md
-              focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1
+              focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-toss-blue/40 focus-visible:ring-offset-1
               ${
                 isPressed
-                  ? "bg-primary text-primary-foreground shadow-inner"
-                  : "text-muted-foreground hover:text-foreground hover:bg-accent active:bg-accent/70"
+                  ? "bg-toss-card text-toss-textStrong shadow-sm ring-1 ring-toss-border"
+                  : "text-muted-foreground hover:text-foreground"
               }
             `}
           >
