@@ -437,9 +437,7 @@ class UpbitAccountAdapter:
         up with what the user sees on the Upbit app.
         """
         try:
-            rows = await asyncio.to_thread(
-                _cash_flow_sync, self._access_key, self._secret_key
-            )
+            rows = await asyncio.to_thread(_cash_flow_sync, self._access_key, self._secret_key)
         except Exception as exc:
             logger.warning(
                 "upbit fetch_cash_flow failed: %s",
@@ -452,9 +450,7 @@ class UpbitAccountAdapter:
     async def fetch_balance_krw(self) -> Decimal | None:
         """Return the user's available KRW balance on Upbit (or ``None`` on error)."""
         try:
-            return await asyncio.to_thread(
-                _balance_krw_sync, self._access_key, self._secret_key
-            )
+            return await asyncio.to_thread(_balance_krw_sync, self._access_key, self._secret_key)
         except Exception as exc:
             logger.warning(
                 "upbit fetch_balance_krw failed: %s",
@@ -483,6 +479,47 @@ def _balance_krw_sync(access_key: str, secret_key: str) -> Decimal | None:
     return None
 
 
+_CASH_FLOW_PAGE_LIMIT = 100  # Upbit /v1/{deposits,withdraws} max
+_CASH_FLOW_MAX_PAGES = 200  # safety cap; 200 × 100 = 20,000 rows per direction
+
+
+def _paginate_cash_rows(upbit: Any, endpoint: str, currency: str) -> list[dict[str, Any]]:
+    """Page through Upbit's deposits/withdraws history until empty.
+
+    Upbit paginates with ``page`` (1-indexed) + ``limit``. We stop when a
+    page comes back short or empty, or when we hit the safety cap.
+    """
+    fn = getattr(upbit, endpoint, None)
+    if fn is None:
+        return []
+    collected: list[dict[str, Any]] = []
+    for page in range(1, _CASH_FLOW_MAX_PAGES + 1):
+        try:
+            rows = fn(
+                {
+                    "currency": currency,
+                    "limit": _CASH_FLOW_PAGE_LIMIT,
+                    "page": page,
+                    "order_by": "desc",
+                }
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "upbit %s page=%d failed: %s",
+                endpoint,
+                page,
+                exc,
+                extra={"event": "upbit_cashflow_page_fail", "endpoint": endpoint},
+            )
+            break
+        if not isinstance(rows, list) or not rows:
+            break
+        collected.extend(r for r in rows if isinstance(r, dict))
+        if len(rows) < _CASH_FLOW_PAGE_LIMIT:
+            break
+    return collected
+
+
 def _cash_flow_sync(access_key: str, secret_key: str) -> list[dict[str, Any]]:
     """Hit Upbit's native /v1/deposits and /v1/withdraws endpoints for KRW."""
     import ccxt  # noqa: PLC0415
@@ -501,59 +538,60 @@ def _cash_flow_sync(access_key: str, secret_key: str) -> list[dict[str, Any]]:
             return None
 
     # Deposits — only KRW. Crypto deposits are inventory transfers, not cash.
-    try:
-        deposits = upbit.private_get_deposits({"currency": "KRW", "limit": 100})
-    except Exception:  # noqa: BLE001
-        deposits = []
-    if isinstance(deposits, list):
-        for d in deposits:
-            if not isinstance(d, dict):
-                continue
-            uuid = d.get("uuid")
-            amount = d.get("amount")
-            done_at = _norm_iso(d.get("done_at") or d.get("created_at"))
-            if not uuid or amount is None or done_at is None:
-                continue
-            try:
-                amount_dec = Decimal(str(amount))
-            except (TypeError, ValueError):
-                continue
-            if amount_dec <= 0:
-                continue
-            out.append({
+    deposits = _paginate_cash_rows(upbit, "private_get_deposits", "KRW")
+    for d in deposits:
+        uuid = d.get("uuid")
+        amount = d.get("amount")
+        done_at = _norm_iso(d.get("done_at") or d.get("created_at"))
+        if not uuid or amount is None or done_at is None:
+            continue
+        try:
+            amount_dec = Decimal(str(amount))
+        except (TypeError, ValueError):
+            continue
+        if amount_dec <= 0:
+            continue
+        out.append(
+            {
                 "external_id": f"upbit-dep-{uuid}",
                 "kind": "deposit",
                 "amount": amount_dec,
                 "currency": "KRW",
                 "traded_at": done_at,
-            })
+            }
+        )
 
     # Withdrawals — only KRW.
-    try:
-        withdraws = upbit.private_get_withdraws({"currency": "KRW", "limit": 100})
-    except Exception:  # noqa: BLE001
-        withdraws = []
-    if isinstance(withdraws, list):
-        for w in withdraws:
-            if not isinstance(w, dict):
-                continue
-            uuid = w.get("uuid")
-            amount = w.get("amount")
-            done_at = _norm_iso(w.get("done_at") or w.get("created_at"))
-            if not uuid or amount is None or done_at is None:
-                continue
-            try:
-                amount_dec = Decimal(str(amount))
-            except (TypeError, ValueError):
-                continue
-            if amount_dec <= 0:
-                continue
-            out.append({
+    withdraws = _paginate_cash_rows(upbit, "private_get_withdraws", "KRW")
+    for w in withdraws:
+        uuid = w.get("uuid")
+        amount = w.get("amount")
+        done_at = _norm_iso(w.get("done_at") or w.get("created_at"))
+        if not uuid or amount is None or done_at is None:
+            continue
+        try:
+            amount_dec = Decimal(str(amount))
+        except (TypeError, ValueError):
+            continue
+        if amount_dec <= 0:
+            continue
+        out.append(
+            {
                 "external_id": f"upbit-wd-{uuid}",
                 "kind": "withdraw",
                 "amount": amount_dec,
                 "currency": "KRW",
                 "traded_at": done_at,
-            })
+            }
+        )
 
+    logger.info(
+        "upbit cash flow paginated",
+        extra={
+            "event": "upbit_cashflow_paginated",
+            "deposits": len(deposits),
+            "withdraws": len(withdraws),
+            "kept": len(out),
+        },
+    )
     return out

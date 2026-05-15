@@ -65,6 +65,23 @@ async def sync_upbit(
     except Exception:  # noqa: BLE001
         pass
 
+    # Final reconcile: pin Upbit KRW cash to the exchange-reported balance so
+    # paginated history gaps (deposits/withdraws beyond the page cap, missing
+    # closed orders, FX rounding) can't drift the dashboard from reality.
+    try:
+        from datetime import UTC, datetime  # noqa: PLC0415
+
+        krw_balance = await adapter.fetch_balance_krw()
+        if krw_balance is not None:
+            await sync_service.reconcile_cash_balance(
+                ExchangeSource.UPBIT,
+                "KRW",
+                krw_balance,
+                traded_at=datetime.now(UTC),
+            )
+    except Exception:  # noqa: BLE001
+        pass
+
     return SyncResultResponse.model_validate(result)
 
 
