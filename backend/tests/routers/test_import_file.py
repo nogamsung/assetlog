@@ -20,7 +20,7 @@ class TestAuthGuard:
     async def test_unauthenticated_returns_401(self, async_client: AsyncClient) -> None:
         response = await async_client.post(
             "/api/integrations/import-file",
-            params={"source": "toss_securities", "dry_run": "true"},
+            params={"source": "toss_investment", "dry_run": "true"},
             files={"file": ("test.txt", b"dummy", "application/octet-stream")},
         )
         assert response.status_code == 401
@@ -46,7 +46,7 @@ class TestValidation:
         client: AsyncClient = await authenticated_client()
         response = await client.post(
             "/api/integrations/import-file",
-            params={"source": "toss_securities", "dry_run": "true"},
+            params={"source": "toss_investment", "dry_run": "true"},
             files={"file": ("test.txt", b"", "application/octet-stream")},
         )
         assert response.status_code == 422
@@ -76,7 +76,7 @@ class TestDryRunWithFixture:
         ):
             response = await client.post(
                 "/api/integrations/import-file",
-                params={"source": "toss_securities", "dry_run": "true"},
+                params={"source": "toss_investment", "dry_run": "true"},
                 files={"file": ("statement.pdf", txt_content, "application/pdf")},
             )
 
@@ -113,7 +113,7 @@ class TestDryRunWithFixture:
         ):
             response = await client.post(
                 "/api/integrations/import-file",
-                params={"source": "toss_securities", "dry_run": "true"},
+                params={"source": "toss_investment", "dry_run": "true"},
                 files={"file": ("statement.pdf", txt_content, "application/pdf")},
             )
 
@@ -144,7 +144,7 @@ class TestPasswordOption:
         ):
             response = await client.post(
                 "/api/integrations/import-file",
-                params={"source": "toss_securities", "dry_run": "true"},
+                params={"source": "toss_investment", "dry_run": "true"},
                 files={"file": ("statement.pdf", b"%PDF-fake", "application/pdf")},
                 data={"password": "19970211"},
             )
@@ -168,7 +168,7 @@ class TestPasswordOption:
         ):
             response = await client.post(
                 "/api/integrations/import-file",
-                params={"source": "toss_securities", "dry_run": "true"},
+                params={"source": "toss_investment", "dry_run": "true"},
                 files={"file": ("statement.pdf", b"%PDF-fake", "application/pdf")},
                 data={"password": "wrong"},
             )

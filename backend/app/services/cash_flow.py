@@ -30,12 +30,8 @@ logger = logging.getLogger(__name__)
 
 _ZERO = Decimal("0")
 
-_POSITIVE_KINDS = frozenset(
-    {CashTxKind.DEPOSIT, CashTxKind.INTEREST, CashTxKind.TRANSFER_IN}
-)
-_NEGATIVE_KINDS = frozenset(
-    {CashTxKind.WITHDRAW, CashTxKind.INTEREST_TAX, CashTxKind.TRANSFER_OUT}
-)
+_POSITIVE_KINDS = frozenset({CashTxKind.DEPOSIT, CashTxKind.INTEREST, CashTxKind.TRANSFER_IN})
+_NEGATIVE_KINDS = frozenset({CashTxKind.WITHDRAW, CashTxKind.INTEREST_TAX, CashTxKind.TRANSFER_OUT})
 
 # Balance-reconciliation rows emitted by ``UpbitAccountAdapter._balance_adjustments``
 # — they're BUY/SELL records used solely to align holdings with Upbit's
@@ -84,11 +80,7 @@ class CashFlowService:
                 )
                 .join(UserAsset, UserAsset.id == Transaction.user_asset_id)
                 .join(AssetSymbol, AssetSymbol.id == UserAsset.asset_symbol_id)
-                .where(
-                    not_(
-                        Transaction.external_id.startswith(_RECONCILIATION_ID_PREFIX)
-                    )
-                )
+                .where(not_(Transaction.external_id.startswith(_RECONCILIATION_ID_PREFIX)))
             )
         ).all()
         for tx_type, qty, price, currency in trade_rows:
@@ -99,11 +91,7 @@ class CashFlowService:
                 balances[currency] = balances.get(currency, _ZERO) + gross
 
         # 3) dividends (always positive)
-        div_rows = (
-            await self._session.execute(
-                select(Dividend.amount, Dividend.currency)
-            )
-        ).all()
+        div_rows = (await self._session.execute(select(Dividend.amount, Dividend.currency))).all()
         for amount, currency in div_rows:
             balances[currency] = balances.get(currency, _ZERO) + amount
 
@@ -112,7 +100,7 @@ class CashFlowService:
     async def net_cash_by_source_and_currency(self) -> dict[str, dict[str, Decimal]]:
         """Return ``{source: {currency: balance}}`` — per-broker cash balance.
 
-        Source identifiers (``toss_securities``, ``shinhan``, ``upbit``, …)
+        Source identifiers (``toss_investment``, ``shinhan_investment``, ``upbit``, …)
         come from ``cash_account_transactions.external_source`` for cash-flow
         events and from ``transactions.external_source`` / ``dividends.external_source``
         for trade-driven balance changes. Rows with no source (manually added)
@@ -152,11 +140,7 @@ class CashFlowService:
                 )
                 .join(UserAsset, UserAsset.id == Transaction.user_asset_id)
                 .join(AssetSymbol, AssetSymbol.id == UserAsset.asset_symbol_id)
-                .where(
-                    not_(
-                        Transaction.external_id.startswith(_RECONCILIATION_ID_PREFIX)
-                    )
-                )
+                .where(not_(Transaction.external_id.startswith(_RECONCILIATION_ID_PREFIX)))
             )
         ).all()
         for tx_type, qty, price, currency, source in trade_rows:

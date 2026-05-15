@@ -1,6 +1,6 @@
 import { apiClient } from "@/lib/api-client";
 
-export type ImportSource = "toss_securities" | "shinhan";
+export type ImportSource = "toss_investment" | "shinhan_investment" | "k_bank";
 
 export interface ImportPreviewItem {
   type: "ParsedTrade" | "ParsedDividend" | "ParsedCashTx";

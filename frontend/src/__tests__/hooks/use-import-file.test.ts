@@ -69,7 +69,7 @@ describe("useImportFile", () => {
       const { result } = renderHook(() => useImportFile(), { wrapper: Wrapper });
 
       act(() => {
-        result.current.mutate({ source: "toss_securities", file: fakeFile, dryRun: true });
+        result.current.mutate({ source: "toss_investment", file: fakeFile, dryRun: true });
       });
 
       await waitFor(() => expect(result.current.isSuccess).toBe(true));
@@ -82,7 +82,7 @@ describe("useImportFile", () => {
       const { result } = renderHook(() => useImportFile(), { wrapper: Wrapper });
 
       act(() => {
-        result.current.mutate({ source: "toss_securities", file: fakeFile, dryRun: true });
+        result.current.mutate({ source: "toss_investment", file: fakeFile, dryRun: true });
       });
 
       await waitFor(() => expect(result.current.isSuccess).toBe(true));
@@ -95,7 +95,7 @@ describe("useImportFile", () => {
       const { result } = renderHook(() => useImportFile(), { wrapper: Wrapper });
 
       act(() => {
-        result.current.mutate({ source: "toss_securities", file: fakeFile, dryRun: true });
+        result.current.mutate({ source: "toss_investment", file: fakeFile, dryRun: true });
       });
 
       await waitFor(() => expect(result.current.isSuccess).toBe(true));
@@ -112,7 +112,7 @@ describe("useImportFile", () => {
       const { result } = renderHook(() => useImportFile(), { wrapper: Wrapper });
 
       act(() => {
-        result.current.mutate({ source: "toss_securities", file: fakeFile, dryRun: false });
+        result.current.mutate({ source: "toss_investment", file: fakeFile, dryRun: false });
       });
 
       await waitFor(() => expect(result.current.isSuccess).toBe(true));
@@ -128,7 +128,7 @@ describe("useImportFile", () => {
       const { result } = renderHook(() => useImportFile(), { wrapper: Wrapper });
 
       act(() => {
-        result.current.mutate({ source: "toss_securities", file: fakeFile, dryRun: false });
+        result.current.mutate({ source: "toss_investment", file: fakeFile, dryRun: false });
       });
 
       await waitFor(() => expect(result.current.isSuccess).toBe(true));
@@ -143,7 +143,7 @@ describe("useImportFile", () => {
       const { result } = renderHook(() => useImportFile(), { wrapper: Wrapper });
 
       act(() => {
-        result.current.mutate({ source: "toss_securities", file: fakeFile, dryRun: false });
+        result.current.mutate({ source: "toss_investment", file: fakeFile, dryRun: false });
       });
 
       await waitFor(() => expect(result.current.isSuccess).toBe(true));
@@ -168,7 +168,7 @@ describe("useImportFile", () => {
       const { result } = renderHook(() => useImportFile(), { wrapper: Wrapper });
 
       act(() => {
-        result.current.mutate({ source: "toss_securities", file: fakeFile, dryRun: false });
+        result.current.mutate({ source: "toss_investment", file: fakeFile, dryRun: false });
       });
 
       await waitFor(() => expect(result.current.isError).toBe(true));
@@ -183,7 +183,7 @@ describe("useImportFile", () => {
       const { result } = renderHook(() => useImportFile(), { wrapper: Wrapper });
 
       act(() => {
-        result.current.mutate({ source: "toss_securities", file: fakeFile, dryRun: false });
+        result.current.mutate({ source: "toss_investment", file: fakeFile, dryRun: false });
       });
 
       await waitFor(() => expect(result.current.isError).toBe(true));
@@ -196,7 +196,7 @@ describe("useImportFile", () => {
       const { result } = renderHook(() => useImportFile(), { wrapper: Wrapper });
 
       act(() => {
-        result.current.mutate({ source: "toss_securities", file: fakeFile, dryRun: false });
+        result.current.mutate({ source: "toss_investment", file: fakeFile, dryRun: false });
       });
 
       await waitFor(() => expect(result.current.isError).toBe(true));
@@ -209,7 +209,7 @@ describe("useImportFile", () => {
       const { result } = renderHook(() => useImportFile(), { wrapper: Wrapper });
 
       act(() => {
-        result.current.mutate({ source: "toss_securities", file: fakeFile, dryRun: false });
+        result.current.mutate({ source: "toss_investment", file: fakeFile, dryRun: false });
       });
 
       await waitFor(() => expect(result.current.isError).toBe(true));

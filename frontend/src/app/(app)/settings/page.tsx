@@ -91,21 +91,6 @@ export default function SettingsPage() {
 
       {/* 파일 가져오기 — ADDED */}
       <FileImportSection />
-
-      {/* 보안 카드 */}
-      <Card>
-        <CardHeader>
-          <CardTitle>보안</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-2">
-          <p className="text-sm text-muted-foreground">
-            비밀번호는 서버 환경변수로 관리됩니다.
-          </p>
-          <p className="text-sm text-muted-foreground">
-            비밀번호 변경은 서버 재배포가 필요합니다.
-          </p>
-        </CardContent>
-      </Card>
     </div>
   );
 }
