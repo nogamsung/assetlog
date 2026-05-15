@@ -5,7 +5,7 @@ import { formatCurrency } from "@/lib/format";
 
 const SOURCE_LABELS: Record<string, string> = {
   toss_investment: "토스증권",
-  shinhan_investment: "신한증권",
+  shinhan_investment: "신한투자증권",
   k_bank: "케이뱅크",
   upbit: "업비트",
   bithumb: "빗썸",
