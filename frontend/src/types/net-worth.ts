@@ -4,8 +4,11 @@ export interface NetWorthCurrencyEntry {
   total: string;
 }
 
+export type NetWorthByAccount = Record<string, Record<string, string>>;
+
 export interface NetWorthResponse {
   byCurrency: Record<string, NetWorthCurrencyEntry>;
+  byAccount: NetWorthByAccount;
   displayCurrency: string | null;
   convertedTotal: string | null;
 }

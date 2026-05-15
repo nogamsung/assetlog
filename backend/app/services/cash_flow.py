@@ -94,3 +94,65 @@ class CashFlowService:
             balances[currency] = balances.get(currency, _ZERO) + amount
 
         return balances
+
+    async def net_cash_by_source_and_currency(self) -> dict[str, dict[str, Decimal]]:
+        """Return ``{source: {currency: balance}}`` — per-broker cash balance.
+
+        Source identifiers (``toss_securities``, ``shinhan``, ``upbit``, …)
+        come from ``cash_account_transactions.external_source`` for cash-flow
+        events and from ``transactions.external_source`` / ``dividends.external_source``
+        for trade-driven balance changes. Rows with no source (manually added)
+        are grouped under ``"manual"``.
+        """
+        result: dict[str, dict[str, Decimal]] = {}
+
+        def _bump(src: str | None, ccy: str, delta: Decimal) -> None:
+            s = src or "manual"
+            by_cur = result.setdefault(s, {})
+            by_cur[ccy] = by_cur.get(ccy, _ZERO) + delta
+
+        cash_rows = (
+            await self._session.execute(
+                select(
+                    CashAccountTransaction.kind,
+                    CashAccountTransaction.amount,
+                    CashAccountTransaction.currency,
+                    CashAccountTransaction.external_source,
+                )
+            )
+        ).all()
+        for kind, amount, currency, source in cash_rows:
+            if kind in _POSITIVE_KINDS:
+                _bump(source, currency, amount)
+            elif kind in _NEGATIVE_KINDS:
+                _bump(source, currency, -amount)
+
+        trade_rows = (
+            await self._session.execute(
+                select(
+                    Transaction.type,
+                    Transaction.quantity,
+                    Transaction.price,
+                    AssetSymbol.currency,
+                    Transaction.external_source,
+                )
+                .join(UserAsset, UserAsset.id == Transaction.user_asset_id)
+                .join(AssetSymbol, AssetSymbol.id == UserAsset.asset_symbol_id)
+            )
+        ).all()
+        for tx_type, qty, price, currency, source in trade_rows:
+            gross = qty * price
+            if tx_type == TransactionType.BUY:
+                _bump(source, currency, -gross)
+            elif tx_type == TransactionType.SELL:
+                _bump(source, currency, gross)
+
+        div_rows = (
+            await self._session.execute(
+                select(Dividend.amount, Dividend.currency, Dividend.external_source)
+            )
+        ).all()
+        for amount, currency, source in div_rows:
+            _bump(source, currency, amount)
+
+        return result

@@ -21,7 +21,7 @@ DEFAULT_INDICES: tuple[IndexSpec, ...] = (
     ("^IXIC", "NASDAQ", "USD"),
     ("^KS11", "KOSPI", "KRW"),
     ("^KQ11", "KOSDAQ", "KRW"),
-    ("BTC-KRW", "비트코인 - upbit", "KRW"),
+    ("BTC-KRW", "비트코인", "KRW"),
 )
 
 

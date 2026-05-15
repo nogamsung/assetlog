@@ -42,10 +42,19 @@ function IndexCard({ quote }: { quote: IndexQuote }) {
   const changeNum = Number(quote.changePct);
   const sign = changeNum > 0 ? "+" : "";
   return (
-    <div className="flex min-w-[140px] flex-col gap-1 rounded-2xl border border-toss-border bg-toss-card p-4">
-      <p className="text-xs font-medium text-toss-textWeak">{quote.name}</p>
-      <p className="text-sm font-semibold text-toss-text">{formatIndexPrice(quote)}</p>
-      <p className={cn("text-xs font-medium", pnlColor(quote.changePct))}>
+    <div className="flex flex-col gap-1 rounded-2xl border border-toss-border bg-toss-card p-3 sm:p-4">
+      <p className="truncate text-xs font-medium text-toss-textWeak">
+        {quote.name}
+      </p>
+      <p className="truncate text-sm font-semibold text-toss-text tabular-nums">
+        {formatIndexPrice(quote)}
+      </p>
+      <p
+        className={cn(
+          "text-xs font-medium tabular-nums",
+          pnlColor(quote.changePct),
+        )}
+      >
         {Number.isNaN(changeNum)
           ? "—"
           : `${sign}${formatPercent(quote.changePct)}`}
@@ -59,12 +68,12 @@ function MarketIndicesSkeleton() {
     <div
       role="status"
       aria-label="지수 로딩 중"
-      className="flex gap-3 overflow-x-auto pb-1"
+      className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5"
     >
       {[0, 1, 2, 3, 4].map((i) => (
         <div
           key={i}
-          className="h-20 min-w-[140px] flex-shrink-0 rounded-2xl border border-toss-border bg-muted/40 animate-pulse"
+          className="h-20 rounded-2xl border border-toss-border bg-muted/40 animate-pulse"
         />
       ))}
     </div>
@@ -79,7 +88,7 @@ export function MarketIndicesStrip() {
 
   return (
     <section aria-label="주요 시장 지수">
-      <div className="flex gap-3 overflow-x-auto pb-1">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
         {data.map((quote) => (
           <IndexCard key={quote.symbol} quote={quote} />
         ))}
