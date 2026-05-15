@@ -14,7 +14,6 @@ const SOURCE_OPTIONS: { value: ImportSource; label: string }[] = [
   { value: "toss_investment", label: "토스증권" },
   { value: "shinhan_investment", label: "신한투자증권" },
   { value: "k_bank", label: "케이뱅크" },
-  { value: "upbit", label: "업비트" },
 ];
 
 interface AggregateResult {

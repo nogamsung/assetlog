@@ -37,11 +37,7 @@ _NEGATIVE_KINDS = frozenset({CashTxKind.WITHDRAW, CashTxKind.INTEREST_TAX, CashT
 # — they're BUY/SELL records used solely to align holdings with Upbit's
 # ``fetch_balance`` for coins the user moved in/out of an external wallet.
 # Real cash never changed hands, so they must NOT alter the cash balance.
-#
-# - ``upbit:adjust:``       emitted by ``UpbitAccountAdapter._balance_adjustments``
-# - ``upbit-pdf-transfer-`` emitted by the PDF parser for 디지털자산 입금/출금 rows
 _RECONCILIATION_ID_PREFIX = "upbit:adjust:"
-_PDF_TRANSFER_PREFIX = "upbit-pdf-transfer-"
 
 
 class CashFlowService:
@@ -84,10 +80,7 @@ class CashFlowService:
                 )
                 .join(UserAsset, UserAsset.id == Transaction.user_asset_id)
                 .join(AssetSymbol, AssetSymbol.id == UserAsset.asset_symbol_id)
-                .where(
-                    not_(Transaction.external_id.startswith(_RECONCILIATION_ID_PREFIX)),
-                    not_(Transaction.external_id.startswith(_PDF_TRANSFER_PREFIX)),
-                )
+                .where(not_(Transaction.external_id.startswith(_RECONCILIATION_ID_PREFIX)))
             )
         ).all()
         for tx_type, qty, price, currency in trade_rows:
@@ -147,10 +140,7 @@ class CashFlowService:
                 )
                 .join(UserAsset, UserAsset.id == Transaction.user_asset_id)
                 .join(AssetSymbol, AssetSymbol.id == UserAsset.asset_symbol_id)
-                .where(
-                    not_(Transaction.external_id.startswith(_RECONCILIATION_ID_PREFIX)),
-                    not_(Transaction.external_id.startswith(_PDF_TRANSFER_PREFIX)),
-                )
+                .where(not_(Transaction.external_id.startswith(_RECONCILIATION_ID_PREFIX)))
             )
         ).all()
         for tx_type, qty, price, currency, source in trade_rows:

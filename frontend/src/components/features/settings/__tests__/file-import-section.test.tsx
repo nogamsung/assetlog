@@ -85,7 +85,7 @@ describe("FileImportSection", () => {
     render(<FileImportSection />);
     const select = screen.getByLabelText("증권사 선택") as HTMLSelectElement;
     const labels = Array.from(select.options).map((o) => o.label);
-    expect(labels).toEqual(["토스증권", "신한투자증권", "케이뱅크", "업비트"]);
+    expect(labels).toEqual(["토스증권", "신한투자증권", "케이뱅크"]);
   });
 
   it("드롭존이 렌더링된다", () => {
