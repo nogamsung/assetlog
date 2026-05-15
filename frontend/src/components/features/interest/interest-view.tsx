@@ -3,6 +3,22 @@
 import { useInterestTransactions } from "@/hooks/use-cash-accounts";
 import { formatCurrency } from "@/lib/format";
 
+const SOURCE_LABELS: Record<string, string> = {
+  toss_investment: "토스증권",
+  shinhan_investment: "신한증권",
+  k_bank: "케이뱅크",
+  upbit: "업비트",
+  bithumb: "빗썸",
+  binance: "바이낸스",
+  kis: "한국투자증권",
+  manual: "수동 입력",
+};
+
+function formatSource(s: string | null | undefined): string {
+  if (!s) return "—";
+  return SOURCE_LABELS[s] ?? s;
+}
+
 function totalsByCurrency(
   rows: { amount: string; currency: string }[],
 ): Record<string, number> {
@@ -80,7 +96,7 @@ export function InterestView() {
                   {formatCurrency(r.amount, r.currency)}
                 </td>
                 <td className="px-3 py-2 text-muted-foreground">
-                  {r.externalSource ?? "—"}
+                  {formatSource(r.externalSource)}
                 </td>
               </tr>
             ))}

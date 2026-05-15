@@ -24,7 +24,7 @@ describe("InterestView", () => {
         amount: "290",
         currency: "KRW",
         tradedAt: "2025-05-30T15:00:00Z",
-        externalSource: "toss_securities",
+        externalSource: "toss_investment",
       },
       {
         id: 2,
@@ -33,7 +33,7 @@ describe("InterestView", () => {
         amount: "0.63",
         currency: "USD",
         tradedAt: "2026-01-30T15:00:00Z",
-        externalSource: "toss_securities",
+        externalSource: "toss_investment",
       },
     ]);
 

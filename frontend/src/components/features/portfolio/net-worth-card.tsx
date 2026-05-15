@@ -9,12 +9,13 @@ interface NetWorthCardProps {
 }
 
 const ACCOUNT_LABELS: Record<string, string> = {
-  toss_securities: "토스증권",
-  shinhan: "신한투자증권",
+  toss_investment: "토스증권",
+  shinhan_investment: "신한투자증권",
   upbit: "업비트",
   bithumb: "빗썸",
   binance: "바이낸스",
   kis: "한국투자증권",
+  k_bank: "케이뱅크",
   manual: "수동 입력",
 };
 

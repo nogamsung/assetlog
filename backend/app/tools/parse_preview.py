@@ -2,8 +2,8 @@
 
 Usage::
 
-    python -m app.tools.parse_preview --source toss_securities --file path/to.pdf
-    python -m app.tools.parse_preview --source toss_securities --file path/to.txt --format json
+    python -m app.tools.parse_preview --source toss_investment --file path/to.pdf
+    python -m app.tools.parse_preview --source toss_investment --file path/to.txt --format json
 """
 
 from __future__ import annotations
@@ -99,7 +99,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         description="Preview a broker statement file parse (no DB required)."
     )
-    parser.add_argument("--source", required=True, choices=["toss_securities"])
+    parser.add_argument("--source", required=True, choices=["toss_investment"])
     parser.add_argument("--file", required=True, type=Path)
     parser.add_argument("--format", choices=["table", "json"], default="table")
     args = parser.parse_args()
@@ -109,7 +109,7 @@ def main() -> None:
         print(f"File not found: {file_path}", file=sys.stderr)
         sys.exit(1)
 
-    if args.source == "toss_securities":
+    if args.source == "toss_investment":
         from app.adapters.parsers.toss_securities import parse_pdf, parse_text  # noqa: PLC0415
 
         if file_path.suffix.lower() == ".pdf":

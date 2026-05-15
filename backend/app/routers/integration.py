@@ -13,7 +13,9 @@ from app.schemas.integration import ImportFileResponse, SyncResultResponse
 
 router = APIRouter(prefix="/api/integrations", tags=["integrations"])
 
-_SUPPORTED_FILE_SOURCES: frozenset[str] = frozenset(["toss_securities", "shinhan"])
+_SUPPORTED_FILE_SOURCES: frozenset[str] = frozenset(
+    ["toss_investment", "shinhan_investment", "k_bank"]
+)
 
 
 @router.post(
@@ -59,9 +61,7 @@ async def sync_upbit(
     try:
         cash_rows = await adapter.fetch_cash_flow()
         if cash_rows:
-            await sync_service.upsert_cash_transactions(
-                ExchangeSource.UPBIT, cash_rows
-            )
+            await sync_service.upsert_cash_transactions(ExchangeSource.UPBIT, cash_rows)
     except Exception:  # noqa: BLE001
         pass
 
@@ -89,7 +89,7 @@ async def import_file(
     source: str = Query(
         ...,
         description="Broker identifier",
-        examples=["toss_securities"],
+        examples=["toss_investment"],
     ),
     dry_run: bool = Query(
         default=False,
@@ -110,9 +110,11 @@ async def import_file(
     if not file_bytes:
         raise ValidationError("Uploaded file is empty.")
 
-    if source == "shinhan":
+    if source == "shinhan_investment":
         from app.adapters.parsers.shinhan_securities import parse_pdf  # noqa: PLC0415
-    else:
+    elif source == "k_bank":
+        from app.adapters.parsers.k_bank import parse_pdf  # noqa: PLC0415
+    else:  # source == "toss_investment"
         from app.adapters.parsers.toss_securities import parse_pdf  # noqa: PLC0415
 
     try:

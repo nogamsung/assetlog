@@ -155,13 +155,14 @@ class CashAccountTransactionResponse(BaseModel):
     )
     kind: str = Field(..., description="Transaction kind", examples=["interest"])
     amount: Decimal = Field(
-        ..., description="Transaction amount (positive); for tax/withdraw the sign convention is documented in the kind."
+        ...,
+        description="Transaction amount (positive); for tax/withdraw the sign convention is documented in the kind.",
     )
     currency: str = Field(..., description="ISO 4217 currency code", examples=["KRW"])
     traded_at: datetime = Field(..., description="When the transaction occurred (UTC)")
     external_source: str | None = Field(
         default=None,
-        description="Origin tag set by file-imports (e.g. 'toss_securities')",
+        description="Origin tag set by file-imports (e.g. 'toss_investment')",
     )
 
     @field_serializer("amount")

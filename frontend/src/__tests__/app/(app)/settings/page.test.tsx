@@ -132,12 +132,10 @@ describe("SettingsPage", () => {
     expect(screen.getByRole("group", { name: "테마 선택" })).toBeInTheDocument();
   });
 
-  it("보안 카드가 렌더링된다", () => {
+  it("보안 카드는 더 이상 렌더링되지 않는다", () => {
     setupMocks();
     render(<SettingsPage />);
-    expect(screen.getByText("보안")).toBeInTheDocument();
-    expect(screen.getByText("비밀번호는 서버 환경변수로 관리됩니다.")).toBeInTheDocument();
-    expect(screen.getByText("비밀번호 변경은 서버 재배포가 필요합니다.")).toBeInTheDocument();
+    expect(screen.queryByText("보안")).not.toBeInTheDocument();
   });
 
   // ADDED

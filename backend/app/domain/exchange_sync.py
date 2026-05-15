@@ -16,9 +16,10 @@ class ExchangeSource(enum.StrEnum):
     UPBIT = "upbit"
     BITHUMB = "bithumb"
     BINANCE = "binance"
-    SHINHAN = "shinhan"
+    SHINHAN = "shinhan_investment"
     KIS = "kis"
-    TOSS_SECURITIES = "toss_securities"
+    TOSS_SECURITIES = "toss_investment"
+    K_BANK = "k_bank"
 
 
 @dataclass(frozen=True)
