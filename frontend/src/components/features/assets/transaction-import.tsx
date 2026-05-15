@@ -4,8 +4,10 @@ import { useRef, useState } from "react";
 import { isAxiosError } from "axios";
 import { useImportTransactionsCsv } from "@/hooks/use-transactions";
 import { formatDateKST } from "@/lib/datetime"; /* ADDED */
+import { formatCurrency, formatQuantity } from "@/lib/format";
 import { Button } from "@/components/ui/button";
 import type { CsvImportError, TransactionResponse } from "@/types/transaction";
+import type { AssetType } from "@/types/asset";
 
 // ── CSV 샘플 ─────────────────────────────────────────────────────────────────
 
@@ -63,12 +65,16 @@ function parseCsvPreview(text: string): { headers: string[]; rows: string[][] } 
 
 interface TransactionImportProps {
   userAssetId: number;
+  /** Symbol currency, used to format preview prices with thousands separators. */
+  currency: string;
+  /** Asset type, used to format preview quantities. */
+  assetType: AssetType;
   onSuccess?: () => void;
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
-export function TransactionImport({ userAssetId, onSuccess }: TransactionImportProps) {
+export function TransactionImport({ userAssetId, currency, assetType, onSuccess }: TransactionImportProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<{ headers: string[]; rows: string[][] } | null>(null);
@@ -276,8 +282,8 @@ export function TransactionImport({ userAssetId, onSuccess }: TransactionImportP
                 {successPreview.slice(0, 5).map((tx) => (
                   <tr key={tx.id} className="border-b last:border-0">
                     <td className="px-3 py-1.5">{tx.type === "buy" ? "매수" : "매도"}</td>
-                    <td className="px-3 py-1.5">{tx.quantity}</td>
-                    <td className="px-3 py-1.5">{tx.price}</td>
+                    <td className="px-3 py-1.5 tabular-nums">{formatQuantity(tx.quantity, assetType)}</td>
+                    <td className="px-3 py-1.5 tabular-nums">{formatCurrency(tx.price, currency)}</td>
                     <td className="px-3 py-1.5">{formatDateKST(tx.tradedAt)}</td> {/* MODIFIED */}
                     <td className="px-3 py-1.5">{tx.memo ?? "—"}</td>
                   </tr>

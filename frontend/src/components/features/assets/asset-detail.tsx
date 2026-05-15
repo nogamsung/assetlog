@@ -137,20 +137,29 @@ export function AssetDetail({ userAssetId }: AssetDetailProps) {
                 <dl className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm sm:grid-cols-3">
                   <div>
                     <dt className="text-muted-foreground">총 매수 수량</dt>
-                    <dd className="font-semibold mt-0.5">
-                      {summaryQuery.data.totalBoughtQuantity}
+                    <dd className="font-semibold mt-0.5 tabular-nums">
+                      {formatQuantity(
+                        summaryQuery.data.totalBoughtQuantity,
+                        holding?.assetSymbol.assetType ?? "kr_stock",
+                      )}
                     </dd>
                   </div>
                   <div>
                     <dt className="text-muted-foreground">총 매도 수량</dt>
-                    <dd className="font-semibold mt-0.5">
-                      {summaryQuery.data.totalSoldQuantity}
+                    <dd className="font-semibold mt-0.5 tabular-nums">
+                      {formatQuantity(
+                        summaryQuery.data.totalSoldQuantity,
+                        holding?.assetSymbol.assetType ?? "kr_stock",
+                      )}
                     </dd>
                   </div>
                   <div>
                     <dt className="text-muted-foreground">남은 수량</dt>
-                    <dd className="font-semibold mt-0.5">
-                      {summaryQuery.data.remainingQuantity}
+                    <dd className="font-semibold mt-0.5 tabular-nums">
+                      {formatQuantity(
+                        summaryQuery.data.remainingQuantity,
+                        holding?.assetSymbol.assetType ?? "kr_stock",
+                      )}
                     </dd>
                   </div>
                   <div>
@@ -314,6 +323,8 @@ export function AssetDetail({ userAssetId }: AssetDetailProps) {
             <div className="rounded-lg border bg-muted/20 p-4">
               <TransactionImport
                 userAssetId={userAssetId}
+                currency={holding?.assetSymbol.currency ?? "KRW"}
+                assetType={holding?.assetSymbol.assetType ?? "kr_stock"}
                 onSuccess={() => setShowImportPanel(false)}
               />
             </div>
@@ -353,6 +364,8 @@ export function AssetDetail({ userAssetId }: AssetDetailProps) {
           )}
           <TransactionList
             userAssetId={userAssetId}
+            currency={holding?.assetSymbol.currency ?? "KRW"}
+            assetType={holding?.assetSymbol.assetType ?? "kr_stock"}
             onEdit={(tx) => {
               setShowAddForm(false);
               setShowImportPanel(false);
