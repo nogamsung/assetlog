@@ -2,6 +2,7 @@ import { apiClient } from "@/lib/api-client";
 import { snakeToCamel } from "@/lib/case";
 import type {
   TransactionResponse,
+  TransactionWithSymbolResponse,
   UserAssetSummaryResponse,
   TransactionImportResponse,
 } from "@/types/transaction";
@@ -60,6 +61,25 @@ export interface ListTransactionsParams {
 export async function listUserTags(): Promise<string[]> {  // ADDED
   const response = await apiClient.get<string[]>("/api/user-assets/transactions/tags");
   return response.data;
+}
+
+interface RawTransactionWithSymbolResponse extends RawTransactionResponse {
+  external_source: string | null;
+  external_id: string | null;
+  symbol: string;
+  asset_type: "kr_stock" | "us_stock" | "crypto";
+  currency: string;
+  name: string | null;
+  exchange: string | null;
+}
+
+export async function listAllTransactions(): Promise<TransactionWithSymbolResponse[]> {
+  const response = await apiClient.get<RawTransactionWithSymbolResponse[]>(
+    "/api/user-assets/transactions/all",
+  );
+  return response.data.map(
+    (r) => snakeToCamel(r) as unknown as TransactionWithSymbolResponse,
+  );
 }
 
 export async function createTransaction(

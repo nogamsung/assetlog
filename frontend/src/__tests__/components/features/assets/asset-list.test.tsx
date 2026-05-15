@@ -225,10 +225,12 @@ describe("AssetList", () => {
       renderAssetList();
       expect(screen.getByText("BTC")).toBeInTheDocument();
       expect(screen.getByText("Bitcoin")).toBeInTheDocument();
-      expect(screen.getByText("암호화폐")).toBeInTheDocument();
+      // "암호화폐" appears both as the section header and as the per-row
+      // AssetTypeBadge label — getAllByText handles either count.
+      expect(screen.getAllByText("암호화폐").length).toBeGreaterThan(0);
       expect(screen.getByText("005930")).toBeInTheDocument();
       expect(screen.getByText("삼성전자")).toBeInTheDocument();
-      expect(screen.getByText("국내주식")).toBeInTheDocument();
+      expect(screen.getAllByText("국내주식").length).toBeGreaterThan(0);
     });
 
     it("각 자산마다 삭제 버튼이 있다", () => {

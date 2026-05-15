@@ -11,6 +11,7 @@ from app.schemas.transaction import (
     TransactionImportResponse,
     TransactionResponse,
     TransactionUpdate,
+    TransactionWithSymbolResponse,
     UserAssetSummaryResponse,
 )
 
@@ -23,6 +24,27 @@ router = APIRouter(prefix="/api/user-assets", tags=["transactions"])
 # Static routes — MUST be declared before dynamic /{user_asset_id}/... routes
 # to prevent FastAPI from treating "transactions" as a path parameter value.
 # ---------------------------------------------------------------------------
+
+
+@router.get(
+    "/transactions/all",
+    response_model=list[TransactionWithSymbolResponse],
+    status_code=status.HTTP_200_OK,
+    summary="List every transaction across every holding (newest-first)",
+    responses={
+        401: {"model": ErrorResponse, "description": "Not authenticated"},
+    },
+)
+async def list_all_transactions(
+    _current_user: CurrentUser,
+    transaction_service: TransactionServiceDep,
+) -> list[TransactionWithSymbolResponse]:
+    """Return every BUY/SELL across every holding, joined to its symbol info.
+
+    Used by the global trade-history page that groups rows by asset_type.
+    """
+    rows = await transaction_service.list_all_with_symbol()
+    return [TransactionWithSymbolResponse.model_validate(r) for r in rows]
 
 
 @router.get(

@@ -106,6 +106,10 @@ class TransactionService:
         """Return distinct non-null tags across all transactions."""
         return await self._tx_repo.list_distinct_tags()
 
+    async def list_all_with_symbol(self) -> builtins.list[dict[str, object]]:
+        """Return every transaction joined to its symbol metadata."""
+        return await self._tx_repo.list_all_with_symbol()
+
     async def summary(
         self,
         user_asset_id: int,

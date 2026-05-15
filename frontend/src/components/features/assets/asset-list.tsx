@@ -77,74 +77,102 @@ export function AssetList() {
     }
   }
 
-  return (
-    <div className="space-y-2">
-      {holdings.map((holding) => {
-        const { assetSymbol, userAssetId } = holding;
-        const currency = assetSymbol.currency;
+  const SECTION_ORDER: { type: "kr_stock" | "us_stock" | "crypto"; label: string }[] = [
+    { type: "kr_stock", label: "국내주식" },
+    { type: "us_stock", label: "해외주식" },
+    { type: "crypto", label: "암호화폐" },
+  ];
+  const grouped = new Map<string, typeof holdings>();
+  for (const h of holdings) {
+    const key = h.assetSymbol.assetType;
+    const list = grouped.get(key) ?? [];
+    list.push(h);
+    grouped.set(key, list);
+  }
 
+  return (
+    <div className="space-y-6">
+      {SECTION_ORDER.map(({ type, label }) => {
+        const rows = grouped.get(type) ?? [];
+        if (rows.length === 0) return null;
         return (
-          <div
-            key={userAssetId}
-            className="flex items-center justify-between rounded-2xl border border-toss-border bg-toss-card px-4 py-3 active:scale-[0.99] transition-transform" /* MODIFIED: toss card */
+          <section
+            key={type}
+            aria-label={`${label} 보유 자산`}
+            className="space-y-2"
           >
-            <Link
-              href={`/assets/${userAssetId}`}
-              className="flex flex-1 items-center gap-4 min-w-0"
-              aria-label={`${assetSymbol.symbol} 상세 보기`}
-            >
-              <div className="min-w-0">
-                <p className="font-semibold text-sm">{assetSymbol.symbol}</p>
-                <p className="text-xs text-muted-foreground truncate">
-                  {assetSymbol.name}
-                </p>
-              </div>
-              <AssetTypeBadge assetType={assetSymbol.assetType} />
-              <div className="hidden sm:flex items-center gap-4 text-xs text-muted-foreground">
-                <span>{assetSymbol.exchange}</span>
-                <span>{assetSymbol.currency}</span>
-              </div>
-              <div className="hidden md:flex items-center gap-4 text-xs ml-auto mr-4">
-                <div className="text-right">
-                  <p className="text-muted-foreground">보유 수량</p>{/* MODIFIED */}
-                  <p className="font-medium tabular-nums">
-                    {formatQuantity(holding.quantity, assetSymbol.assetType)}
-                  </p>
+            <div className="flex items-baseline justify-between px-1">
+              <h2 className="text-sm font-bold text-toss-textStrong">{label}</h2>
+              <span className="text-xs text-muted-foreground">{rows.length}종목</span>
+            </div>
+            {rows.map((holding) => {
+              const { assetSymbol, userAssetId } = holding;
+              const currency = assetSymbol.currency;
+              return (
+                <div
+                  key={userAssetId}
+                  className="flex items-center justify-between rounded-2xl border border-toss-border bg-toss-card px-4 py-3 active:scale-[0.99] transition-transform"
+                >
+                  <Link
+                    href={`/assets/${userAssetId}`}
+                    className="flex flex-1 items-center gap-4 min-w-0"
+                    aria-label={`${assetSymbol.symbol} 상세 보기`}
+                  >
+                    <div className="min-w-0">
+                      <p className="font-semibold text-sm">{assetSymbol.symbol}</p>
+                      <p className="text-xs text-muted-foreground truncate">
+                        {assetSymbol.name}
+                      </p>
+                    </div>
+                    <AssetTypeBadge assetType={assetSymbol.assetType} />
+                    <div className="hidden sm:flex items-center gap-4 text-xs text-muted-foreground">
+                      <span>{assetSymbol.exchange}</span>
+                      <span>{assetSymbol.currency}</span>
+                    </div>
+                    <div className="hidden md:flex items-center gap-4 text-xs ml-auto mr-4">
+                      <div className="text-right">
+                        <p className="text-muted-foreground">보유 수량</p>
+                        <p className="font-medium tabular-nums">
+                          {formatQuantity(holding.quantity, assetSymbol.assetType)}
+                        </p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-muted-foreground">평단가</p>
+                        <p className="font-medium tabular-nums">
+                          {formatCurrency(holding.avgCost, currency)}
+                        </p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-muted-foreground">현재가</p>
+                        <p className="font-medium tabular-nums">
+                          {holding.latestPrice !== null
+                            ? formatCurrency(holding.latestPrice, currency)
+                            : "—"}
+                        </p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-muted-foreground">평가액</p>
+                        <p className="font-medium tabular-nums">
+                          {holding.latestValue !== null
+                            ? formatCurrency(holding.latestValue, currency)
+                            : "—"}
+                        </p>
+                      </div>
+                    </div>
+                  </Link>
+                  <Button
+                    variant="ghost"
+                    size="icon-touch"
+                    onClick={() => handleDelete(userAssetId, assetSymbol.symbol)}
+                    disabled={deleteMutation.isPending}
+                    aria-label={`${assetSymbol.symbol} 삭제`}
+                  >
+                    <Trash2 className="h-4 w-4 text-destructive" aria-hidden="true" />
+                  </Button>
                 </div>
-                <div className="text-right">
-                  <p className="text-muted-foreground">평단가</p>
-                  <p className="font-medium tabular-nums">
-                    {formatCurrency(holding.avgCost, currency)}
-                  </p>
-                </div>
-                <div className="text-right">
-                  <p className="text-muted-foreground">현재가</p>
-                  <p className="font-medium tabular-nums">
-                    {holding.latestPrice !== null
-                      ? formatCurrency(holding.latestPrice, currency)
-                      : "—"}
-                  </p>
-                </div>
-                <div className="text-right">
-                  <p className="text-muted-foreground">평가액</p>
-                  <p className="font-medium tabular-nums">
-                    {holding.latestValue !== null
-                      ? formatCurrency(holding.latestValue, currency)
-                      : "—"}
-                  </p>
-                </div>
-              </div>
-            </Link>
-            <Button
-              variant="ghost"
-              size="icon-touch" /* MODIFIED: 44px tap target */
-              onClick={() => handleDelete(userAssetId, assetSymbol.symbol)}
-              disabled={deleteMutation.isPending}
-              aria-label={`${assetSymbol.symbol} 삭제`}
-            >
-              <Trash2 className="h-4 w-4 text-destructive" aria-hidden="true" />
-            </Button>
-          </div>
+              );
+            })}
+          </section>
         );
       })}
     </div>

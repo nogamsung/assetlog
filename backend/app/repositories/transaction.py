@@ -253,6 +253,49 @@ class TransactionRepository:
         result = await self._session.execute(stmt)
         return list(result.scalars().all())
 
+    async def list_all_with_symbol(self) -> list[dict[str, object]]:
+        """Return every transaction joined to its AssetSymbol metadata.
+
+        Each row is a plain dict so the router can hand it straight to the
+        Pydantic response model without lazy-loading the symbol relationship
+        (``lazy="raise"`` is set on AssetSymbol). Newest-first by traded_at.
+        """
+        from app.models.asset_symbol import AssetSymbol  # noqa: PLC0415
+        from app.models.user_asset import UserAsset  # noqa: PLC0415
+
+        stmt = (
+            select(Transaction, AssetSymbol)
+            .join(UserAsset, UserAsset.id == Transaction.user_asset_id)
+            .join(AssetSymbol, AssetSymbol.id == UserAsset.asset_symbol_id)
+            .order_by(Transaction.traded_at.desc())
+        )
+        result = await self._session.execute(stmt)
+        rows: list[dict[str, object]] = []
+        for tx, sym in result.all():
+            rows.append(
+                {
+                    "id": tx.id,
+                    "user_asset_id": tx.user_asset_id,
+                    "type": tx.type,
+                    "quantity": tx.quantity,
+                    "price": tx.price,
+                    "traded_at": tx.traded_at,
+                    "memo": tx.memo,
+                    "tag": tx.tag,
+                    "external_source": tx.external_source,
+                    "external_id": tx.external_id,
+                    "symbol": sym.symbol,
+                    "asset_type": sym.asset_type.value
+                    if hasattr(sym.asset_type, "value")
+                    else str(sym.asset_type),
+                    "currency": sym.currency,
+                    "name": sym.name,
+                    "exchange": sym.exchange,
+                    "created_at": tx.created_at,
+                }
+            )
+        return rows
+
     async def list_distinct_tags(self) -> list[str]:
         """Return distinct non-null tags across all transactions.
 
