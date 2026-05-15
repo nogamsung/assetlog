@@ -9,6 +9,7 @@ interface RawCurrencyEntry {
 
 interface RawNetWorthResponse {
   by_currency: Record<string, RawCurrencyEntry>;
+  by_account: Record<string, Record<string, string>>;
   display_currency: string | null;
   converted_total: string | null;
 }
@@ -22,6 +23,7 @@ export async function getNetWorth(
   );
   return {
     byCurrency: data.by_currency,
+    byAccount: data.by_account ?? {},
     displayCurrency: data.display_currency,
     convertedTotal: data.converted_total,
   };

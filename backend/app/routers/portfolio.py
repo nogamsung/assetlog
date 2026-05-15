@@ -365,6 +365,7 @@ async def get_portfolio_net_worth(
 
     holdings = await portfolio_service.get_holdings()
     cash_by_currency = await cash_flow_service.net_cash_by_currency()
+    cash_by_source = await cash_flow_service.net_cash_by_source_and_currency()
 
     holdings_by_currency: dict[str, Decimal] = {}
     for h in holdings:
@@ -384,6 +385,10 @@ async def get_portfolio_net_worth(
             "total": str(cash + assets),
         }
 
+    by_account: dict[str, dict[str, str]] = {}
+    for source, ccy_map in cash_by_source.items():
+        by_account[source] = {c: str(v) for c, v in ccy_map.items()}
+
     converted_total: str | None = None
     if display_currency is not None:
         target = display_currency.upper()
@@ -395,12 +400,12 @@ async def get_portfolio_net_worth(
                 converted = await fx_service.convert(Decimal(entry["total"]), cur, target)
                 grand_total += converted
             except FxRateNotAvailableError:
-                # Skip currencies without an FX rate — total is partial.
                 continue
         converted_total = str(grand_total)
 
     return {
         "by_currency": breakdown,
+        "by_account": by_account,
         "display_currency": display_currency.upper() if display_currency else None,
         "converted_total": converted_total,
     }

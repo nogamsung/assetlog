@@ -8,6 +8,16 @@ interface NetWorthCardProps {
   displayCurrency?: string;
 }
 
+const ACCOUNT_LABELS: Record<string, string> = {
+  toss_securities: "토스증권",
+  shinhan: "신한투자증권",
+  upbit: "업비트",
+  bithumb: "빗썸",
+  binance: "바이낸스",
+  kis: "한국투자증권",
+  manual: "수동 입력",
+};
+
 export function NetWorthCard({ displayCurrency }: NetWorthCardProps) {
   const { data, isLoading, isError } = useNetWorth(displayCurrency);
 
@@ -80,6 +90,50 @@ export function NetWorthCard({ displayCurrency }: NetWorthCardProps) {
             </tbody>
           </table>
         </div>
+
+        {Object.keys(data.byAccount).length > 0 && (
+          <div className="space-y-2">
+            <p className="text-xs font-medium text-toss-textWeak">
+              계좌별 현금 잔액
+            </p>
+            <div className="overflow-x-auto rounded-md border">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b bg-muted/30 text-left text-xs uppercase text-muted-foreground">
+                    <th className="px-3 py-2 font-medium">계좌</th>
+                    <th className="px-3 py-2 text-right font-medium">잔액</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {Object.entries(data.byAccount)
+                    .sort(([a], [b]) => a.localeCompare(b))
+                    .flatMap(([source, ccyMap]) =>
+                      Object.entries(ccyMap)
+                        .sort(([a], [b]) => a.localeCompare(b))
+                        .map(([ccy, amount]) => (
+                          <tr
+                            key={`${source}-${ccy}`}
+                            className="border-b last:border-0"
+                          >
+                            <td className="px-3 py-2">
+                              <span className="font-medium">
+                                {ACCOUNT_LABELS[source] ?? source}
+                              </span>
+                              <span className="ml-2 rounded bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">
+                                {ccy}
+                              </span>
+                            </td>
+                            <td className="px-3 py-2 text-right tabular-nums font-medium">
+                              {formatCurrency(amount, ccy)}
+                            </td>
+                          </tr>
+                        )),
+                    )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
       </CardContent>
     </Card>
   );
