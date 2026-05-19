@@ -77,12 +77,22 @@ class TransactionRepository:
         """Return all transactions for a UserAsset ordered by traded_at ASC.
 
         Used by import_csv to perform running-balance validation against existing
-        transactions before bulk-inserting new ones.
+        transactions before bulk-inserting new ones, and by ``TransactionService.summary``
+        to compute the moving-weighted-average remaining quantity / cost basis.
+
+        When traded_at ties (parser collapses every same-day Toss/Shinhan row to
+        KST midnight), BUY must precede SELL — you can't flush cost from an
+        empty inventory. Without this, an existing row block of SELL/SELL/BUY
+        with low SELL ids leaves a phantom holding.
         """
         stmt = (
             select(Transaction)
             .where(Transaction.user_asset_id == user_asset_id)
-            .order_by(Transaction.traded_at.asc())
+            .order_by(
+                Transaction.traded_at.asc(),
+                case((Transaction.type == TransactionType.BUY, 0), else_=1),
+                Transaction.id.asc(),
+            )
         )
         result = await self._session.execute(stmt)
         return list(result.scalars().all())
@@ -231,7 +241,13 @@ class TransactionRepository:
         stmt = (
             select(Transaction)
             .where(Transaction.user_asset_id.in_(user_asset_ids))
-            .order_by(Transaction.user_asset_id.asc(), Transaction.traded_at.asc())
+            .order_by(
+                Transaction.user_asset_id.asc(),
+                Transaction.traded_at.asc(),
+                # Same-minute BUY before SELL — see list_all_for_user_asset.
+                case((Transaction.type == TransactionType.BUY, 0), else_=1),
+                Transaction.id.asc(),
+            )
         )
         result = await self._session.execute(stmt)
         txs = list(result.scalars().all())
