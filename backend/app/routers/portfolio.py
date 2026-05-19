@@ -390,6 +390,8 @@ async def get_portfolio_net_worth(
         by_account[source] = {c: str(v) for c, v in ccy_map.items()}
 
     converted_total: str | None = None
+    converted_partial: bool = False
+    missing_fx: list[str] = []
     if display_currency is not None:
         target = display_currency.upper()
         from app.exceptions import FxRateNotAvailableError  # noqa: PLC0415
@@ -400,6 +402,10 @@ async def get_portfolio_net_worth(
                 converted = await fx_service.convert(Decimal(entry["total"]), cur, target)
                 grand_total += converted
             except FxRateNotAvailableError:
+                # Surface the gap so the dashboard can warn instead of silently
+                # under-reporting net worth when a currency's FX is missing.
+                converted_partial = True
+                missing_fx.append(cur)
                 continue
         converted_total = str(grand_total)
 
@@ -408,4 +414,6 @@ async def get_portfolio_net_worth(
         "by_account": by_account,
         "display_currency": display_currency.upper() if display_currency else None,
         "converted_total": converted_total,
+        "converted_partial": converted_partial,
+        "missing_fx_currencies": missing_fx,
     }

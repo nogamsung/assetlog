@@ -194,6 +194,52 @@ class TestTimezone:
         assert sample.traded_at.hour == 15
 
 
+class TestFxCashAmount:
+    """KRW cash-flow amount must come from the 거래대금 column, not the FX rate.
+
+    Pre-fix the parser scanned for the first positive number — for 환전원화*
+    rows that's the FX rate (~1,300–1,500), so a 4,999,998 KRW conversion was
+    recorded as ~1,500 KRW and millions of KRW that had been swapped to USD
+    still showed up as cash.
+    """
+
+    def test_krw_fx_transfer_uses_amount_not_rate(self, parse_result) -> None:  # type: ignore[no-untyped-def]
+        """환전원화* rows must record the KRW principal, not the FX rate."""
+        from decimal import Decimal
+
+        fx_transfers = [
+            r
+            for r in parse_result.records
+            if isinstance(r, ParsedCashTx)
+            and r.currency == "KRW"
+            and r.kind.value in {"transfer_in", "transfer_out"}
+        ]
+        assert len(fx_transfers) >= 5
+        # An FX rate sits in 1,300–1,600 KRW/USD with cents. Real FX
+        # principals are whole-won integers — a recorded amount that is both
+        # in that band AND non-integer would only come from picking the rate.
+        for tx in fx_transfers:
+            in_rate_band = Decimal("1200") <= tx.amount <= Decimal("1700")
+            non_integer = tx.amount != tx.amount.to_integral_value()
+            assert not (in_rate_band and non_integer), (
+                f"transfer amount {tx.amount} looks like an FX rate, not a principal"
+            )
+
+    def test_known_fx_principal_matches_pdf(self, parse_result) -> None:  # type: ignore[no-untyped-def]
+        """2025.07.10 환전원화출금 1,384.64 → 895,985 KRW principal."""
+        from decimal import Decimal
+
+        matching = [
+            r
+            for r in parse_result.records
+            if isinstance(r, ParsedCashTx)
+            and r.currency == "KRW"
+            and r.kind.value == "transfer_out"
+            and r.amount == Decimal("895985")
+        ]
+        assert matching, "expected a 895,985 KRW transfer_out matching the PDF row"
+
+
 class TestSameMinuteRoundTrip:
     """Same-day BUY/SELL pairs that net to zero must surface BUYs first.
 

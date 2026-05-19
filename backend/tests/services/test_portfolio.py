@@ -384,9 +384,13 @@ class TestPortfolioServiceGetSummary:
         because their numeric values live in different unit systems.
         """
         # US: 5 shares × 200 USD = 1,000 USD  → 1,400,000 KRW @ 1,400
-        sym_us = _make_symbol(1, "AAPL", "USD", AssetType.US_STOCK, Decimal("200"), datetime.now(UTC))
+        sym_us = _make_symbol(
+            1, "AAPL", "USD", AssetType.US_STOCK, Decimal("200"), datetime.now(UTC)
+        )
         # KR: 10 shares × 80,000 KRW = 800,000 KRW
-        sym_kr = _make_symbol(2, "005930", "KRW", AssetType.KR_STOCK, Decimal("80000"), datetime.now(UTC))
+        sym_kr = _make_symbol(
+            2, "005930", "KRW", AssetType.KR_STOCK, Decimal("80000"), datetime.now(UTC)
+        )
         rows = [
             _make_row(1, "5", "800", sym_us),
             _make_row(2, "10", "70000", sym_kr),
@@ -403,8 +407,12 @@ class TestPortfolioServiceGetSummary:
 
     async def test_allocation_falls_back_to_native_when_fx_missing(self) -> None:
         """If FX rates are unavailable, allocation degrades to native sums."""
-        sym_us = _make_symbol(1, "AAPL", "USD", AssetType.US_STOCK, Decimal("100"), datetime.now(UTC))
-        sym_kr = _make_symbol(2, "005930", "KRW", AssetType.KR_STOCK, Decimal("1000"), datetime.now(UTC))
+        sym_us = _make_symbol(
+            1, "AAPL", "USD", AssetType.US_STOCK, Decimal("100"), datetime.now(UTC)
+        )
+        sym_kr = _make_symbol(
+            2, "005930", "KRW", AssetType.KR_STOCK, Decimal("1000"), datetime.now(UTC)
+        )
         rows = [_make_row(1, "1", "90", sym_us), _make_row(2, "1", "900", sym_kr)]
         # fx_service=None — no rates available
         svc = _make_service(rows, fx_service=None)
@@ -473,6 +481,21 @@ class TestPortfolioServiceGetSummary:
 
         summary = await svc.get_summary()
         assert summary.realized_pnl_by_currency.get("KRW") == "1000"
+
+    async def test_pnl_은_cash를_포함하지_않음(self) -> None:
+        """pnl_abs must be assets_value - cost, not (assets + cash) - cost.
+
+        Pre-fix the cash merge happened before PnL, inflating pnl_abs by
+        exactly the cash balance per currency.
+        """
+        sym = _make_symbol(last_price=Decimal("110"), refreshed_at=datetime.now(UTC))
+        row = _make_row(total_qty="10", total_cost="1000", symbol=sym)
+        # assets value = 1100, cost = 1000 → true pnl = 100, regardless of cash.
+        svc = _make_service([row], cash_totals={"KRW": Decimal("5000000")})
+
+        summary = await svc.get_summary()
+        krw_pnl = summary.pnl_by_currency["KRW"]
+        assert krw_pnl.abs == Decimal("100")
 
 
 # ---------------------------------------------------------------------------

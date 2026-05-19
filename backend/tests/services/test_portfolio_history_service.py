@@ -297,6 +297,33 @@ class TestPortfolioHistoryServiceSell:
         # cost_basis = avg_buy(1000) × remaining_qty(3) = 3000
         assert last.cost_basis == Decimal("3000")
 
+    async def test_부분_SELL후_재BUY는_avg_재계산(self) -> None:
+        """Partial SELL must flush its share of cost so a re-BUY at a different
+        price doesn't blend with the original avg.
+
+        BUY 100 @ 10 → SELL 80 → BUY 20 @ 30 ⇒ remaining qty 40, cost 800.
+        Pre-fix cumulative_buy_qty was never reduced on SELL so avg_price was
+        anchored at (1000+600)/120 ≈ 13.33 → cost_basis 13.33 × 40 ≈ 533.
+        """
+        now = _now()
+        buy1 = now - timedelta(hours=5)
+        sell1 = now - timedelta(hours=3)
+        buy2 = now - timedelta(hours=1)
+        price_ts = now - timedelta(minutes=10)
+
+        txs = [
+            _make_tx(1, "100", "10", buy1, TransactionType.BUY),
+            _make_tx(1, "80", "12", sell1, TransactionType.SELL),
+            _make_tx(1, "20", "30", buy2, TransactionType.BUY),
+        ]
+        price_index = {1: [(price_ts, Decimal("25"))]}
+
+        svc = _make_service(txs, price_index)
+        result = await svc.get_history(HistoryPeriod.ONE_DAY, "KRW")
+        last = result.points[-1]
+        # remaining: 20 (from BUY1, cost 10 each = 200) + 20 (from BUY2 @ 30 = 600) = 800
+        assert last.cost_basis == Decimal("800")
+
     async def test_전량_SELL후_value_0(self) -> None:
         now = _now()
         buy_time = now - timedelta(hours=4)
