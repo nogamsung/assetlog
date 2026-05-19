@@ -194,6 +194,44 @@ class TestTimezone:
         assert sample.traded_at.hour == 15
 
 
+class TestCancellationPrefix:
+    """``환전외화입금취소`` must route to ``transfer_out``, not ``transfer_in``.
+
+    The kind string starts with ``환전외화입금`` so a naive iteration of
+    ``_USD_CASH_FLOW_MAP`` (insertion order) hits the deposit handler first
+    and double-counts every cancellation as a credit. Order-by-length keeps
+    the specific kind winning.
+    """
+
+    def test_cancellation_is_transfer_out(self, parse_result) -> None:  # type: ignore[no-untyped-def]
+        cancels = [
+            r
+            for r in parse_result.records
+            if isinstance(r, ParsedCashTx) and r.kind.value == "transfer_in" and r.currency == "USD"
+        ]
+        # No deposit-flavored record should have been emitted with the cancel
+        # amount. Concretely: the fixture's 2025.07.11 cancellation is
+        # ($ 647.09), which is also the corresponding 2025.07.10 deposit
+        # amount. After the fix there is one transfer_in at 647.09 (the
+        # deposit) and a transfer_out (the cancellation) — never two
+        # transfer_ins at the same amount on consecutive days.
+        from decimal import Decimal
+
+        # The cancellation must show up under transfer_out, not transfer_in.
+        outs = [
+            r
+            for r in parse_result.records
+            if isinstance(r, ParsedCashTx)
+            and r.kind.value == "transfer_out"
+            and r.currency == "USD"
+            and r.amount == Decimal("647.09")
+        ]
+        assert outs, "expected a USD transfer_out at $647.09 from 환전외화입금취소"
+        # And the deposit pair still exists.
+        ins = [r for r in cancels if r.amount == Decimal("647.09")]
+        assert ins, "expected the matching 환전외화입금 transfer_in at $647.09"
+
+
 class TestFxCashAmount:
     """KRW cash-flow amount must come from the 거래대금 column, not the FX rate.
 

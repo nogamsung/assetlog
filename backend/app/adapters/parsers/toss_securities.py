@@ -100,6 +100,20 @@ _USD_CASH_FLOW_MAP: dict[str, tuple[str, str]] = {
 }
 
 
+def _ordered_cash_flow_items(
+    mapping: dict[str, tuple[str, str]],
+) -> list[tuple[str, tuple[str, str]]]:
+    """Return ``mapping`` items sorted by key length descending.
+
+    Cash-flow kinds match by prefix (``이체입금(카카오뱅크)`` → ``이체입금``), but
+    some longer kinds are themselves super-strings of shorter ones —
+    ``환전외화입금취소`` starts with ``환전외화입금``. Iterating insertion order
+    routes the cancellation to the deposit handler and double-counts USD
+    cash inflow. Longest-first ensures the specific kind wins.
+    """
+    return sorted(mapping.items(), key=lambda kv: len(kv[0]), reverse=True)
+
+
 # ----- Helper utilities ---------------------------------------------------------
 
 
@@ -279,8 +293,10 @@ def _parse_krw_line(line: str, result: ParseResult) -> None:
     traded_at = _kst_midnight_utc(date_str)
 
     # Cash-flow event (이체/환전/세금/이벤트). The 거래구분 may have a bank-name
-    # suffix like ``이체출금(카카오뱅크)`` so we match by prefix.
-    for prefix, (cash_kind, cur) in _KRW_CASH_FLOW_MAP.items():
+    # suffix like ``이체출금(카카오뱅크)`` so we match by prefix — longest first
+    # so e.g. ``환전외화입금취소`` doesn't get swallowed by the ``환전외화입금``
+    # prefix and recorded as a deposit instead of a cancellation.
+    for prefix, (cash_kind, cur) in _ordered_cash_flow_items(_KRW_CASH_FLOW_MAP):
         if kind_raw.startswith(prefix):
             _emit_krw_cash_flow(
                 date_str, kind_raw, cash_kind, cur, numeric_tokens, traded_at, result
@@ -462,7 +478,8 @@ def _parse_usd_block(line1: str, line2: str, result: ParseResult) -> None:
 
     # USD-section cash-flow event (환전외화 입금/출금/취소). Take the USD amount
     # from the first ($ …) on line2 if available; fall back to the KRW amount.
-    for prefix, (cash_kind, cur) in _USD_CASH_FLOW_MAP.items():
+    # Longest prefix first — see _ordered_cash_flow_items.
+    for prefix, (cash_kind, cur) in _ordered_cash_flow_items(_USD_CASH_FLOW_MAP):
         if kind_raw.startswith(prefix):
             usd_values_local = _extract_usd_paren_values(line2)
             amount: Decimal | None = None
