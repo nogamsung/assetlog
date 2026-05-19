@@ -20,6 +20,7 @@ from __future__ import annotations
 import hashlib
 import logging
 import re
+from collections import defaultdict
 from datetime import UTC, datetime
 from decimal import Decimal, InvalidOperation
 from zoneinfo import ZoneInfo
@@ -491,9 +492,7 @@ def _parse_usd_block(line1: str, line2: str, result: ParseResult) -> None:
         # captures the "ETF" (or similar) tail that belongs to the name plus
         # the code in parens.
         paren_idx = l2_stripped.find("($")
-        l2_name_part = (
-            l2_stripped[:paren_idx].strip() if paren_idx > 0 else l2_stripped
-        )
+        l2_name_part = l2_stripped[:paren_idx].strip() if paren_idx > 0 else l2_stripped
         if _ISIN_RE.search(l2_name_part) or _KR_CODE_RE.search(l2_name_part):
             final_name_code = f"{name_code} {l2_name_part}".strip()
 
@@ -606,6 +605,53 @@ def _is_usd_continuation(line: str) -> bool:
     return False
 
 
+# ----- Same-minute round-trip reordering ----------------------------------------
+
+
+def _reorder_same_minute_round_trips(
+    records: list[ParsedTrade | ParsedDividend | ParsedCashTx],
+) -> None:
+    """When BUY and SELL of the same symbol share an identical ``traded_at`` and
+    their quantities net to zero, move BUYs ahead of SELLs (stable within each).
+
+    Toss's PDF lists same-day trades in reverse chronological order while the
+    parser collapses every same-day trade to KST midnight — so without this
+    pass, a same-day round trip lands in the DB as ``SELL, SELL, BUY`` and the
+    moving-average cost-basis walker (which sorts by ``traded_at, id``) cannot
+    flush the SELLs against an empty inventory. The BUY then leaves a phantom
+    holding. Reordering to BUYs-first lets the walker flush correctly and end
+    at qty 0.
+
+    Only applied when the same-minute net qty is zero — partial closes are
+    left untouched so realized-PnL math on those does not change.
+    """
+    groups: dict[tuple[datetime, str], list[int]] = defaultdict(list)
+    for idx, rec in enumerate(records):
+        if isinstance(rec, ParsedTrade):
+            groups[(rec.traded_at, rec.symbol)].append(idx)
+
+    for indices in groups.values():
+        if len(indices) < 2:
+            continue
+        trades: list[ParsedTrade] = [
+            r for r in (records[i] for i in indices) if isinstance(r, ParsedTrade)
+        ]
+        buy_qty = sum(
+            (t.quantity for t in trades if t.side == TransactionType.BUY),
+            Decimal("0"),
+        )
+        sell_qty = sum(
+            (t.quantity for t in trades if t.side == TransactionType.SELL),
+            Decimal("0"),
+        )
+        if buy_qty == 0 or buy_qty != sell_qty:
+            continue
+        buys = [t for t in trades if t.side == TransactionType.BUY]
+        sells = [t for t in trades if t.side == TransactionType.SELL]
+        for slot, trade in zip(indices, buys + sells, strict=True):
+            records[slot] = trade
+
+
 # ----- Main parse_text ----------------------------------------------------------
 
 
@@ -676,6 +722,8 @@ def parse_text(text: str) -> ParseResult:
                 i += 1
         else:
             i += 1
+
+    _reorder_same_minute_round_trips(result.records)
 
     logger.info(
         "toss_securities parse complete",

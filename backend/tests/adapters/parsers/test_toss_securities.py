@@ -114,9 +114,7 @@ class TestUsStock:
         assert trade.price < 1000
         # Quantity must be the share count, NOT the FX rate (~1,300–1,500).
         for t in amd_trades:
-            assert t.quantity < Decimal("1000"), (
-                f"AMD qty looks like FX rate: {t.quantity}"
-            )
+            assert t.quantity < Decimal("1000"), f"AMD qty looks like FX rate: {t.quantity}"
 
     def test_us_long_name_includes_etf_tail(self, parse_result) -> None:  # type: ignore[no-untyped-def]
         """When the US name spills onto line 2, the 'ETF' fragment must be kept."""
@@ -143,9 +141,7 @@ class TestUsStock:
             if isinstance(r, ParsedTrade) and r.asset_type == AssetType.US_STOCK
         ]
         missing = [t for t in us_trades if not t.name]
-        assert not missing, (
-            "Trades missing name: " + ", ".join(t.symbol for t in missing)
-        )
+        assert not missing, "Trades missing name: " + ", ".join(t.symbol for t in missing)
 
     def test_kyg_isin_parsed(self, parse_result) -> None:  # type: ignore[no-untyped-def]
         """Cayman-domiciled tickers (KYG…) are parsed as US_STOCK with KYG ISIN."""
@@ -196,6 +192,25 @@ class TestTimezone:
         )
         # 00:00 KST = UTC-9h → hour should be 15 (previous day UTC)
         assert sample.traded_at.hour == 15
+
+
+class TestSameMinuteRoundTrip:
+    """Same-day BUY/SELL pairs that net to zero must surface BUYs first.
+
+    Without this, the moving-average cost-basis walker (sorted by traded_at, id)
+    sees SELL-before-BUY at the same KST midnight, cannot flush against an empty
+    inventory, and leaves the BUY as a phantom holding.
+    """
+
+    def test_kodex_leverage_round_trip_buy_first(self, parse_result) -> None:  # type: ignore[no-untyped-def]
+        """KODEX 레버리지 on 2026.04.27: BUY 102 + SELL 100 + SELL 2 ⇒ BUY first."""
+        kodex = [
+            r for r in parse_result.records if isinstance(r, ParsedTrade) and r.symbol == "122630"
+        ]
+        assert len(kodex) == 3
+        assert kodex[0].side == TransactionType.BUY
+        assert kodex[1].side == TransactionType.SELL
+        assert kodex[2].side == TransactionType.SELL
 
 
 class TestLongName:
