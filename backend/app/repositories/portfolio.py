@@ -6,7 +6,7 @@ import logging
 from datetime import datetime
 from decimal import Decimal
 
-from sqlalchemy import func, select, text
+from sqlalchemy import case, func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -123,7 +123,16 @@ class PortfolioRepository:
                 Transaction.price,
             )
             .where(Transaction.user_asset_id.in_(user_asset_ids))
-            .order_by(Transaction.traded_at.asc(), Transaction.id.asc())
+            # When traded_at ties (parser collapses every same-day Toss/Shinhan
+            # row to KST midnight), BUY must come before SELL — you can't flush
+            # cost from an empty inventory. Without this, a same-day round trip
+            # leaves a phantom holding even when the parser emits in the right
+            # order, because rows imported before that fix still have wrong IDs.
+            .order_by(
+                Transaction.traded_at.asc(),
+                case((Transaction.type == TransactionType.BUY, 0), else_=1),
+                Transaction.id.asc(),
+            )
         )
         out: dict[int, list[tuple[TransactionType, Decimal, Decimal]]] = {}
         for ua_id, tx_type, qty, price in (await self._session.execute(stmt)).all():
@@ -199,13 +208,10 @@ class PortfolioRepository:
             .subquery()
         )
 
-        stmt = (
-            select(PricePoint.asset_symbol_id, PricePoint.price)
-            .join(
-                max_date_subq,
-                (PricePoint.asset_symbol_id == max_date_subq.c.sid)
-                & (func.date(PricePoint.fetched_at) == max_date_subq.c.max_date),
-            )
+        stmt = select(PricePoint.asset_symbol_id, PricePoint.price).join(
+            max_date_subq,
+            (PricePoint.asset_symbol_id == max_date_subq.c.sid)
+            & (func.date(PricePoint.fetched_at) == max_date_subq.c.max_date),
         )
         out: dict[int, Decimal] = {}
         for sid, price in (await self._session.execute(stmt)).all():
