@@ -378,6 +378,66 @@ class TestListAllForUserAsset:
         result = await repo.list_all_for_user_asset(ua.id)
         assert result == []
 
+    async def test_same_minute_BUY가_SELL보다_먼저_반환된다(
+        self,
+        db_session: AsyncSession,
+        user_asset_factory: Any,
+        asset_symbol_factory: Any,
+    ) -> None:
+        """KODEX 레버리지 reproduction at the asset-summary code path.
+
+        Insert SELL/SELL/BUY in that order at one timestamp (matches the wrong
+        DB state left by pre-fix imports). The walker in TransactionService.summary
+        consumes this list, so it must hand back BUY first or remaining_quantity
+        will stay anchored at the BUY total even when net qty is zero.
+        """
+        sym = await asset_symbol_factory(symbol="KODEXLEV_SUMMARY")
+        ua = await user_asset_factory(asset_symbol=sym)
+        ts = datetime(2026, 4, 26, 15, 0, 0, tzinfo=UTC)
+
+        repo = TransactionRepository(db_session)
+        # Insert SELL/SELL/BUY → SELL ids are LOWER than BUY id.
+        await repo.create(
+            ua.id,
+            TransactionCreate(
+                type=TransactionType.SELL,
+                quantity=Decimal("2"),
+                price=Decimal("112865"),
+                traded_at=ts,
+                memo=None,
+                tag=None,
+            ),
+        )
+        await repo.create(
+            ua.id,
+            TransactionCreate(
+                type=TransactionType.SELL,
+                quantity=Decimal("100"),
+                price=Decimal("112870"),
+                traded_at=ts,
+                memo=None,
+                tag=None,
+            ),
+        )
+        await repo.create(
+            ua.id,
+            TransactionCreate(
+                type=TransactionType.BUY,
+                quantity=Decimal("102"),
+                price=Decimal("114350"),
+                traded_at=ts,
+                memo=None,
+                tag=None,
+            ),
+        )
+
+        result = await repo.list_all_for_user_asset(ua.id)
+        assert [t.type for t in result] == [
+            TransactionType.BUY,
+            TransactionType.SELL,
+            TransactionType.SELL,
+        ]
+
 
 class TestTransactionTag:
     async def test_tag가_저장된다(
