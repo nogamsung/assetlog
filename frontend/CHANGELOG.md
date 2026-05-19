@@ -1,5 +1,36 @@
 # Changelog
 
+## [0.14.0](https://github.com/nogamsung/assetlog/compare/v0.13.1...v0.14.0) (2026-05-19)
+
+
+### Features
+
+* **history:** back-fill historical prices so the portfolio chart spans imports ([#152](https://github.com/nogamsung/assetlog/issues/152)) ([75e622c](https://github.com/nogamsung/assetlog/commit/75e622c2030cfedc62509541372d8e20fd0db797))
+* **history:** group holdings by asset class + add history page ([#178](https://github.com/nogamsung/assetlog/issues/178)) ([9e21526](https://github.com/nogamsung/assetlog/commit/9e21526e7169c235315d48255e33c242e1e4396e))
+* **history:** monthly calendar view with per-day transaction sheet ([#179](https://github.com/nogamsung/assetlog/issues/179)) ([4f69a71](https://github.com/nogamsung/assetlog/commit/4f69a717bb52ca790c86bf4f43759d7a0b57fca3))
+* **holdings:** show 1d/7d/30d price change percentages ([#180](https://github.com/nogamsung/assetlog/issues/180)) ([14d23b6](https://github.com/nogamsung/assetlog/commit/14d23b657cc7ffabf2dbc1da73a2db5fa8b9072d))
+* **import:** add K-Bank parser, multi-file upload, source rename ([#169](https://github.com/nogamsung/assetlog/issues/169)) ([5bff298](https://github.com/nogamsung/assetlog/commit/5bff298ad60d70a362ffea8c1f305bdc993c3c54))
+* **income:** surface dividend history on asset detail + interest page ([#145](https://github.com/nogamsung/assetlog/issues/145)) ([6237f78](https://github.com/nogamsung/assetlog/commit/6237f786a1abf1ab912ef909f26ffb5b7b9fb38b))
+* net-worth UI, crypto name resolver (Upbit), BTC index label ([#161](https://github.com/nogamsung/assetlog/issues/161)) ([dbb2dbb](https://github.com/nogamsung/assetlog/commit/dbb2dbb39f002398a698c79b86f726d47c39322f))
+* per-account cash balance, indices grid, BTC label cleanup ([#165](https://github.com/nogamsung/assetlog/issues/165)) ([7d7b5ef](https://github.com/nogamsung/assetlog/commit/7d7b5ef7ba0e02f8c7430cc243142564ebacb33b))
+* **ui:** add Shinhan option to file-import source selector ([#151](https://github.com/nogamsung/assetlog/issues/151)) ([7a7b84e](https://github.com/nogamsung/assetlog/commit/7a7b84e283a9d3b82190319f0dbec30177cf2399))
+* **ui:** format quantities/prices, drop realized in list, stronger toggles ([#170](https://github.com/nogamsung/assetlog/issues/170)) ([b63e1fe](https://github.com/nogamsung/assetlog/commit/b63e1fe7936237311eb1179ec75e09d0db8bf110))
+* **upbit+portfolio:** Upbit cash flow + cash in allocation + clearer total ([#166](https://github.com/nogamsung/assetlog/issues/166)) ([5eaf112](https://github.com/nogamsung/assetlog/commit/5eaf1127b5ebd42dda95376289e733a58e40d59c))
+* **upbit:** PDF import, daily price-point upsert, drop API sync UI ([#175](https://github.com/nogamsung/assetlog/issues/175)) ([d0213fd](https://github.com/nogamsung/assetlog/commit/d0213fdcf6b9e6ade88a5d1e479078e4882fd32b))
+* **upbit:** re-enable PDF import with coord-based row parser ([#177](https://github.com/nogamsung/assetlog/issues/177)) ([5de286c](https://github.com/nogamsung/assetlog/commit/5de286ca5397ebe6b573f9571f8aebc5c175d095))
+
+
+### Bug Fixes
+
+* **dashboard:** correct Toss FX cash + history avg + PnL + allocation FX ([#182](https://github.com/nogamsung/assetlog/issues/182)) ([3a49d39](https://github.com/nogamsung/assetlog/commit/3a49d398225819cb1bf3d2caa8997399197425bc))
+* **interest:** label shinhan source as 신한투자증권 ([#171](https://github.com/nogamsung/assetlog/issues/171)) ([d0215d8](https://github.com/nogamsung/assetlog/commit/d0215d836e159f95c1e3561d950cf6272ebc4099))
+
+
+### Chores
+
+* **ui:** portfolio history refresh button + consistent dashboard polish ([#163](https://github.com/nogamsung/assetlog/issues/163)) ([62c815a](https://github.com/nogamsung/assetlog/commit/62c815a201f0d3baf36f42967995ccba79143cd0))
+* **ui:** redirect / → /dashboard, tighter alignment + tactile buttons ([#148](https://github.com/nogamsung/assetlog/issues/148)) ([4c0b4fc](https://github.com/nogamsung/assetlog/commit/4c0b4fcd81b25a3f348f7c3f59c4d34dce4d46c7))
+
 ## [0.13.1](https://github.com/nogamsung/assetlog/compare/v0.13.0...v0.13.1) (2026-05-12)
 
 
