@@ -231,9 +231,13 @@ class PortfolioHistoryService:
         native (the symbol's holding contributes 0 — better than skewing
         the total with a wrong rate).
         """
+        # Moving-weighted-average cost basis — a SELL flushes its share of the
+        # running cost (mirrors PortfolioRepository.list_holdings_with_aggregates).
+        # Without this, partial SELL followed by re-BUY at a different price
+        # leaves avg_price anchored at the original buy price and historical
+        # cost_basis drifts away from what the portfolio summary shows today.
         qty_by_symbol: dict[int, Decimal] = {}
-        cumulative_buy_qty: dict[int, Decimal] = {}
-        cumulative_buy_cost: dict[int, Decimal] = {}
+        running_cost_by_symbol: dict[int, Decimal] = {}
 
         tx_ptr = 0
         n_txs = len(txs)
@@ -260,30 +264,33 @@ class PortfolioHistoryService:
                 tx_time = _ensure_utc(tx.traded_at)
                 if tx_time > ts_aware:
                     break
+                sym = tx.symbol_id
+                cur_qty = qty_by_symbol.get(sym, _ZERO)
+                cur_cost = running_cost_by_symbol.get(sym, _ZERO)
                 if tx.tx_type == TransactionType.BUY:
-                    qty_by_symbol[tx.symbol_id] = (
-                        qty_by_symbol.get(tx.symbol_id, _ZERO) + tx.quantity
-                    )
-                    cumulative_buy_qty[tx.symbol_id] = (
-                        cumulative_buy_qty.get(tx.symbol_id, _ZERO) + tx.quantity
-                    )
-                    cumulative_buy_cost[tx.symbol_id] = (
-                        cumulative_buy_cost.get(tx.symbol_id, _ZERO) + tx.quantity * tx.price
-                    )
-                else:
-                    qty_by_symbol[tx.symbol_id] = max(
-                        qty_by_symbol.get(tx.symbol_id, _ZERO) - tx.quantity, _ZERO
-                    )
+                    qty_by_symbol[sym] = cur_qty + tx.quantity
+                    running_cost_by_symbol[sym] = cur_cost + tx.quantity * tx.price
+                else:  # SELL — flush cost proportional to qty sold
+                    if cur_qty > _ZERO:
+                        sold = tx.quantity if tx.quantity <= cur_qty else cur_qty
+                        avg = cur_cost / cur_qty
+                        qty_by_symbol[sym] = cur_qty - sold
+                        running_cost_by_symbol[sym] = cur_cost - sold * avg
+                    # SELL exceeding inventory is silently capped — parser
+                    # occasionally over-reports a fully-closed position.
                 tx_ptr += 1
+
+            # Guard against floating residuals: zero-qty must imply zero cost.
+            for sym_id in list(qty_by_symbol.keys()):
+                if qty_by_symbol[sym_id] <= _ZERO:
+                    qty_by_symbol[sym_id] = _ZERO
+                    running_cost_by_symbol[sym_id] = _ZERO
 
             running_cost = _ZERO
             for sym_id, qty in qty_by_symbol.items():
                 if qty <= _ZERO:
                     continue
-                buy_qty = cumulative_buy_qty.get(sym_id, _ZERO)
-                buy_cost = cumulative_buy_cost.get(sym_id, _ZERO)
-                avg_price = buy_cost / buy_qty if buy_qty > _ZERO else _ZERO
-                native_cost = avg_price * qty
+                native_cost = running_cost_by_symbol.get(sym_id, _ZERO)
                 src_ccy = symbol_currency.get(sym_id, target_currency or "KRW")
                 converted = _convert(native_cost, src_ccy, ts_aware)
                 if converted is not None:

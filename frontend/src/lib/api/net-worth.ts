@@ -12,6 +12,8 @@ interface RawNetWorthResponse {
   by_account: Record<string, Record<string, string>>;
   display_currency: string | null;
   converted_total: string | null;
+  converted_partial?: boolean;
+  missing_fx_currencies?: string[];
 }
 
 export async function getNetWorth(
@@ -26,5 +28,7 @@ export async function getNetWorth(
     byAccount: data.by_account ?? {},
     displayCurrency: data.display_currency,
     convertedTotal: data.converted_total,
+    convertedPartial: data.converted_partial ?? false,
+    missingFxCurrencies: data.missing_fx_currencies ?? [],
   };
 }

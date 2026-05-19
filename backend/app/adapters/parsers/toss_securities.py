@@ -94,6 +94,9 @@ _USD_CASH_FLOW_MAP: dict[str, tuple[str, str]] = {
     # Cancelled FX legs reverse the transfer direction.
     "환전외화입금취소": ("transfer_out", "USD"),
     "환전원화입금취소": ("transfer_in", "KRW"),
+    # Foreign-currency withholding tax refund — Toss returns the tax it
+    # previously withheld on a USD dividend. Adds USD cash.
+    "외화세금환급": ("deposit", "USD"),
 }
 
 
@@ -225,25 +228,25 @@ def _emit_krw_cash_flow(
 ) -> None:
     """Emit a ParsedCashTx for a KRW-section cash-flow line.
 
-    KRW cash-flow lines (no symbol) have 9 numeric tokens after the kind:
-    ``[환율, qty(0), amount, price(0), fee(0), tax(0), tax2/세금, repay, bal_qty, bal_amt]``
+    The column layout after filtering out counterparty names is:
 
-    For most kinds the 거래대금 column (numeric_tokens[1] after kind) holds the
-    moved amount in KRW. For 배당세출금 / 외화이자세금출금 the tax amount is
-    in tax2 (numeric_tokens[5]). For 이체* / 환전* / 이벤트 amount is at [1].
+      이체*  : ``[0, amount, 0, 0, 0, 0, 0, bal_qty, bal_amt]`` (9 tokens)
+      환전*  : ``[rate, 0, amount, 0, 0, 0, 0, 0, bal_qty, bal_amt]`` (10 tokens)
+      이벤트 : ``[0, amount, 0, 0, 0, 0, 0, bal_qty, bal_amt]`` (9 tokens)
+      배당세출금 / 외화이자세금출금 : ``[0, amount, 0, 0, 0, tax2, repay, bal_qty, bal_amt]``
+
+    The earlier "first positive" heuristic mis-picked the FX rate for 환전*
+    rows (rate ≈ 1,300–1,500) and recorded that tiny number as the moved KRW
+    amount — leaving millions of KRW that had been converted to USD still
+    sitting on the books. Use a stable offset from the end instead: the
+    amount column is always 8 positions before the end (bal_amt is -1,
+    bal_qty -2, repay -3, tax2 -4, tax -5, fee -6, price -7, amount -8).
     """
-    # The column layout differs slightly between cash-flow kinds (이체* has no
-    # 환율 column; 환전* has one; 이벤트 has neither). The amount we care about
-    # is always the first non-zero numeric on the line, which avoids hard-coding
-    # an index that breaks across variants. We also filter out non-numeric
-    # tokens (e.g. 상대처 name on 이체* rows) up-front.
     numeric_only = [t for t in numeric_tokens if _is_num_token(t)]
-    amount = Decimal("0")
-    for tok in numeric_only:
-        v = _to_decimal(tok)
-        if v > 0:
-            amount = v
-            break
+    if len(numeric_only) < 8:
+        result.skipped.append(ParsedSkip(raw_kind=kind_raw, reason="parse_error"))
+        return
+    amount = _to_decimal(numeric_only[-8])
     if amount <= 0:
         result.skipped.append(ParsedSkip(raw_kind=kind_raw, reason="zero_amount"))
         return

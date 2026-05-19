@@ -11,4 +11,8 @@ export interface NetWorthResponse {
   byAccount: NetWorthByAccount;
   displayCurrency: string | null;
   convertedTotal: string | null;
+  /** True if at least one currency was dropped from convertedTotal due to missing FX. */
+  convertedPartial: boolean;
+  /** Currencies that could not be converted into displayCurrency. */
+  missingFxCurrencies: string[];
 }

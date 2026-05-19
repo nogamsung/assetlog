@@ -119,11 +119,7 @@ class PortfolioService:
 
         # Inject 1d / 7d / 30d price change percentages. One query per window;
         # symbols missing a prior close in that window are silently left null.
-        symbol_ids = [
-            h.asset_symbol.id
-            for h in holdings
-            if h.latest_price is not None
-        ]
+        symbol_ids = [h.asset_symbol.id for h in holdings if h.latest_price is not None]
         if symbol_ids:
             windows = (
                 ("change_1d_pct", 1),
@@ -331,13 +327,20 @@ class PortfolioService:
         elif self._cash_repo is not None:
             cash_totals = await self._cash_repo.sum_balance_by_currency()
 
+        # Snapshot assets-only value before cash merge — PnL must be computed
+        # against invested principal, not (assets + cash). Including cash made
+        # pnl_abs / pct overstate by exactly the cash balance per currency.
+        assets_value: dict[str, Decimal] = dict(total_value)
+
         # Merge cash into total_value (cash is always "valued" — no pending state).
         for cur, cash_val in cash_totals.items():
             total_value[cur] = total_value.get(cur, Decimal("0")) + cash_val
 
-        # P&L per currency.
+        # P&L per currency — invested assets only.
         pnl_by_currency: dict[str, PnlEntry] = {}
-        for cur, val in total_value.items():
+        all_pnl_currencies = set(assets_value.keys()) | set(total_cost.keys())
+        for cur in all_pnl_currencies:
+            val = assets_value.get(cur, Decimal("0"))
             cost = total_cost.get(cur, Decimal("0"))
             pnl_abs = val - cost
             try:
@@ -353,13 +356,17 @@ class PortfolioService:
         # KRW numerically". Falls back to native sums only if FX is missing.
         # ------------------------------------------------------------------
         alloc_base_ccy = (convert_to or "KRW").upper()
-        currencies_in_play = (
-            {c for d in alloc_native.values() for c in d}
-            | set(cash_totals.keys())
-        )
+        currencies_in_play = {c for d in alloc_native.values() for c in d} | set(cash_totals.keys())
+
+        # Single-currency portfolios don't need FX — pie ratios are well-defined
+        # in any base. Multi-currency portfolios MUST convert; if a non-base
+        # currency has no FX rate, we drop that slice rather than mix units
+        # (the old fallback added e.g. 1,000 USD into a KRW total as 1,000,
+        # producing meaningless pie wedges).
+        single_currency = len(currencies_in_play) <= 1
 
         alloc_rate_map: dict[str, Decimal] | None = None
-        if self._fx_service is not None and currencies_in_play:
+        if not single_currency and self._fx_service is not None and currencies_in_play:
             try:
                 alloc_rate_map = await self._fx_service.get_all_rates_for_conversion(
                     list(currencies_in_play), alloc_base_ccy
@@ -367,24 +374,43 @@ class PortfolioService:
             except Exception:  # noqa: BLE001
                 alloc_rate_map = None
 
-        def _to_base(value: Decimal, ccy: str) -> Decimal:
-            if ccy == alloc_base_ccy:
+        def _to_base(value: Decimal, ccy: str) -> Decimal | None:
+            if single_currency or ccy == alloc_base_ccy:
                 return value
             if alloc_rate_map is None:
-                return value  # fallback: native (legacy behaviour)
+                return None
             rate = alloc_rate_map.get(ccy)
-            return value * rate if rate is not None else value
+            return value * rate if rate is not None else None
 
         allocation_value: dict[str, Decimal] = {}
         for asset_type_str, by_cur in alloc_native.items():
             total = Decimal("0")
             for ccy, v in by_cur.items():
-                total += _to_base(v, ccy)
+                converted = _to_base(v, ccy)
+                if converted is None:
+                    logger.warning(
+                        "allocation: dropping %s value %s in %s (no FX → %s)",
+                        asset_type_str,
+                        v,
+                        ccy,
+                        alloc_base_ccy,
+                    )
+                    continue
+                total += converted
             allocation_value[asset_type_str] = total
 
         cash_grand_total = Decimal("0")
         for ccy, v in cash_totals.items():
-            cash_grand_total += _to_base(v, ccy)
+            converted = _to_base(v, ccy)
+            if converted is None:
+                logger.warning(
+                    "allocation: dropping cash %s in %s (no FX → %s)",
+                    v,
+                    ccy,
+                    alloc_base_ccy,
+                )
+                continue
+            cash_grand_total += converted
 
         grand_total = sum(allocation_value.values(), Decimal("0")) + cash_grand_total
         allocation: list[AllocationEntry] = []
@@ -438,6 +464,10 @@ class PortfolioService:
                     (total_value.get(cur, Decimal("0")) * rate_map[cur] for cur in all_currencies),
                     Decimal("0"),
                 )
+                conv_assets = sum(
+                    (assets_value.get(cur, Decimal("0")) * rate_map[cur] for cur in all_currencies),
+                    Decimal("0"),
+                )
                 conv_cost = sum(
                     (total_cost.get(cur, Decimal("0")) * rate_map[cur] for cur in all_currencies),
                     Decimal("0"),
@@ -451,7 +481,8 @@ class PortfolioService:
                 )
                 converted_total_value = conv_value
                 converted_total_cost = conv_cost
-                converted_pnl_abs = conv_value - conv_cost
+                # PnL excludes cash — same fix as pnl_by_currency above.
+                converted_pnl_abs = conv_assets - conv_cost
                 converted_realized_pnl = conv_realized
                 display_currency = convert_to
             else:
