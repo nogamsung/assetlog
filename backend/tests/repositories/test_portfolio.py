@@ -64,6 +64,26 @@ async def _add_buy_tx(
     await session.flush()
 
 
+async def _add_tx(
+    session: AsyncSession,
+    user_asset: UserAsset,
+    tx_type: TransactionType,
+    qty: Decimal,
+    price: Decimal,
+    traded_at: datetime,
+) -> None:
+    """Add a BUY/SELL transaction at a specific traded_at."""
+    tx = Transaction(
+        user_asset_id=user_asset.id,
+        type=tx_type,
+        quantity=qty,
+        price=price,
+        traded_at=traded_at,
+    )
+    session.add(tx)
+    await session.flush()
+
+
 # ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
@@ -112,6 +132,37 @@ class TestPortfolioRepositoryAggregates:
         row = next(r for r in rows if r.user_asset_id == ua.id)
         assert row.total_qty == Decimal("5")
         assert row.total_cost == Decimal("8000")  # 2*1000 + 3*2000
+
+    async def test_same_minute_SELL_먼저_DB_삽입돼도_BUY_먼저_flush(
+        self, db_session: AsyncSession
+    ) -> None:
+        """Reproduces the KODEX 레버리지 phantom-holding case.
+
+        Pre-fix Toss parser emitted same-day rows in PDF order (reverse
+        chronological), so SELL rows landed in the DB with lower IDs than the
+        BUY they should follow. The walker sorts by (traded_at, id) — the
+        SELLs hit an empty inventory, flushed nothing, and the BUY left a
+        phantom holding even though net qty was zero.
+
+        Secondary order key BUY-before-SELL must restore the correct flush
+        regardless of insertion order, so existing wrong rows in the DB get
+        recomputed correctly without re-import.
+        """
+        sym = await _create_symbol(db_session, "KODEXLEV", "KRW")
+        ua = await _create_user_asset(db_session, sym)
+        t = datetime(2026, 4, 26, 15, 0, 0, tzinfo=UTC)  # KST midnight
+
+        # Wrong DB insertion order: SELL, SELL, BUY — exactly what existing
+        # bad data looks like for this user.
+        await _add_tx(db_session, ua, TransactionType.SELL, Decimal("2"), Decimal("112865"), t)
+        await _add_tx(db_session, ua, TransactionType.SELL, Decimal("100"), Decimal("112870"), t)
+        await _add_tx(db_session, ua, TransactionType.BUY, Decimal("102"), Decimal("114350"), t)
+
+        repo = PortfolioRepository(db_session)
+        rows = await repo.list_holdings_with_aggregates()
+        row = next(r for r in rows if r.user_asset_id == ua.id)
+        assert row.total_qty == Decimal("0")
+        assert row.total_cost == Decimal("0")
 
     async def test_반환_타입이_HoldingRow이다(self, db_session: AsyncSession) -> None:
         sym = await _create_symbol(db_session, "TYPECHECK", "KRW")

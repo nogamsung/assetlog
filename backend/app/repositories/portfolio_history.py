@@ -6,7 +6,7 @@ import logging
 from datetime import UTC, datetime
 from decimal import Decimal
 
-from sqlalchemy import select, union_all
+from sqlalchemy import case, select, union_all
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domain.transaction_type import TransactionType
@@ -96,7 +96,11 @@ class PortfolioHistoryRepository:
             .join(UserAsset, Transaction.user_asset_id == UserAsset.id)
             .join(AssetSymbol, UserAsset.asset_symbol_id == AssetSymbol.id)
             .where(AssetSymbol.currency == currency)
-            .order_by(Transaction.traded_at.asc())
+            .order_by(
+                Transaction.traded_at.asc(),
+                case((Transaction.type == TransactionType.BUY, 0), else_=1),
+                Transaction.id.asc(),
+            )
         )
 
         rows = (await self._session.execute(stmt)).all()
@@ -138,7 +142,11 @@ class PortfolioHistoryRepository:
             )
             .join(UserAsset, Transaction.user_asset_id == UserAsset.id)
             .join(AssetSymbol, UserAsset.asset_symbol_id == AssetSymbol.id)
-            .order_by(Transaction.traded_at.asc())
+            .order_by(
+                Transaction.traded_at.asc(),
+                case((Transaction.type == TransactionType.BUY, 0), else_=1),
+                Transaction.id.asc(),
+            )
         )
 
         rows = (await self._session.execute(stmt)).all()
