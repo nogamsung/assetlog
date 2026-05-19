@@ -2,6 +2,8 @@ name: publish
 
 on:
   push:
+    branches:
+      - main
     tags:
       - "v*"
   workflow_dispatch:
@@ -28,15 +30,35 @@ jobs:
       matrix:
         component: [backend, frontend]
     steps:
-      - name: Resolve tag
-        id: tag
+      # Resolve what to check out and which immutable tag (if any) to publish
+      # alongside :latest. Tag pushes (and explicit workflow_call/dispatch with
+      # `inputs.tag`) get both the versioned tag and :latest. Main-branch
+      # pushes only get :latest, so the registry's :latest never lags behind
+      # main even when release-please is wedged.
+      - name: Resolve build context
+        id: ctx
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
+          GITHUB_REF: ${{ github.ref }}
+          GITHUB_REF_NAME: ${{ github.ref_name }}
+          GITHUB_SHA: ${{ github.sha }}
         run: |
-          TAG="${{ inputs.tag || github.ref_name }}"
-          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          if [ -n "$INPUT_TAG" ]; then
+            REF="$INPUT_TAG"
+            VERSION="$INPUT_TAG"
+          elif [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            REF="$GITHUB_REF_NAME"
+            VERSION="$GITHUB_REF_NAME"
+          else
+            REF="$GITHUB_SHA"
+            VERSION=""
+          fi
+          echo "ref=$REF" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
       - uses: actions/checkout@v4
         with:
-          ref: ${{ steps.tag.outputs.tag }}
+          ref: ${{ steps.ctx.outputs.ref }}
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -53,8 +75,11 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: ghcr.io/${{ github.repository_owner }}/assetlog-${{ matrix.component }}
+          # Versioned tag only when we have one; :latest always. The `enable`
+          # gate keeps the version line from emitting an empty value on main
+          # pushes (docker/metadata-action skips disabled entries).
           tags: |
-            type=raw,value=${{ steps.tag.outputs.tag }}
+            type=raw,value=${{ steps.ctx.outputs.version || 'noop' }},enable=${{ steps.ctx.outputs.version != '' }}
             type=raw,value=latest
 
       - name: Build and push
