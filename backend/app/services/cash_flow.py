@@ -74,12 +74,16 @@ class CashFlowService:
         # Skip Upbit balance-reconciliation rows: they exist only to keep
         # ``holdings.quantity`` aligned with Upbit's reported balance after
         # external wallet deposits/withdrawals, no cash actually moved.
+        # Fees apply to BOTH sides — BUY drains (qty*price + fee), SELL
+        # refills (qty*price − fee). Rows imported before the fee column
+        # was added have fee=0, so the math degrades gracefully.
         trade_rows = (
             await self._session.execute(
                 select(
                     Transaction.type,
                     Transaction.quantity,
                     Transaction.price,
+                    Transaction.fee,
                     AssetSymbol.currency,
                 )
                 .join(UserAsset, UserAsset.id == Transaction.user_asset_id)
@@ -90,12 +94,12 @@ class CashFlowService:
                 )
             )
         ).all()
-        for tx_type, qty, price, currency in trade_rows:
+        for tx_type, qty, price, fee, currency in trade_rows:
             gross = qty * price
             if tx_type == TransactionType.BUY:
-                balances[currency] = balances.get(currency, _ZERO) - gross
+                balances[currency] = balances.get(currency, _ZERO) - gross - fee
             elif tx_type == TransactionType.SELL:
-                balances[currency] = balances.get(currency, _ZERO) + gross
+                balances[currency] = balances.get(currency, _ZERO) + gross - fee
 
         # 3) dividends (always positive)
         div_rows = (await self._session.execute(select(Dividend.amount, Dividend.currency))).all()
@@ -142,6 +146,7 @@ class CashFlowService:
                     Transaction.type,
                     Transaction.quantity,
                     Transaction.price,
+                    Transaction.fee,
                     AssetSymbol.currency,
                     Transaction.external_source,
                 )
@@ -153,12 +158,12 @@ class CashFlowService:
                 )
             )
         ).all()
-        for tx_type, qty, price, currency, source in trade_rows:
+        for tx_type, qty, price, fee, currency, source in trade_rows:
             gross = qty * price
             if tx_type == TransactionType.BUY:
-                _bump(source, currency, -gross)
+                _bump(source, currency, -gross - fee)
             elif tx_type == TransactionType.SELL:
-                _bump(source, currency, gross)
+                _bump(source, currency, gross - fee)
 
         div_rows = (
             await self._session.execute(

@@ -311,6 +311,11 @@ def _parse_krw_line(line: str, result: ParseResult) -> None:
         # After code: qty amount price fee tax tax2 repay balance_qty balance_amount
         qty_str = numeric_tokens[0]
         price_str = numeric_tokens[2]  # 단가 (unit price)
+        # Only 수수료 ([3]) actually drains the user's visible balance — Toss's
+        # 잔액 column already nets out 거래세 / 제세금 internally, so subtracting
+        # those again would double-count. Verified by reconciling against the
+        # final 잔액 of 886,162 in the 2026.05.18 row across all 5 PDFs.
+        fee_krw = _to_decimal(numeric_tokens[3])
 
         ticker, name, asset_type, exchange = _extract_symbol_and_name(name_code)
         if not ticker:
@@ -334,6 +339,7 @@ def _parse_krw_line(line: str, result: ParseResult) -> None:
                 currency="KRW",
                 traded_at=traded_at,
                 name=name,
+                fee=fee_krw,
             )
         )
 
@@ -527,6 +533,10 @@ def _parse_usd_block(line1: str, line2: str, result: ParseResult) -> None:
         # numeric_tokens[0] is FX rate (환율); actual qty starts at index 1.
         qty_str = numeric_tokens[1]
         price_usd = usd_values[1]  # ($ price_usd) is second paren value
+        # Line 2 USD parens: amount, price, fee, tax2, repay, balance_usd.
+        # Fee + tax2 both drain USD cash on the trade. Tax2 is SEC fee +
+        # transfer tax on the US side and applies on SELLs.
+        fee_usd = usd_values[2] + (usd_values[3] if len(usd_values) > 3 else Decimal("0"))
 
         ticker, name, asset_type, exchange = _extract_symbol_and_name(final_name_code)
         if not ticker:
@@ -549,6 +559,7 @@ def _parse_usd_block(line1: str, line2: str, result: ParseResult) -> None:
                 currency="USD",
                 traded_at=traded_at,
                 name=name,
+                fee=fee_usd,
             )
         )
 

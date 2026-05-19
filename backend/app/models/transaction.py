@@ -46,6 +46,12 @@ class Transaction(Base):
     )
     quantity: Mapped[Decimal] = mapped_column(Numeric(28, 10), nullable=False)
     price: Mapped[Decimal] = mapped_column(Numeric(20, 6), nullable=False)
+    # Broker commission paid on this trade, in the trade's quote currency.
+    # Pre-rollout rows stay at 0 — that's strictly under-reported fees, never
+    # over-reported, so net-worth math stays conservative until re-import.
+    fee: Mapped[Decimal] = mapped_column(
+        Numeric(20, 6), nullable=False, server_default="0", default=Decimal("0")
+    )
     traded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     memo: Mapped[str | None] = mapped_column(String(255), nullable=True)
     tag: Mapped[str | None] = mapped_column(String(50), nullable=True, index=True)
