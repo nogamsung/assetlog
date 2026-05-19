@@ -33,6 +33,10 @@ class ExternalTrade:
     quantity: Decimal
     price: Decimal  # per-unit price in quote_currency
     traded_at: datetime  # tz-aware UTC
+    # Broker commission in ``quote_currency``. Adapters that don't expose
+    # a fee field leave this at zero — that under-reports the cash drain
+    # rather than over-reports, which is the safer default.
+    fee: Decimal = Decimal("0")
 
 
 @dataclass(frozen=True)

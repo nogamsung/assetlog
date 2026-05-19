@@ -194,6 +194,48 @@ class TestTimezone:
         assert sample.traded_at.hour == 15
 
 
+class TestTradeFee:
+    """Trade fees must be captured so cash_flow can subtract them.
+
+    KRW trade fees come from 수수료 (numeric_tokens[3]) only — 거래세 and
+    제세금 are reported on the row but Toss already nets them out of the
+    잔액 column, so subtracting them again double-counts. USD trade fees
+    come from line 2's fee + tax2 ($ values [2] + [3]).
+    """
+
+    def test_krw_trade_carries_fee(self, parse_result) -> None:  # type: ignore[no-untyped-def]
+        from decimal import Decimal
+
+        # 코나아이 BUY on 2025.05.14 — fee=84 (수수료 column)
+        kr = [
+            r
+            for r in parse_result.records
+            if isinstance(r, ParsedTrade)
+            and r.symbol == "052400"
+            and r.side == TransactionType.BUY
+            and r.quantity == Decimal("12")
+        ]
+        assert kr, "expected 코나아이 BUY 12 trade in fixture"
+        assert kr[0].fee == Decimal("84")
+
+    def test_usd_trade_carries_fee(self, parse_result) -> None:  # type: ignore[no-untyped-def]
+        from decimal import Decimal
+
+        # Any AMD trade — line2 has ($ fee) at index 2
+        usd = [
+            r
+            for r in parse_result.records
+            if isinstance(r, ParsedTrade)
+            and r.symbol == "US0079031078"
+            and r.side == TransactionType.BUY
+        ]
+        assert usd, "expected at least one AMD BUY in fixture"
+        # All AMD BUYs charge a non-zero broker fee.
+        assert all(t.fee > Decimal("0") for t in usd), (
+            f"every USD BUY should have a non-zero fee, got fees={[t.fee for t in usd]}"
+        )
+
+
 class TestCancellationPrefix:
     """``환전외화입금취소`` must route to ``transfer_out``, not ``transfer_in``.
 

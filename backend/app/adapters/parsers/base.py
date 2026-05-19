@@ -39,6 +39,10 @@ class ParsedTrade:
     currency: str
     traded_at: datetime
     name: str = ""
+    # Broker commission paid on this trade, in the trade's quote currency.
+    # Parsers that don't (or can't) extract a fee leave this at zero — that
+    # makes the cash impact strictly conservative (won't double-count).
+    fee: Decimal = Decimal("0")
 
 
 @dataclass(frozen=True)
