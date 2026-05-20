@@ -19,11 +19,16 @@ COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-dev --no-install-project
 
 COPY . .
-RUN uv sync --frozen --no-dev
+RUN uv sync --frozen --no-dev \
+ && chmod +x scripts/entrypoint.sh
 
 EXPOSE 8000
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
   CMD curl -fsS http://localhost:8000/health || exit 1
 
+# Entrypoint runs `alembic upgrade head` before exec'ing CMD so a new
+# image with schema-affecting changes (e.g. the fee column) can't go
+# live ahead of its migration. Override with SKIP_DB_MIGRATIONS=1.
+ENTRYPOINT ["./scripts/entrypoint.sh"]
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
