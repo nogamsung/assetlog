@@ -194,6 +194,53 @@ class TestTimezone:
         assert sample.traded_at.hour == 15
 
 
+class TestWithholdingTax:
+    """KRW dividends and interest are credited NET of withholding tax to the
+    user's 잔액 column — parser must surface the withholding so cash_flow can
+    do net = gross - withholding. USD dividends are credited GROSS (US tax is
+    paid by Toss separately, not deducted from the user's USD balance), so
+    withholding_tax stays 0 there.
+    """
+
+    def test_krw_dividend_carries_withholding(self, parse_result) -> None:  # type: ignore[no-untyped-def]
+        from decimal import Decimal
+
+        # 삼성전자 dividend in fixture: gross 7,300, tax2 1,120 → net 6,180
+        kr_divs = [
+            r
+            for r in parse_result.records
+            if isinstance(r, ParsedDividend) and r.symbol == "005930"
+        ]
+        assert kr_divs, "expected at least one 삼성전자 KRW dividend"
+        assert all(d.withholding_tax > Decimal("0") for d in kr_divs)
+        assert all(d.withholding_tax < d.gross_amount for d in kr_divs)
+
+    def test_krw_interest_carries_withholding(self, parse_result) -> None:  # type: ignore[no-untyped-def]
+        from decimal import Decimal
+
+        with_tax = [
+            r
+            for r in parse_result.records
+            if isinstance(r, ParsedCashTx)
+            and r.currency == "KRW"
+            and r.kind.value == "interest"
+            and r.withholding_tax > Decimal("0")
+        ]
+        assert with_tax, "expected at least one KRW interest with non-zero withholding"
+
+    def test_usd_dividend_no_withholding(self, parse_result) -> None:  # type: ignore[no-untyped-def]
+        """USD dividends are credited gross — withholding stays 0 even though
+        the PDF reports a US tax value (informational, paid by Toss separately).
+        """
+        from decimal import Decimal
+
+        usd_divs = [
+            r for r in parse_result.records if isinstance(r, ParsedDividend) and r.currency == "USD"
+        ]
+        assert usd_divs, "expected at least one USD dividend in fixture"
+        assert all(d.withholding_tax == Decimal("0") for d in usd_divs)
+
+
 class TestTradeFee:
     """Trade fees must be captured so cash_flow can subtract them.
 

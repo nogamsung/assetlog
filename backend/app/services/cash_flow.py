@@ -54,19 +54,22 @@ class CashFlowService:
         """Return a {currency: balance} map summing every cash-flow signal."""
         balances: dict[str, Decimal] = {}
 
-        # 1) cash_account_transactions
+        # 1) cash_account_transactions — for INTEREST, the cash actually
+        # credited is amount − withholding_tax (Toss withholds 15.4% at source
+        # and only the net hits 잔액). Other kinds carry withholding_tax = 0.
         cash_rows = (
             await self._session.execute(
                 select(
                     CashAccountTransaction.kind,
                     CashAccountTransaction.amount,
+                    CashAccountTransaction.withholding_tax,
                     CashAccountTransaction.currency,
                 )
             )
         ).all()
-        for kind, amount, currency in cash_rows:
+        for kind, amount, withholding, currency in cash_rows:
             if kind in _POSITIVE_KINDS:
-                balances[currency] = balances.get(currency, _ZERO) + amount
+                balances[currency] = balances.get(currency, _ZERO) + amount - withholding
             elif kind in _NEGATIVE_KINDS:
                 balances[currency] = balances.get(currency, _ZERO) - amount
 
@@ -101,10 +104,14 @@ class CashFlowService:
             elif tx_type == TransactionType.SELL:
                 balances[currency] = balances.get(currency, _ZERO) + gross - fee
 
-        # 3) dividends (always positive)
-        div_rows = (await self._session.execute(select(Dividend.amount, Dividend.currency))).all()
-        for amount, currency in div_rows:
-            balances[currency] = balances.get(currency, _ZERO) + amount
+        # 3) dividends (always positive) — cash credited is amount − withholding.
+        div_rows = (
+            await self._session.execute(
+                select(Dividend.amount, Dividend.withholding_tax, Dividend.currency)
+            )
+        ).all()
+        for amount, withholding, currency in div_rows:
+            balances[currency] = balances.get(currency, _ZERO) + amount - withholding
 
         return balances
 
@@ -129,14 +136,15 @@ class CashFlowService:
                 select(
                     CashAccountTransaction.kind,
                     CashAccountTransaction.amount,
+                    CashAccountTransaction.withholding_tax,
                     CashAccountTransaction.currency,
                     CashAccountTransaction.external_source,
                 )
             )
         ).all()
-        for kind, amount, currency, source in cash_rows:
+        for kind, amount, withholding, currency, source in cash_rows:
             if kind in _POSITIVE_KINDS:
-                _bump(source, currency, amount)
+                _bump(source, currency, amount - withholding)
             elif kind in _NEGATIVE_KINDS:
                 _bump(source, currency, -amount)
 
@@ -167,10 +175,15 @@ class CashFlowService:
 
         div_rows = (
             await self._session.execute(
-                select(Dividend.amount, Dividend.currency, Dividend.external_source)
+                select(
+                    Dividend.amount,
+                    Dividend.withholding_tax,
+                    Dividend.currency,
+                    Dividend.external_source,
+                )
             )
         ).all()
-        for amount, currency, source in div_rows:
-            _bump(source, currency, amount)
+        for amount, withholding, currency, source in div_rows:
+            _bump(source, currency, amount - withholding)
 
         return result

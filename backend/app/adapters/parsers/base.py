@@ -57,6 +57,10 @@ class ParsedDividend:
     currency: str
     traded_at: datetime
     name: str = ""
+    # Withholding tax already netted out at source — actual cash credited
+    # is ``gross_amount - withholding_tax``. Parsers that can't (or don't)
+    # report it leave 0, in which case cash_flow assumes no withholding.
+    withholding_tax: Decimal = Decimal("0")
 
 
 @dataclass(frozen=True)
@@ -68,6 +72,10 @@ class ParsedCashTx:
     amount: Decimal
     currency: str
     traded_at: datetime
+    # For INTEREST events: tax already withheld at source so the actual
+    # cash credited is ``amount - withholding_tax``. Defaults to 0 for
+    # other kinds (deposit, withdraw, transfer_*, interest_tax itself).
+    withholding_tax: Decimal = Decimal("0")
 
 
 @dataclass(frozen=True)
