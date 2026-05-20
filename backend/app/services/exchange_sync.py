@@ -675,6 +675,15 @@ class ExchangeSyncService:
 
         if inserted > 0:
             await self._session.flush()
+
+        # Collapse `toss-opening-` synthetic openings to a single row — the
+        # one with the earliest traded_at. Each Toss PDF emits an opening
+        # for its own window, but only the user's *very first* opening
+        # represents real money that's not covered by other PDFs' flows.
+        # See toss_securities._synthesize_opening_balance.
+        await self._collapse_opening_balances(source)
+
+        if inserted > 0:
             logger.info(
                 "file_import cash_txs inserted",
                 extra={
@@ -685,6 +694,42 @@ class ExchangeSyncService:
                 },
             )
         return inserted
+
+    async def _collapse_opening_balances(self, source: ExchangeSource) -> None:
+        """Keep only the earliest opening-balance row per source.
+
+        Multiple Toss PDFs each emit an opening for their own window, but
+        only the earliest one represents money not covered by subsequent
+        PDFs' flows. Run after every Toss import so the table converges
+        to a single opening regardless of the order PDFs were uploaded.
+        """
+        from sqlalchemy import delete as sql_delete
+
+        rows = (
+            (
+                await self._session.execute(
+                    select(CashAccountTransaction)
+                    .where(
+                        CashAccountTransaction.external_source == source.value,
+                        CashAccountTransaction.external_id.startswith("toss-opening-"),
+                    )
+                    .order_by(CashAccountTransaction.traded_at.asc())
+                )
+            )
+            .scalars()
+            .all()
+        )
+        if len(rows) <= 1:
+            return
+        keep_id = rows[0].id
+        await self._session.execute(
+            sql_delete(CashAccountTransaction).where(
+                CashAccountTransaction.external_source == source.value,
+                CashAccountTransaction.external_id.startswith("toss-opening-"),
+                CashAccountTransaction.id != keep_id,
+            )
+        )
+        await self._session.flush()
 
     # ------------------------------------------------------------------
     # Private: existing-IDs lookups for deduplication
