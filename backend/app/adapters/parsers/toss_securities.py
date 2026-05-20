@@ -344,14 +344,19 @@ def _parse_krw_line(line: str, result: ParseResult) -> None:
         )
 
     elif kind_raw == _KRW_DIVIDEND_KIND:
-        if len(numeric_tokens) < 2:
+        if len(numeric_tokens) < 6:
             result.skipped.append(ParsedSkip(raw_kind=kind_raw, reason="parse_error"))
             return
 
         # After code: qty(0) amount price(0) fee(0) tax1(0) tax2 repay(0) balance_qty balance_amount
-        # amount = numeric_tokens[1] (거래대금)
+        # amount = numeric_tokens[1] (거래대금, gross)
+        # tax2  = numeric_tokens[5] (제세금, source withholding)
+        # Toss already nets tax2 out of 잔액, so actual cash credited is
+        # amount - tax2. We capture tax2 separately so cash_flow can do
+        # the math and the historical gross is still preserved.
         amount_str = numeric_tokens[1]
         amount = _to_decimal(amount_str)
+        withholding = _to_decimal(numeric_tokens[5])
 
         ticker, name, asset_type, exchange = _extract_symbol_and_name(name_code)
         if not ticker:
@@ -370,6 +375,7 @@ def _parse_krw_line(line: str, result: ParseResult) -> None:
                 currency="KRW",
                 traded_at=traded_at,
                 name=name,
+                withholding_tax=withholding,
             )
         )
 
@@ -380,12 +386,15 @@ def _parse_krw_line(line: str, result: ParseResult) -> None:
         # Actually: 2025.05.30 이자입금 0 290 0 0 0 40 0 0 37,699
         # tokens after kind: [0, 290, 0, 0, 0, 40, 0, 0, 37699]
         # index [1] = 290 is the gross interest amount
-        if len(numeric_tokens) < 2:
+        if len(numeric_tokens) < 6:
             result.skipped.append(ParsedSkip(raw_kind=kind_raw, reason="parse_error"))
             return
 
         amount_str = numeric_tokens[1]
         amount = _to_decimal(amount_str)
+        # Same gross/net behavior as 배당금입금 — tax2 is the 15.4% withholding
+        # Toss already nets out before crediting interest to the user's balance.
+        withholding = _to_decimal(numeric_tokens[5])
         ext_id = _sha256_id(date_str, "INTEREST", amount_str, "KRW")
 
         result.records.append(
@@ -395,6 +404,7 @@ def _parse_krw_line(line: str, result: ParseResult) -> None:
                 amount=amount,
                 currency="KRW",
                 traded_at=traded_at,
+                withholding_tax=withholding,
             )
         )
 
@@ -569,6 +579,13 @@ def _parse_usd_block(line1: str, line2: str, result: ParseResult) -> None:
             return
 
         amount_usd = usd_values[0]
+        # USD dividends credit the user's USD account GROSS — verified by
+        # comparing line2 balance_usd across consecutive dividends (delta
+        # equals usd_values[0] gross, not gross - tax2). The US withholding
+        # at usd_values[3] is informational; Toss reconciles foreign tax
+        # via a separate 배당세출금 KRW row when applicable. So we leave
+        # withholding_tax at 0 here to keep the cash-impact in step with
+        # what Toss actually does to 잔액.
         ticker, name, asset_type, exchange = _extract_symbol_and_name(final_name_code)
         if not ticker:
             result.skipped.append(ParsedSkip(raw_kind=kind_raw, reason="no_symbol"))

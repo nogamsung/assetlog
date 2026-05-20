@@ -48,6 +48,12 @@ class Dividend(Base):
     )
     ex_date: Mapped[date] = mapped_column(Date, nullable=False)
     amount: Mapped[Decimal] = mapped_column(Numeric(20, 8), nullable=False)
+    # Source-withheld tax already netted out by the broker. Cash actually
+    # credited to the user is ``amount - withholding_tax``. Pre-rollout
+    # rows stay at 0 — under-reports withholding rather than over-reports.
+    withholding_tax: Mapped[Decimal] = mapped_column(
+        Numeric(20, 8), nullable=False, server_default="0", default=Decimal("0")
+    )
     currency: Mapped[str] = mapped_column(String(10), nullable=False)
     source: Mapped[DividendSource] = mapped_column(
         String(16),

@@ -53,6 +53,11 @@ class CashAccountTransaction(Base):
         nullable=False,
     )
     amount: Mapped[Decimal] = mapped_column(Numeric(20, 8), nullable=False)
+    # For INTEREST kind: source-withheld tax. Cash actually credited is
+    # ``amount - withholding_tax``. 0 for non-interest kinds.
+    withholding_tax: Mapped[Decimal] = mapped_column(
+        Numeric(20, 8), nullable=False, server_default="0", default=Decimal("0")
+    )
     currency: Mapped[str] = mapped_column(String(8), nullable=False)
     traded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     external_source: Mapped[str | None] = mapped_column(String(32), nullable=True)
