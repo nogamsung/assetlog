@@ -59,6 +59,10 @@ class TestDeterministicIds:
 
     def test_external_ids_are_32_hex(self, parse_result) -> None:  # type: ignore[no-untyped-def]
         for rec in parse_result.records:
+            # Synthetic opening-balance rows use a readable prefix instead of
+            # a sha256 hash so the import service can recognize them.
+            if rec.external_id.startswith("toss-opening-"):
+                continue
             assert len(rec.external_id) == 32
             assert all(c in "0123456789abcdef" for c in rec.external_id)
 
@@ -192,6 +196,26 @@ class TestTimezone:
         )
         # 00:00 KST = UTC-9h → hour should be 15 (previous day UTC)
         assert sample.traded_at.hour == 15
+
+
+class TestOpeningBalance:
+    """The parser emits one synthetic DEPOSIT per PDF carrying the implied
+    opening balance, so cumulative cash reconciles to the user's current
+    잔액 without requiring a manual seed row.
+    """
+
+    def test_opening_balance_emitted(self, parse_result) -> None:  # type: ignore[no-untyped-def]
+        from decimal import Decimal
+
+        openings = [
+            r
+            for r in parse_result.records
+            if isinstance(r, ParsedCashTx) and r.external_id.startswith("toss-opening-")
+        ]
+        assert openings, "expected at least one synthetic opening balance"
+        assert all(o.kind.value == "deposit" for o in openings)
+        assert all(o.currency == "KRW" for o in openings)
+        assert all(o.amount > Decimal("0") for o in openings)
 
 
 class TestWithholdingTax:

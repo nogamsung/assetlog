@@ -21,7 +21,7 @@ import hashlib
 import logging
 import re
 from collections import defaultdict
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal, InvalidOperation
 from zoneinfo import ZoneInfo
 
@@ -311,11 +311,17 @@ def _parse_krw_line(line: str, result: ParseResult) -> None:
         # After code: qty amount price fee tax tax2 repay balance_qty balance_amount
         qty_str = numeric_tokens[0]
         price_str = numeric_tokens[2]  # 단가 (unit price)
-        # Only 수수료 ([3]) actually drains the user's visible balance — Toss's
-        # 잔액 column already nets out 거래세 / 제세금 internally, so subtracting
-        # those again would double-count. Verified by reconciling against the
-        # final 잔액 of 886,162 in the 2026.05.18 row across all 5 PDFs.
-        fee_krw = _to_decimal(numeric_tokens[3])
+        # All three drain cash: 수수료 ([3], commission), 거래세 ([4], KRX
+        # transaction tax, only on SELL), 제세금 ([5], 농어촌특별세 etc., only
+        # on SELL). 잔액 reflects all three. Verified end-to-end against the
+        # 5 user PDFs: per-PDF parser-vs-잔액 delta matched to ₩0 with this
+        # sum (PDF 2 SELL 삼성 missing tax was 377+1,887=2,264, exactly the
+        # earlier per-PDF over-count).
+        fee_krw = (
+            _to_decimal(numeric_tokens[3])
+            + _to_decimal(numeric_tokens[4])
+            + _to_decimal(numeric_tokens[5])
+        )
 
         ticker, name, asset_type, exchange = _extract_symbol_and_name(name_code)
         if not ticker:
@@ -700,6 +706,102 @@ def _reorder_same_minute_round_trips(
             records[slot] = trade
 
 
+_TOSS_OPENING_PREFIX = "toss-opening-"
+
+
+def _synthesize_opening_balance(text: str, result: ParseResult) -> None:
+    """Emit a synthetic DEPOSIT for the implied KRW opening balance.
+
+    Toss PDFs only show transactions inside the requested period — the
+    user's balance at the *start* of the window never appears as a row.
+    Without an opening, every parser reconciliation lands at
+    ``current_balance - opening`` instead of ``current_balance``.
+
+    Approach: look at the very first KRW row, compute the prior balance as
+    ``bal_amt[-1] - delta_from_this_row``. Emit one ParsedCashTx with kind
+    DEPOSIT and a ``toss-opening-`` external_id prefix dated one day before
+    the first row. The import service collapses multiple openings across
+    PDFs into the earliest one — see _import_parsed_cash_txs.
+    """
+    section = None
+    for line in text.splitlines():
+        s = line.strip()
+        if _KRW_SECTION_MARKER in s:
+            section = "KRW"
+            continue
+        if _USD_SECTION_MARKER in s:
+            section = "USD"
+            continue
+        if section != "KRW" or not _DATE_RE.match(s):
+            continue
+        # Found the first KRW row.
+        parsed = _split_krw_line(s)
+        if parsed is None:
+            return
+        date_str, kind_raw, _, numeric_tokens = parsed
+        numeric_only = [t for t in numeric_tokens if _is_num_token(t)]
+        if not numeric_only:
+            return
+        bal_after = _to_decimal(numeric_only[-1])
+        # Re-derive this row's signed delta the same way cash_flow does:
+        # cash-flow events use [-8] for the moved amount; trades use
+        # qty * price ± fees; dividends/interest net out tax2.
+        delta = _row_signed_delta(kind_raw, numeric_only)
+        if delta is None:
+            return
+        opening = bal_after - delta
+        if opening <= 0:
+            return  # nothing to inject
+        first_date = _kst_midnight_utc(date_str)
+        opening_at = first_date - timedelta(days=1)
+        amount_str = str(opening.quantize(Decimal("1")))
+        ext_id = f"{_TOSS_OPENING_PREFIX}{date_str.replace('.', '-')}-{amount_str}-KRW"
+        result.records.append(
+            ParsedCashTx(
+                external_id=ext_id,
+                kind=ParsedCashTxKind.DEPOSIT,
+                amount=opening,
+                currency="KRW",
+                traded_at=opening_at,
+            )
+        )
+        return
+
+
+def _row_signed_delta(kind_raw: str, numeric_only: list[str]) -> Decimal | None:
+    """Return the signed KRW cash impact of a single first-row KRW line.
+
+    Mirrors _emit_krw_cash_flow / _parse_krw_line semantics on a best-effort
+    basis. Returns None if we can't classify the row (in which case the
+    opening-balance synthesizer skips this PDF safely).
+    """
+    if len(numeric_only) < 8:
+        return None
+    # Trades and dividends/interest have 9-column layouts; cash flows differ.
+    if kind_raw in (_BUY_KIND, _SELL_KIND):
+        qty = _to_decimal(numeric_only[0])
+        price = _to_decimal(numeric_only[2])
+        fee = (
+            _to_decimal(numeric_only[3])
+            + _to_decimal(numeric_only[4])
+            + _to_decimal(numeric_only[5])
+        )
+        gross = qty * price
+        return (-gross - fee) if kind_raw == _BUY_KIND else (gross - fee)
+    if kind_raw == _KRW_DIVIDEND_KIND or kind_raw == _KRW_INTEREST_KIND:
+        gross = _to_decimal(numeric_only[1])
+        withholding = _to_decimal(numeric_only[5])
+        return gross - withholding
+    # Cash flow events — sign by prefix lookup against the longest-first map.
+    for prefix, (cash_kind, _cur) in _ordered_cash_flow_items(_KRW_CASH_FLOW_MAP):
+        if kind_raw.startswith(prefix):
+            amount = _to_decimal(numeric_only[-8])
+            if cash_kind in ("deposit", "interest", "transfer_in"):
+                return amount
+            return -amount
+    return None
+
+
 # ----- Main parse_text ----------------------------------------------------------
 
 
@@ -772,6 +874,7 @@ def parse_text(text: str) -> ParseResult:
             i += 1
 
     _reorder_same_minute_round_trips(result.records)
+    _synthesize_opening_balance(text, result)
 
     logger.info(
         "toss_securities parse complete",
