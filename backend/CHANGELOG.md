@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.2](https://github.com/nogamsung/assetlog/compare/v1.0.1...v1.0.2) (2026-05-20)
+
+
+### Bug Fixes
+
+* **toss:** deduct full KRW tax + synthesize opening balance ([#195](https://github.com/nogamsung/assetlog/issues/195)) ([4c1df04](https://github.com/nogamsung/assetlog/commit/4c1df04735d05376e18de9dc65a761819ef36bd1))
+
 ## [1.0.1](https://github.com/nogamsung/assetlog/compare/v1.0.0...v1.0.1) (2026-05-20)
 
 
