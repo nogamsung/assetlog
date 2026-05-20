@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.15.0](https://github.com/nogamsung/assetlog/compare/v0.14.0...v0.15.0) (2026-05-19)
+
+
+### Features
+
+* **history:** group holdings by asset class + add history page ([#178](https://github.com/nogamsung/assetlog/issues/178)) ([9e21526](https://github.com/nogamsung/assetlog/commit/9e21526e7169c235315d48255e33c242e1e4396e))
+* **history:** monthly calendar view with per-day transaction sheet ([#179](https://github.com/nogamsung/assetlog/issues/179)) ([4f69a71](https://github.com/nogamsung/assetlog/commit/4f69a717bb52ca790c86bf4f43759d7a0b57fca3))
+* **holdings:** show 1d/7d/30d price change percentages ([#180](https://github.com/nogamsung/assetlog/issues/180)) ([14d23b6](https://github.com/nogamsung/assetlog/commit/14d23b657cc7ffabf2dbc1da73a2db5fa8b9072d))
+* **upbit:** PDF import, daily price-point upsert, drop API sync UI ([#175](https://github.com/nogamsung/assetlog/issues/175)) ([d0213fd](https://github.com/nogamsung/assetlog/commit/d0213fdcf6b9e6ade88a5d1e479078e4882fd32b))
+* **upbit:** re-enable PDF import with coord-based row parser ([#177](https://github.com/nogamsung/assetlog/issues/177)) ([5de286c](https://github.com/nogamsung/assetlog/commit/5de286ca5397ebe6b573f9571f8aebc5c175d095))
+
+
+### Bug Fixes
+
+* **dashboard:** correct Toss FX cash + history avg + PnL + allocation FX ([#182](https://github.com/nogamsung/assetlog/issues/182)) ([3a49d39](https://github.com/nogamsung/assetlog/commit/3a49d398225819cb1bf3d2caa8997399197425bc))
+* **interest:** label shinhan source as 신한투자증권 ([#171](https://github.com/nogamsung/assetlog/issues/171)) ([d0215d8](https://github.com/nogamsung/assetlog/commit/d0215d836e159f95c1e3561d950cf6272ebc4099))
+
+
+### Chores
+
+* release main ([#187](https://github.com/nogamsung/assetlog/issues/187)) ([2a9c923](https://github.com/nogamsung/assetlog/commit/2a9c923c6086ba103cfc032f32c3c83982342431))
+
 ## [0.14.0](https://github.com/nogamsung/assetlog/compare/v0.13.1...v0.14.0) (2026-05-19)
 
 
