@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.0.1](https://github.com/nogamsung/assetlog/compare/v1.0.0...v1.0.1) (2026-05-20)
+
+
+### Chores
+
+* release main ([#190](https://github.com/nogamsung/assetlog/issues/190)) ([030fc0e](https://github.com/nogamsung/assetlog/commit/030fc0ec75c21f93424462d03de7542dbcf16544))
+* **release:** align frontend manifest to 1.0.0 to unstick release-please ([#193](https://github.com/nogamsung/assetlog/issues/193)) ([48fb422](https://github.com/nogamsung/assetlog/commit/48fb422d645f12b8dfc872259511716b3f791420))
+
 ## [0.15.0](https://github.com/nogamsung/assetlog/compare/v0.14.0...v0.15.0) (2026-05-19)
 
 

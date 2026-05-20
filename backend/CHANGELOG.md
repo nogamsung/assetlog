@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.1](https://github.com/nogamsung/assetlog/compare/v1.0.0...v1.0.1) (2026-05-20)
+
+
+### Bug Fixes
+
+* **toss:** net out source withholding on KRW dividends + interest ([#192](https://github.com/nogamsung/assetlog/issues/192)) ([468c2a8](https://github.com/nogamsung/assetlog/commit/468c2a8ffcf895bae4bda15e04609a6e906161c0))
+
 ## [1.0.0](https://github.com/nogamsung/assetlog/compare/v0.13.2...v1.0.0) (2026-05-19)
 
 
