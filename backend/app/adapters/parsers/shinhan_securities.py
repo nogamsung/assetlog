@@ -229,6 +229,9 @@ def _parse_block(
     if kind_raw in (_BUY_KIND, _SELL_KIND):
         # line1 nums: [단가, 수수료, 소득세, 신용금액, 미수처리금, 총변제금]
         # line2 nums: [수량, 거래세, 지방소득세, 신용이자, 미수연체료]
+        # line3 nums: [..., 정산금액, 예수금잔고]  ← settle reflects gross ± all
+        # trade-time deductions (수수료 + 거래세 + 소득세 + 지방소득세 …), which
+        # is exactly the cash impact we need.
         if not nums1 or not nums2 or not name:
             result.skipped.append(ParsedSkip(raw_kind=kind_raw, reason="parse_error"))
             return
@@ -239,6 +242,20 @@ def _parse_block(
         if qty <= 0 or price <= 0:
             result.skipped.append(ParsedSkip(raw_kind=kind_raw, reason="parse_error"))
             return
+
+        # Derive fee from the broker-reported settle: BUY drains gross+fee,
+        # SELL refills gross−fee, so |gross − settle| captures every
+        # trade-time deduction without needing to know which columns the
+        # broker chose to populate. Falls back to 0 when 정산금액 is missing
+        # or smells off (negative / smaller than gross for a BUY).
+        gross = qty * price
+        settle = _settle_amount_from_line3(line3)
+        fee = Decimal("0")
+        if settle is not None and settle > 0:
+            if kind_raw == _BUY_KIND and settle >= gross:
+                fee = settle - gross
+            elif kind_raw == _SELL_KIND and settle <= gross:
+                fee = gross - settle
 
         side = TransactionType.BUY if kind_raw == _BUY_KIND else TransactionType.SELL
         ext_id = _sha256_id(date_str, side.value, name, qty_str, price_str)
@@ -251,6 +268,7 @@ def _parse_block(
                 side=side,
                 quantity=qty,
                 price=price,
+                fee=fee,
                 currency="KRW",
                 traded_at=traded_at,
                 name=name,

@@ -77,6 +77,28 @@ class TestKrTrade:
         assert sp500
         assert all(t.quantity > 0 and t.price > 0 for t in sp500)
 
+    def test_buy_fee_extracted_from_settle(self, parse_result) -> None:  # type: ignore[no-untyped-def]
+        """수수료 가 비어있지 않은 BUY 는 ``fee = settle − gross`` 가 잡혀야 한다.
+
+        Without this, cash_flow over-counts the Shinhan KRW balance by every
+        broker deduction (≈ ₩651,874 on the user's 2-year history).
+        """
+        # 2024-08-16 TIGER 미국S&P500배당귀족 BUY 100 @ 11,700 — fee 2,210
+        # (line1[1]=2,210, settle=1,172,210, gross=1,170,000)
+        from decimal import Decimal  # noqa: PLC0415
+
+        match = [
+            r
+            for r in parse_result.records
+            if isinstance(r, ParsedTrade)
+            and r.symbol == "TIGER 미국S&P500배당귀족"
+            and r.quantity == Decimal("100")
+            and r.price == Decimal("11700")
+            and r.side.value == "buy"
+        ]
+        assert match, "expected the 2024-08-16 TIGER 100@11,700 BUY in the fixture"
+        assert match[0].fee == Decimal("2210")
+
 
 class TestDividend:
     def test_etf_distribution_parsed(self, parse_result) -> None:  # type: ignore[no-untyped-def]
