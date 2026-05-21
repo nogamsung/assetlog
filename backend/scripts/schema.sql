@@ -70,6 +70,7 @@ CREATE TABLE IF NOT EXISTS `transactions` (
   `type`            VARCHAR(16)     NOT NULL COMMENT 'buy | sell',
   `quantity`        DECIMAL(28, 10) NOT NULL,
   `price`           DECIMAL(20, 6)  NOT NULL,
+  `fee`             DECIMAL(20, 6)  NOT NULL DEFAULT 0 COMMENT 'broker commission in quote currency',
   `traded_at`       DATETIME        NOT NULL,
   `memo`            VARCHAR(255)    NULL,
   `tag`             VARCHAR(50)     NULL,
@@ -95,8 +96,10 @@ CREATE TABLE IF NOT EXISTS `price_points` (
   `price`            DECIMAL(20, 6) NOT NULL,
   `currency`         VARCHAR(10)    NOT NULL,
   `fetched_at`       DATETIME       NOT NULL,
+  `fetched_date`     DATE           GENERATED ALWAYS AS (DATE(`fetched_at`)) STORED NOT NULL,
   PRIMARY KEY (`id`),
-  KEY `ix_price_points_symbol_fetched` (`asset_symbol_id`, `fetched_at`),
+  UNIQUE KEY `uq_price_point_symbol_date`         (`asset_symbol_id`, `fetched_date`),
+  KEY `ix_price_points_symbol_fetched`            (`asset_symbol_id`, `fetched_at`),
   CONSTRAINT `fk_price_points_asset_symbol_id`
     FOREIGN KEY (`asset_symbol_id`) REFERENCES `asset_symbols`(`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
@@ -169,6 +172,7 @@ CREATE TABLE IF NOT EXISTS `dividends` (
   `asset_symbol_id`   INT             NOT NULL,
   `ex_date`           DATE            NOT NULL,
   `amount`            DECIMAL(20, 8)  NOT NULL,
+  `withholding_tax`   DECIMAL(20, 8)  NOT NULL DEFAULT 0 COMMENT 'tax withheld at source (gross − net)',
   `currency`          VARCHAR(10)     NOT NULL,
   `source`            VARCHAR(16)     NOT NULL COMMENT 'yfinance | pykrx | manual | toss_securities',
   `external_source`   VARCHAR(32)     NULL,
@@ -192,6 +196,7 @@ CREATE TABLE IF NOT EXISTS `cash_account_transactions` (
   `cash_account_id`   INT             NULL,
   `kind`              VARCHAR(32)     NOT NULL COMMENT 'deposit | withdraw | interest | interest_tax | transfer_in | transfer_out',
   `amount`            DECIMAL(20, 8)  NOT NULL,
+  `withholding_tax`   DECIMAL(20, 8)  NOT NULL DEFAULT 0 COMMENT 'tax withheld at source — meaningful only when kind = interest',
   `currency`          VARCHAR(8)      NOT NULL,
   `traded_at`         DATETIME(6)     NOT NULL,
   `external_source`   VARCHAR(32)     NULL,
@@ -269,7 +274,7 @@ CREATE TABLE IF NOT EXISTS `alembic_version` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 INSERT INTO `alembic_version` (`version_num`)
-  VALUES ('e8a4c1f72b5d')
+  VALUES ('e2f8a91d4c67')
   ON DUPLICATE KEY UPDATE `version_num` = VALUES(`version_num`);
 
 SET FOREIGN_KEY_CHECKS = 1;
