@@ -274,7 +274,7 @@ CREATE TABLE IF NOT EXISTS `alembic_version` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 INSERT INTO `alembic_version` (`version_num`)
-  VALUES ('22b139eb4686')
+  VALUES ('85fce37dac95')
   ON DUPLICATE KEY UPDATE `version_num` = VALUES(`version_num`);
 
 SET FOREIGN_KEY_CHECKS = 1;
