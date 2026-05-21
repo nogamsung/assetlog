@@ -804,15 +804,19 @@ class ExchangeSyncService:
         # try the resolver chain (static map → DB cache → OpenFIGI) before
         # creating an AssetSymbol row that would otherwise carry the ISIN.
         from app.services.isin_resolver import looks_like_isin  # noqa: PLC0415
-        from app.services.kr_name_resolver import looks_like_kr_name  # noqa: PLC0415
+        from app.services.kr_name_resolver import looks_like_kr_code  # noqa: PLC0415
 
         if asset_type == AssetType.US_STOCK and looks_like_isin(symbol):
             resolved = await self._isin_resolver.resolve(symbol)
             if resolved:
                 symbol = resolved
-        elif asset_type == AssetType.KR_STOCK and looks_like_kr_name(symbol):
-            # Shinhan rows carry a Korean security name as symbol — translate
-            # to the canonical KRX 6-digit code via Naver autocomplete + cache.
+        elif asset_type == AssetType.KR_STOCK and not looks_like_kr_code(symbol):
+            # Shinhan rows carry the displayed security name as symbol —
+            # could be Korean (``삼성전자``), mixed (``TIGER 미국S&P500배당귀족``),
+            # or ASCII-only (``NAVER``). Anything that isn't already a KRX
+            # 6-digit code goes through Naver autocomplete + cache so the
+            # canonical code becomes the AssetSymbol.symbol and downstream
+            # price fetchers (yfinance / pykrx) can resolve it.
             resolved_kr = await self._kr_name_resolver.resolve(symbol)
             if resolved_kr:
                 symbol = resolved_kr

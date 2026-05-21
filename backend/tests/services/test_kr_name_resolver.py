@@ -6,7 +6,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from app.services.kr_name_resolver import KrNameResolver, looks_like_kr_name
+from app.services.kr_name_resolver import (
+    KrNameResolver,
+    looks_like_kr_code,
+    looks_like_kr_name,
+)
 
 
 def _async_session_mock() -> AsyncMock:
@@ -31,6 +35,25 @@ class TestLooksLikeKrName:
 
     def test_ascii_only_does_not_match(self) -> None:
         assert looks_like_kr_name("AMD") is False
+
+
+class TestLooksLikeKrCode:
+    def test_six_digit_code_matches(self) -> None:
+        assert looks_like_kr_code("005930") is True
+
+    def test_hangul_name_does_not_match(self) -> None:
+        assert looks_like_kr_code("삼성전자") is False
+
+    def test_ascii_ticker_does_not_match(self) -> None:
+        # NAVER is the security NAME, not the KRX code — must be sent
+        # to the resolver so it gets translated to 035420.
+        assert looks_like_kr_code("NAVER") is False
+
+    def test_short_numeric_does_not_match(self) -> None:
+        assert looks_like_kr_code("12345") is False
+
+    def test_long_numeric_does_not_match(self) -> None:
+        assert looks_like_kr_code("0059300") is False
 
 
 class TestKrNameResolver:

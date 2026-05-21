@@ -26,11 +26,17 @@ logger = logging.getLogger(__name__)
 # parser already produces these for Shinhan rows. Pure 6-digit codes (Toss
 # KR rows) won't match — we leave them alone.
 _HANGUL_RE = re.compile(r"[가-힣]")
+_KR_CODE_RE = re.compile(r"^\d{6}$")
 
 
 def looks_like_kr_name(symbol: str) -> bool:
     """Return True if *symbol* contains at least one Hangul character."""
     return bool(_HANGUL_RE.search(symbol))
+
+
+def looks_like_kr_code(symbol: str) -> bool:
+    """Return True if *symbol* is already a KRX 6-digit code (e.g. ``005930``)."""
+    return bool(_KR_CODE_RE.match(symbol))
 
 
 class KrNameResolver:
