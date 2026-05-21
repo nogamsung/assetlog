@@ -248,7 +248,11 @@ def _emit_trade(
     Lower line: ``HH:MM:SS <unit_price> KRW <amount> KRW <settle> KRW``
 
     After sorting by line then x0, the row tokens come in that exact
-    order — the first numeric after the time word is the unit price.
+    order — the first three numerics after the time word are
+    ``unit_price``, ``amount`` (gross = qty × unit_price), and ``settle``
+    (the cash actually moved: gross + fee for BUY, gross − fee for SELL).
+    Deriving ``fee = |amount − settle|`` makes the parser self-correcting
+    without needing to know which column the broker chose to populate.
     """
     kind_label = "매수" if side == TransactionType.BUY else "매도"
     try:
@@ -275,14 +279,22 @@ def _emit_trade(
     except StopIteration:
         result.skipped.append(ParsedSkip(raw_kind=" ".join(row[:6]), reason="no_time"))
         return
-    unit_price: Decimal | None = None
-    for tok in row[t_idx + 1 :]:
-        if _NUM_TOKEN_RE.match(tok):
-            unit_price = _to_decimal(tok)
-            break
-    if unit_price is None or unit_price <= 0:
+    nums_after_time = [
+        _to_decimal(tok) for tok in row[t_idx + 1 :] if _NUM_TOKEN_RE.match(tok)
+    ]
+    if not nums_after_time or nums_after_time[0] <= 0:
         result.skipped.append(ParsedSkip(raw_kind=" ".join(row[:6]), reason="no_price"))
         return
+    unit_price = nums_after_time[0]
+    # Derive fee from the broker-reported amount/settle pair when both are
+    # present. Falls back to 0 if the lower line is malformed — over-counts
+    # cash by the missing fee rather than dropping the trade entirely.
+    fee = Decimal("0")
+    if len(nums_after_time) >= 3:
+        amount = nums_after_time[1]
+        settle = nums_after_time[2]
+        if amount > 0 and settle > 0:
+            fee = abs(amount - settle)
 
     ext_id = _sha256_id(
         "trade", date_str, time_str, side.value, coin, str(qty), str(unit_price)
@@ -296,6 +308,7 @@ def _emit_trade(
             side=side,
             quantity=qty,
             price=unit_price,
+            fee=fee,
             currency="KRW",
             traded_at=traded_at,
         )
@@ -313,7 +326,14 @@ def _emit_krw_cash(
     """KRW 입금/출금 → ParsedCashTx.
 
     Upper line: ``DATE 입금|출금 KRW <amount> KRW <fee> KRW [counterparty]``
-    The transferred amount is the first numeric after the kind token.
+
+    For 출금, Upbit charges a flat KRW withdrawal fee (~₩1,000) on top of
+    the transferred amount — the balance debit is ``amount + fee``. The
+    raw ``amount`` column shows what hit the bank, not what left Upbit.
+    The fee column is the next numeric after amount.
+
+    For 입금, KRW deposits are fee-free in practice, but we tolerate a
+    non-zero column just in case.
     """
     kind_label = "입금" if kind == ParsedCashTxKind.DEPOSIT else "출금"
     try:
@@ -321,20 +341,31 @@ def _emit_krw_cash(
     except ValueError:
         result.skipped.append(ParsedSkip(raw_kind=" ".join(row[:4]), reason="cash_kind_missing"))
         return
-    amount: Decimal | None = None
-    for tok in row[k_idx + 1 :]:
-        if _NUM_TOKEN_RE.match(tok):
-            amount = _to_decimal(tok)
-            break
-    if amount is None or amount <= 0:
+    nums_after_kind = [
+        _to_decimal(tok) for tok in row[k_idx + 1 :] if _NUM_TOKEN_RE.match(tok)
+    ]
+    if not nums_after_kind or nums_after_kind[0] <= 0:
         result.skipped.append(ParsedSkip(raw_kind=" ".join(row[:6]), reason="cash_no_amount"))
         return
-    ext_id = _sha256_id("cash", date_str, time_str, kind.value, str(amount))
+    raw_amount = nums_after_kind[0]
+    fee = nums_after_kind[1] if len(nums_after_kind) > 1 else Decimal("0")
+    if fee < 0:
+        fee = Decimal("0")
+    # Withdrawal fee adds to the cash drain. Deposit fee (rare) reduces
+    # the credit. Hash on the raw column so the same physical PDF row
+    # produces a stable external_id across parser revisions.
+    if kind == ParsedCashTxKind.WITHDRAW:
+        total_amount = raw_amount + fee
+    else:
+        total_amount = raw_amount - fee
+        if total_amount <= 0:
+            total_amount = raw_amount
+    ext_id = _sha256_id("cash", date_str, time_str, kind.value, str(raw_amount))
     result.records.append(
         ParsedCashTx(
             external_id=f"upbit-pdf-cash-{ext_id}",
             kind=kind,
-            amount=amount,
+            amount=total_amount,
             currency="KRW",
             traded_at=traded_at,
         )
